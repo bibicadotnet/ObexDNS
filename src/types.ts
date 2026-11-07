@@ -142,6 +142,17 @@ export interface List {
   last_modified?: string | null;
 }
 
+export interface SystemList {
+  id: number;
+  url: string;
+  name?: string | null;
+  etag?: string | null;
+  last_modified?: string | null;
+  last_synced_at?: number | null;
+  sync_error?: string | null;
+  rule_count?: number;
+}
+
 export interface DNSQuery {
   name: string;
   type: string;

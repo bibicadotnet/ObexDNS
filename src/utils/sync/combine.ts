@@ -7,6 +7,7 @@ import { ProfileBloomModel } from "../../models/profileBloom";
 import { ListBloomModel } from "../../models/listBloom";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { AdGuardPayload } from "../../lib/adguard/types";
+import { systemListsManager } from "../../lib/filtering/systemListsManager";
 
 /**
  * 汇总并合并所有已启用列表的 Bloom Filter 与 AdGuard 扩展规则，并原子更新为 Profile 的 active 状态。
@@ -30,16 +31,21 @@ export async function combineAndPromote(
   const activeLists = lists.filter((l) => !!l.enabled);
   const adguardRulesModel = env?.DB ? new AdguardRulesModel(env.DB) : null;
 
-  if (activeLists.length === 0) {
-    // 若没有已同步的列表，清空 profile_blooms 与 profile_adguard_rules
+  if (env?.DB) {
+    await systemListsManager.ensureLoaded(env.DB);
+  }
+  // 过滤掉系统共享列表：系统共享列表走全局 Tier 1 Bloom，无需合并进各 Profile 的 Bloom
+  const customLists = activeLists.filter((l) => !systemListsManager.isSystemUrl(l.url));
+
+  if (customLists.length === 0) {
+    // 若没有自定义外部列表，清空 profile_blooms 与 profile_adguard_rules (纯享系统共享 Bloom)
     await Promise.all([
       profileBloomModel.clearProfileBlooms(profileId),
       adguardRulesModel?.clearProfileRules(profileId)
     ]);
-  } else if (activeLists.length === 1) {
-    // 性能优化：单列表短路晋升 (Single-List Direct Promotion)
-    // 仅有 1 个列表时直接复用其 Bloom 与规则，彻底跳过内存重建与循环合并开销
-    const single = activeLists[0];
+  } else if (customLists.length === 1) {
+    // 性能优化：单自定义列表短路晋升 (Single-List Direct Promotion)
+    const single = customLists[0];
     const [buf, listRules] = await Promise.all([
       listBloomModel.getListBloom(single.id),
       adguardRulesModel ? adguardRulesModel.getListRules(single.id) : Promise.resolve(null)
@@ -57,7 +63,7 @@ export async function combineAndPromote(
     }
     await Promise.all(saveOps);
   } else {
-    // 重建并按位或 (OR) 合并所有列表级布隆过滤器，并汇总 AdGuard 规则
+    // 重建并按位或 (OR) 合并所有自定义列表级布隆过滤器，并汇总 AdGuard 规则
     const merged = BloomFilter.create(maxDomains, falsePositiveRate);
     let hasMergedAny = false;
 
@@ -69,7 +75,7 @@ export async function combineAndPromote(
     const maxRegexRules = Number(env?.MAX_REGEX_RULES) || 1000;
     const seenExceptions = new Set<string>();
 
-    for (const list of activeLists) {
+    for (const list of customLists) {
       try {
         // 1. Bloom Filter 单列表合并
         const buf = await listBloomModel.getListBloom(list.id);

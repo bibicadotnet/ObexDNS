@@ -156,8 +156,8 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # Maximum domains processed from a single list per sync cycle / 单次同步中单个规则列表最多处理的域名数
 # MAX_LIST_DOMAINS=500000
 
-# Maximum bytes processed from a single list per sync cycle (default 20MB) / 单次同步中单个规则列表最大体积上限 (字节，默认 20MB)
-# MAX_LIST_BYTES=20971520
+# Maximum bytes processed from a single list per sync cycle (default 25MB) / 单次同步中单个规则列表最大体积上限 (字节，默认 25MB)
+# MAX_LIST_BYTES=26214400
 
 # In-memory retention time for profile bloom filters (in milliseconds) / 内存中缓存布隆过滤器有效时长 (毫秒)
 # BLOOM_MEM_TTL=600000

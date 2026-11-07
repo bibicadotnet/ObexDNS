@@ -1,13 +1,22 @@
 import { Env, User, ExecutionContext } from "../../types";
 import { ListModel } from "../../models/list";
 import { ProfileModel } from "../../models/profile";
-import { syncNextListForProfile, syncAllListsForProfile, syncSingleListForProfile, rebuildProfileBloom } from "../../utils/sync";
+import { SystemListModel } from "../../models/systemList";
+import {
+  syncNextListForProfile,
+  syncAllListsForProfile,
+  syncSingleListForProfile,
+  rebuildProfileBloom,
+  syncSingleSystemList,
+  syncAllSystemLists
+} from "../../utils/sync";
 import { isSafeUrl } from "../../utils/validator";
 import { pipeline } from "../../pipeline";
 import { ListBloomModel } from "../../models/listBloom";
 import { BloomFilter } from "../../utils/bloom";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { AdGuardProfileEngine } from "../../lib/adguard";
+import { systemListsManager } from "../../lib/filtering/systemListsManager";
 
 /**
  * Handle filter lists requests to /api/profiles/:id/lists
@@ -47,9 +56,22 @@ export async function handleProfileListsRequest(
       const list = await listModel.getListById(listId, profileId);
       if (!list) return new Response("List Not Found", { status: 404 });
 
-      const buffer = await new ListBloomModel(env.DB).getListBloom(listId);
-      const adguardRulesModel = env.DB ? new AdguardRulesModel(env.DB) : null;
-      const adguardPayload = adguardRulesModel ? await adguardRulesModel.getListRules(listId) : null;
+      let buffer: ArrayBuffer | null = null;
+      let adguardPayload: any = null;
+
+      await systemListsManager.ensureLoaded(env.DB);
+      if (systemListsManager.isSystemUrl(list.url)) {
+        const sysId = systemListsManager.getIdByUrl(list.url);
+        if (sysId) {
+          const sysModel = new SystemListModel(env.DB);
+          buffer = await sysModel.getSystemListBloom(sysId);
+          adguardPayload = await sysModel.getSystemListAdguard(sysId);
+        }
+      } else {
+        buffer = await new ListBloomModel(env.DB).getListBloom(listId);
+        const adguardRulesModel = env.DB ? new AdguardRulesModel(env.DB) : null;
+        adguardPayload = adguardRulesModel ? await adguardRulesModel.getListRules(listId) : null;
+      }
 
       if (!buffer && !adguardPayload) {
         return new Response(JSON.stringify({ domain, blocked: false, synced: false }), {
@@ -184,7 +206,10 @@ export async function handleProfileListsRequest(
       // 触发所有列表的同步 (支持 ?force=true 强制重新下载)
       const url = new URL(request.url);
       const force = url.searchParams.get('force') === 'true';
-      ctx.waitUntil(syncAllListsForProfile(profileId, env, ctx, force));
+      ctx.waitUntil(
+        syncAllSystemLists(env, force)
+          .then(() => syncAllListsForProfile(profileId, env, ctx, force))
+      );
       return new Response(JSON.stringify({ message: "Sync started" }), { status: 202 });
     }
 
@@ -199,7 +224,15 @@ export async function handleProfileListsRequest(
 
       const url = new URL(request.url);
       const force = url.searchParams.get('force') === 'true';
-      ctx.waitUntil(syncSingleListForProfile(profileId, listId, env, ctx, force));
+      await systemListsManager.ensureLoaded(env.DB);
+      if (systemListsManager.isSystemUrl(list.url)) {
+        const sysId = systemListsManager.getIdByUrl(list.url);
+        if (sysId) {
+          ctx.waitUntil(syncSingleSystemList(sysId, env, force));
+        }
+      } else {
+        ctx.waitUntil(syncSingleListForProfile(profileId, listId, env, ctx, force));
+      }
       return new Response(JSON.stringify({ message: "List sync started", id: listId }), {
         status: 202,
         headers: { 'Content-Type': 'application/json' }
@@ -207,6 +240,10 @@ export async function handleProfileListsRequest(
     }
 
     const body = await request.json() as any;
+    const MAX_CUSTOM_LISTS = Number(env?.MAX_CUSTOM_LISTS_PER_PROFILE) || 5;
+    await systemListsManager.ensureLoaded(env.DB);
+    const existingLists = await listModel.getLists(profileId);
+    const currentCustomCount = existingLists.filter(l => !systemListsManager.isSystemUrl(l.url)).length;
 
     // Support bulk list addition when body is an array or contains lists/urls/filters/blocklists array
     const candidateList = Array.isArray(body)
@@ -252,9 +289,13 @@ export async function handleProfileListsRequest(
         });
       }
 
-      const existingLists = await listModel.getLists(profileId);
       const existingUrls = new Set(existingLists.map(l => l.url.trim().toLowerCase()));
       const itemsToInsert = validItems.filter(item => !existingUrls.has(item.url.toLowerCase()));
+
+      const nonSystemToInsert = itemsToInsert.filter(i => !systemListsManager.isSystemUrl(i.url));
+      if (currentCustomCount + nonSystemToInsert.length > MAX_CUSTOM_LISTS) {
+        return new Response(`Exceeded maximum limit of ${MAX_CUSTOM_LISTS} custom filter lists per profile.`, { status: 400 });
+      }
 
       let insertedCount = 0;
       if (itemsToInsert.length > 0) {
@@ -276,12 +317,23 @@ export async function handleProfileListsRequest(
     if (!isSafeUrl(listUrl)) {
       return new Response("Invalid list URL. Private networks and localhosts are not allowed.", { status: 400 });
     }
+
+    if (!systemListsManager.isSystemUrl(listUrl) && currentCustomCount >= MAX_CUSTOM_LISTS) {
+      return new Response(`Exceeded maximum limit of ${MAX_CUSTOM_LISTS} custom filter lists per profile.`, { status: 400 });
+    }
     
     const insertResult = await listModel.addList(profileId, listUrl);
     const listId = insertResult.id;
     // 仅针对新添加的单条列表执行同步与规则重构合并，避免拉取和重刷所有列表
     if (listId) {
-      ctx.waitUntil(syncSingleListForProfile(profileId, listId, env, ctx));
+      if (systemListsManager.isSystemUrl(listUrl)) {
+        const sysId = systemListsManager.getIdByUrl(listUrl);
+        if (sysId) {
+          ctx.waitUntil(syncSingleSystemList(sysId, env));
+        }
+      } else {
+        ctx.waitUntil(syncSingleListForProfile(profileId, listId, env, ctx));
+      }
     }
     return new Response(JSON.stringify({ success: true, id: listId }), {
       status: 201,

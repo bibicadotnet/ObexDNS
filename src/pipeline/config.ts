@@ -1,6 +1,7 @@
 import { Context, ProfileSettings, Rule } from "../types";
 import { ProfileModel } from "../models/profile";
 import { RuleModel } from "../models/rule";
+import { ListModel } from "../models/list";
 import { ProfileBloomModel } from "../models/profileBloom";
 import { AdguardRulesModel } from "../models/adguardRules";
 import { BloomFilter } from "../utils/bloom";
@@ -8,6 +9,7 @@ import { cacheUtils } from "../utils/cache";
 import { configCache, bloomMemoryMap, adguardMemoryMap, PROFILE_CACHE_KEY_PREFIX } from "./cache";
 import { DEFAULT_FAIL_OPEN_UPSTREAM } from "../constants/presets";
 import { AdGuardProfileEngine, AdGuardPayload } from "../lib/adguard";
+import { systemListsManager } from "../lib/filtering/systemListsManager";
 
 export const pipelineConfig = {
   async load(context: Context, track: (name: string) => void): Promise<{
@@ -15,8 +17,16 @@ export const pipelineConfig = {
     rules: Rule[];
     bloom?: BloomFilter;
     adguard?: AdGuardProfileEngine;
+    enabledSystemListIds?: number[];
   } | null> {
     const { profileId, env, ctx } = context;
+
+    // Ensure system shared lists are active in memory
+    if (env.DB) {
+      systemListsManager.ensureLoaded(env.DB).catch((e) => {
+        console.warn("[Config] Non-critical systemListsManager load error:", e);
+      });
+    }
 
     // Fast-path: Default profile for unauthenticated access points or emergency fail-open
     if (profileId === 'default') {
@@ -27,7 +37,7 @@ export const pipelineConfig = {
         log_retention_days: 0,
         ecs: { enabled: true, use_client_ip: true }
       };
-      return { settings: defaultSettings, rules: [], bloom: undefined, adguard: undefined };
+      return { settings: defaultSettings, rules: [], bloom: undefined, adguard: undefined, enabledSystemListIds: [] };
     }
 
     // 1. 检查 L1 Memory (Isolate Global)
@@ -46,7 +56,7 @@ export const pipelineConfig = {
       // 若该配置标记包含 Bloom，但内存中 Bloom 已过期缺失，不盲目短路返回，继续向下恢复 Bloom
       if (!cachedConfig.hasBloom || validBloom) {
         const validAdguard = inMemAdguard ? inMemAdguard.engine : (cachedConfig.adguard ? new AdGuardProfileEngine(cachedConfig.adguard) : undefined);
-        return { ...cachedConfig, bloom: validBloom, adguard: validAdguard };
+        return { ...cachedConfig, bloom: validBloom, adguard: validAdguard, enabledSystemListIds: cachedConfig.enabledSystemListIds || [] };
       }
     }
 
@@ -110,7 +120,7 @@ export const pipelineConfig = {
       }
       
       configCache.set(profileId, { ...apiCached, timestamp: Date.now() });
-      return { ...apiCached, bloom, adguard: adguardEngine };
+      return { ...apiCached, bloom, adguard: adguardEngine, enabledSystemListIds: apiCached.enabledSystemListIds || [] };
     }
 
     // 3. 回退到 D1 (带 Fail-Open 降级保护)
@@ -119,9 +129,10 @@ export const pipelineConfig = {
       const ruleModel = new RuleModel(env.DB);
       const bloomModel = new ProfileBloomModel(env.DB);
       const adguardModel = new AdguardRulesModel(env.DB);
+      const listModel = new ListModel(env.DB);
 
-      // 并发从 D1 读取配置、规则、布隆过滤器及 AdGuard 扩展规则
-      const [profile, rules, buffer, adguardPayload] = await Promise.all([
+      // 并发从 D1 读取配置、规则、布隆过滤器、AdGuard 扩展规则及订阅列表列表
+      const [profile, rules, buffer, adguardPayload, profileLists] = await Promise.all([
         profileModel.getById(profileId),
         ruleModel.getRules(profileId),
         bloomModel.getProfileBloom(profileId).catch((e) => {
@@ -131,7 +142,8 @@ export const pipelineConfig = {
         adguardModel.getProfileRules(profileId).catch((e) => {
           console.error("[Config] D1 AdGuard rules loading failed:", e);
           return null;
-        })
+        }),
+        listModel.getLists(profileId).catch(() => [])
       ]);
 
       if (!profile) {
@@ -172,7 +184,15 @@ export const pipelineConfig = {
         adguardMemoryMap.set(profileId, { engine: adguardEngine, ts: Date.now() });
       }
 
-      const config = { settings, rules, adguard: adguardPayload, hasBloom: Boolean(buffer) };
+      const enabledSystemListIds: number[] = [];
+      for (const l of profileLists) {
+        if (l.enabled && systemListsManager.isSystemUrl(l.url)) {
+          const sysId = systemListsManager.getIdByUrl(l.url);
+          if (sysId) enabledSystemListIds.push(sysId);
+        }
+      }
+
+      const config = { settings, rules, adguard: adguardPayload, hasBloom: Boolean(buffer), enabledSystemListIds };
       if (bloom) bloomMemoryMap.set(profileId, { bloom, ts: Date.now() });
       
       configCache.set(profileId, { ...config, timestamp: Date.now() });
@@ -191,14 +211,14 @@ export const pipelineConfig = {
       }
       
       track('load_config_full_sync');
-      return { ...config, bloom, adguard: adguardEngine };
+      return { ...config, bloom, adguard: adguardEngine, enabledSystemListIds };
     } catch (e: any) {
       console.warn(`[Config] D1 profile fetch failed for ${profileId}:`, e?.message || e);
       
       // 容灾模式 1: Stale-While-Error (使用过期的 L1 缓存)
       if (cachedConfig) {
         console.warn(`[Config] Serving stale config from memory for profile ${profileId}`);
-        return { ...cachedConfig, bloom: inMem?.bloom, adguard: inMemAdguard?.engine };
+        return { ...cachedConfig, bloom: inMem?.bloom, adguard: inMemAdguard?.engine, enabledSystemListIds: cachedConfig.enabledSystemListIds || [] };
       }
 
       // 容灾模式 2: Emergency Safe Default Fallback
@@ -210,7 +230,7 @@ export const pipelineConfig = {
         log_retention_days: 0,
         ecs: { enabled: true, use_client_ip: true }
       };
-      return { settings: fallbackSettings, rules: [], bloom: undefined, adguard: undefined };
+      return { settings: fallbackSettings, rules: [], bloom: undefined, adguard: undefined, enabledSystemListIds: [] };
     }
   }
 };

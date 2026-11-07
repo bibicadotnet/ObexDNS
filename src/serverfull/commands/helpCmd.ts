@@ -18,6 +18,7 @@ export function printHelp(): void {
     usage: [
       'dns-worker [options]',
       'dns-worker status [options]',
+      'dns-worker sync [--force]',
       'dns-worker ech [options]',
       'dns-worker config [action]',
       'dns-worker reset [options]',
@@ -26,6 +27,7 @@ export function printHelp(): void {
     ],
     commands: [
       { label: 'status', desc: 'Inspect service runtime status and database health' },
+      { label: 'sync [--force]', desc: 'Synchronize all filter lists across all profiles (bypasses 304 with --force)' },
       { label: 'ech', desc: 'Display active ECH configuration, outer SNI, and DNS RR records' },
       { label: 'config [action]', desc: 'Manage configuration (show, path, init, template)' },
       { label: 'reset', desc: 'Restore default .env configuration and wipe database (requires confirmation)' },

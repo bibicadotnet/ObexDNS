@@ -9,6 +9,7 @@ export interface ConfigCacheEntry {
   timestamp: number;
   adguard?: AdGuardPayload | null;
   hasBloom?: boolean;
+  enabledSystemListIds?: number[];
 }
 
 /**

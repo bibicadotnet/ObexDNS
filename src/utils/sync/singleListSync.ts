@@ -3,8 +3,11 @@ import { BloomFilter } from "../bloom";
 import { fetchListContent } from "../listFetcher";
 import { ListModel } from "../../models/list";
 import { ListBloomModel } from "../../models/listBloom";
+import { SystemListModel } from "../../models/systemList";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { AdGuardRuleKind, AdGuardPayload, ParsedAdGuardRule } from "../../lib/adguard";
+import { systemListsManager } from "../../lib/filtering/systemListsManager";
+import { syncSingleSystemList } from "./systemListSync";
 
 const DEFAULT_MAX_LIST_BYTES = 25 * 1024 * 1024; // 25 MB default limit (streaming line parsing has low memory footprint)
 
@@ -17,10 +20,11 @@ export interface SingleListSyncResult {
  * 同步单个订阅列表的通用业务逻辑。
  * 
  * 性能优化：
- * 1. 支持 HTTP 304 Not Modified 协商缓存，未变更列表 0 CPU/存储消耗。
- * 2. 使用流式下载与行解析，直接在下载过程中动态将域名填入布隆过滤器。
- * 3. 采用 addPipePipe 零堆内存分配 FNV 前缀哈希，消除数十万次字符串拼接。
- * 4. 协作式调度每批出让 CPU 喘息，规避 CPU 超载。
+ * 1. 系统共享列表 (System Shared Lists) 零下载零构建，直接复用全局系统 Bloom。
+ * 2. 支持 HTTP 304 Not Modified 协商缓存，未变更列表 0 CPU/存储消耗。
+ * 3. 使用流式下载与行解析，直接在下载过程中动态将域名填入布隆过滤器。
+ * 4. 采用 addPipePipe 零堆内存分配 FNV 前缀哈希，消除数十万次字符串拼接。
+ * 5. 协作式调度每批出让 CPU 喘息，规避 CPU 超载。
  * 
  * @returns 最终的同步结果包含错误信息及是否命中未修改缓存
  */
@@ -33,6 +37,29 @@ export async function syncSingleList(
   now: number,
   force: boolean = false
 ): Promise<SingleListSyncResult> {
+  // ── 系统共享列表快速通道 (System Shared List Fast Path) ───────────────────
+  if (env?.DB) {
+    await systemListsManager.ensureLoaded(env.DB);
+    if (systemListsManager.isSystemUrl(list.url)) {
+      const sysId = systemListsManager.getIdByUrl(list.url);
+      if (sysId) {
+        if (force) {
+          await syncSingleSystemList(sysId, env, true);
+        }
+        const sysModel = new SystemListModel(env.DB);
+        const sysList = await sysModel.getSystemListById(sysId);
+        await listModel.updateListSyncStatus(
+          list.id,
+          sysList?.last_synced_at || now,
+          null,
+          sysList?.sync_error || null,
+          sysList?.etag || null,
+          sysList?.last_modified || null
+        );
+        return { syncError: sysList?.sync_error || null, notModified: true };
+      }
+    }
+  }
   const timeoutMs = Number(env.SYNC_TIMEOUT_MS) || 90000;
   const maxListDomains = Number(env.MAX_LIST_DOMAINS) || 500000;
   const maxDomains = Number(env.MAX_SYNC_DOMAINS) || 1000000;

@@ -20,6 +20,9 @@ import { ExecutionContext } from '../types';
 import { isUsableJwtSecret, isStrongJwtSecret } from '../lib/jwt';
 import { formatBanner, formatDiagnostic, formatKeyValueSection } from './format';
 import { checkNodeVersion, parseCli } from './cli';
+import { systemListsManager } from '../lib/filtering/systemListsManager';
+import { SystemListModel } from '../models/systemList';
+import { syncAllSystemLists } from '../utils/sync';
 
 export * from './cli';
 
@@ -147,6 +150,17 @@ async function bootstrap(): Promise<void> {
     localSqliteDb = db;
     env.DB = db;
   }
+
+  // Pre-load System Shared Lists into Memory
+  systemListsManager.ensureLoaded(env.DB).then(async () => {
+    const sysModel = new SystemListModel(env.DB);
+    const sysLists = await sysModel.getSystemLists();
+    const needsSync = sysLists.some(l => !l.last_synced_at);
+    if (needsSync) {
+      console.log('[Startup] Unsynced System Lists detected. Initializing initial sync...');
+      syncAllSystemLists(env).catch(err => console.error('[Startup] Initial System List sync error:', err));
+    }
+  }).catch((err) => console.error('[Startup] Failed to load System Lists:', err));
 
   // 5. Initialize servers
   const udpServer = !config.disableUdp ? new UdpDnsServer({

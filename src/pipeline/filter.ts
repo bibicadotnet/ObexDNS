@@ -1,13 +1,15 @@
 /**
  * @file filter.ts
  * @description Multi-tier DNS filtering pipeline combining local custom rules,
- * AdGuard exceptions, DNS rewrites, dual-state Bloom filter, and complex regex patterns.
+ * AdGuard exceptions, DNS rewrites, two-tier Bloom filter (System Shared + Profile Custom),
+ * and complex regex patterns.
  */
 
 import { Context, DNSQuery, ResolutionResult, ProfileSettings, Rule } from "../types";
 import { DNSFilter } from "../lib/filtering";
 import { BloomFilter } from "../utils/bloom";
 import { AdGuardProfileEngine } from "../lib/adguard";
+import { systemListsManager } from "../lib/filtering/systemListsManager";
 import { pipelineResolver } from "./resolver";
 
 export const pipelineFilter = {
@@ -19,7 +21,8 @@ export const pipelineFilter = {
     rules: Rule[],
     bloom: BloomFilter | undefined,
     track: (name: string) => void,
-    adguard?: AdGuardProfileEngine
+    adguard?: AdGuardProfileEngine,
+    enabledSystemListIds?: number[]
   ): Promise<ResolutionResult | null> {
     const domainLower = query.name.toLowerCase();
 
@@ -72,48 +75,97 @@ export const pipelineFilter = {
     }
     track('local_rules');
 
-    // ── 阶段 2：外部列表白名单例外 (@@) ────────────────────────────────────
+    // ── 阶段 2：白名单例外 (@@) (Profile 自定义 + System 共享) ───────────────
+    // 2.1 Profile 自定义例外
     if (adguard?.testException(domainLower)) {
       track('adguard_whitelist');
       return pipelineResolver.resolve(request, query, context, settings, "PASS", "External List: Exception");
     }
+    // 2.2 System 共享例外
+    if (enabledSystemListIds && enabledSystemListIds.length > 0) {
+      for (const sysId of enabledSystemListIds) {
+        const sysAdguard = systemListsManager.getAdguard(sysId);
+        if (sysAdguard?.testException(domainLower)) {
+          track('adguard_whitelist');
+          return pipelineResolver.resolve(request, query, context, settings, "PASS", "System List: Exception");
+        }
+      }
+    }
 
-    // ── 阶段 3：外部列表 DNS 重写 ($dnsrewrite) ────────────────────────────
-    const rewrite = adguard?.matchRewrite(domainLower);
+    // ── 阶段 3：DNS 重写 ($dnsrewrite) (Profile 自定义 + System 共享) ─────────
+    let rewrite = adguard?.matchRewrite(domainLower);
+    let rewriteLabel = "External List: DNS Rewrite";
+    if (!rewrite && enabledSystemListIds && enabledSystemListIds.length > 0) {
+      for (const sysId of enabledSystemListIds) {
+        const sysAdguard = systemListsManager.getAdguard(sysId);
+        const r = sysAdguard?.matchRewrite(domainLower);
+        if (r) {
+          rewrite = r;
+          rewriteLabel = "System List: DNS Rewrite";
+          break;
+        }
+      }
+    }
     if (rewrite) {
       track('adguard_rewrite');
       if (rewrite.type === 'A' || rewrite.type === 'AAAA') {
         if (query.type === rewrite.type || query.type === 'HTTPS' || query.type === 'SVCB') {
-          return pipelineResolver.block(request, query, context, settings, "REDIRECT", "External List: DNS Rewrite", rewrite.value, rewrite.type);
+          return pipelineResolver.block(request, query, context, settings, "REDIRECT", rewriteLabel, rewrite.value, rewrite.type);
         }
-        // 反向类型无记录时返回 NODATA / 空阻断
-        return pipelineResolver.block(request, query, context, settings, "BLOCK", "External List: DNS Rewrite (NoData)");
+        return pipelineResolver.block(request, query, context, settings, "BLOCK", `${rewriteLabel} (NoData)`);
       }
       if (rewrite.type === 'CNAME') {
-        return pipelineResolver.block(request, query, context, settings, "REDIRECT", "External List: DNS Rewrite", rewrite.value, "CNAME");
+        return pipelineResolver.block(request, query, context, settings, "REDIRECT", rewriteLabel, rewrite.value, "CNAME");
       }
       if (rewrite.type === 'NXDOMAIN') {
-        return pipelineResolver.block(request, query, context, settings, "BLOCK", "External List: DNS Rewrite (NXDOMAIN)");
+        return pipelineResolver.block(request, query, context, settings, "BLOCK", `${rewriteLabel} (NXDOMAIN)`);
       }
       if (rewrite.type === 'REFUSED') {
-        return pipelineResolver.block(request, query, context, settings, "BLOCK", "External List: DNS Rewrite (REFUSED)");
+        return pipelineResolver.block(request, query, context, settings, "BLOCK", `${rewriteLabel} (REFUSED)`);
       }
     }
 
-    // ── 阶段 4：Bloom 过滤器双态前缀防线 (海量静态黑名单 ~90%) ────────────────
+    // ── 阶段 4：Bloom 过滤器双态前缀防线 (两层体系：Tier 1 System + Tier 2 Custom) ──
+    // 4.1 Tầng 1: System Shared Bloom (Kiểm tra trước - Phủ 95%+ tên miền quảng cáo/theo dõi)
+    if (enabledSystemListIds && enabledSystemListIds.length > 0) {
+      for (const sysId of enabledSystemListIds) {
+        const sysBloom = systemListsManager.getBloom(sysId);
+        if (sysBloom) {
+          let currentDomain = domainLower;
+          let isSelf = true;
+          while (currentDomain) {
+            if (isSelf) {
+              if (sysBloom.test(currentDomain) || sysBloom.testPipePipe(currentDomain)) {
+                track('bloom_check');
+                return pipelineResolver.block(request, query, context, settings, "BLOCK", `System List: ${currentDomain}`);
+              }
+              isSelf = false;
+            } else {
+              if (sysBloom.testPipePipe(currentDomain)) {
+                track('bloom_check');
+                return pipelineResolver.block(request, query, context, settings, "BLOCK", `System List: ||${currentDomain}`);
+              }
+            }
+            const firstDot = currentDomain.indexOf('.');
+            if (firstDot === -1) break;
+            currentDomain = currentDomain.substring(firstDot + 1);
+          }
+        }
+      }
+    }
+
+    // 4.2 Tầng 2: Profile Custom Bloom (Chỉ quét danh sách riêng người dùng tự thêm)
     if (bloom) {
       let currentDomain = domainLower;
       let isSelf = true;
       while (currentDomain) {
         if (isSelf) {
-          // 精确自身测试：匹配单域名黑名单 或 带有 || 的自身
           if (bloom.test(currentDomain) || bloom.testPipePipe(currentDomain)) {
             track('bloom_check');
             return pipelineResolver.block(request, query, context, settings, "BLOCK", `External List: ${currentDomain}`);
           }
           isSelf = false;
         } else {
-          // 父级子域测试：仅当父域名是以 || 前缀注册时才拦截子域！
           if (bloom.testPipePipe(currentDomain)) {
             track('bloom_check');
             return pipelineResolver.block(request, query, context, settings, "BLOCK", `External List: ||${currentDomain}`);
@@ -130,6 +182,15 @@ export const pipelineFilter = {
     if (adguard?.matchPattern(domainLower)) {
       track('adguard_pattern');
       return pipelineResolver.block(request, query, context, settings, "BLOCK", "External List: Pattern");
+    }
+    if (enabledSystemListIds && enabledSystemListIds.length > 0) {
+      for (const sysId of enabledSystemListIds) {
+        const sysAdguard = systemListsManager.getAdguard(sysId);
+        if (sysAdguard?.matchPattern(domainLower)) {
+          track('adguard_pattern');
+          return pipelineResolver.block(request, query, context, settings, "BLOCK", "System List: Pattern");
+        }
+      }
     }
 
     return null;

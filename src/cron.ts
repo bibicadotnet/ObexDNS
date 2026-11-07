@@ -3,7 +3,7 @@ import { Env, ExecutionContext } from './types';
 import { LogModel } from './models/log';
 import { UserModel } from './models/user';
 import { ProfileModel } from './models/profile';
-import { syncNextListForProfile } from './utils/sync';
+import { syncNextListForProfile, syncAllSystemLists } from './utils/sync';
 import { syncCloudflareIpRanges } from './utils/ech';
 import { cacheUtils } from './utils/cache';
 
@@ -122,6 +122,23 @@ export async function handleScheduled(
       await syncCloudflareIpRanges(env.DB);
     } catch (e) {
       console.error("[Cron] Cloudflare IP range sync failed:", e);
+    }
+
+    // ── SYSTEM SHARED LISTS SYNC (Every 6–12 Hours with ETag/304) ────────────
+    try {
+      const lastSystemSyncKey = "cron:last_system_lists_sync";
+      const SYSTEM_SYNC_INTERVAL_SEC = Number(env.SYNC_SYSTEM_INTERVAL_SEC) || 21600; // 6 hours default
+      let shouldSyncSystem = true;
+      const lastSysSync = await cacheUtils.get<number>(cache, lastSystemSyncKey);
+      if (lastSysSync && (now - lastSysSync < SYSTEM_SYNC_INTERVAL_SEC)) {
+        shouldSyncSystem = false;
+      }
+      if (shouldSyncSystem) {
+        await cacheUtils.set(cache, lastSystemSyncKey, now, SYSTEM_SYNC_INTERVAL_SEC);
+        await syncAllSystemLists(env);
+      }
+    } catch (e: unknown) {
+      console.error("[Cron] System shared lists sync failed:", e);
     }
 
     // ── SYNC ──────────────────────────────────────────────────────────────────

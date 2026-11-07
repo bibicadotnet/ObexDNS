@@ -9,3 +9,7 @@ export {
   isProfileSyncing,
   _resetInFlightSyncsForTesting,
 } from "./orchestrator";
+export {
+  syncSingleSystemList,
+  syncAllSystemLists,
+} from "./systemListSync";
