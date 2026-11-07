@@ -1,0 +1,344 @@
+import { DNSQuery } from "../../types";
+import { DNS_TYPES } from "./constants";
+
+/**
+ * Decodes a DNS domain name from the raw packet buffer (with support for compression pointers 0xC0).
+ *
+ * @param buffer - The raw DNS packet buffer.
+ * @param offset - The byte offset where the name starts.
+ * @returns An object containing the decoded domain name and the number of bytes read.
+ */
+export function decodeName(
+  buffer: Uint8Array,
+  offset: number
+): { name: string; read: number } {
+  let name = "";
+  let curr = offset;
+  let jumped = false;
+  let consumed = 0;
+  let iterations = 0;
+  let terminated = false;
+
+  while (iterations < 128) {
+    if (curr >= buffer.length) break; // Boundary check
+    const len = buffer[curr];
+
+    if (len === 0) {
+      if (!jumped) consumed++;
+      terminated = true;
+      break;
+    }
+
+    if ((len & 0xc0) === 0xc0) {
+      if (curr + 1 >= buffer.length) break; // Pointer bytes check
+      const pointer = ((len & 0x3f) << 8) | buffer[curr + 1];
+      if (!jumped) {
+        consumed += 2;
+        jumped = true;
+      }
+      curr = pointer;
+      iterations++;
+      continue;
+    }
+
+    // RFC 1035: Label length top 2 bits must be 00 for uncompressed labels (max 63 octets)
+    if ((len & 0xc0) !== 0) {
+      break;
+    }
+
+    if (name.length > 0) name += ".";
+    // Check if label content overflows the buffer
+    if (curr + 1 + len > buffer.length) break;
+
+    for (let i = 0; i < len; i++) {
+      name += String.fromCharCode(buffer[curr + 1 + i]);
+    }
+    if (!jumped) consumed += len + 1;
+    curr += len + 1;
+    iterations++;
+  }
+
+  if (!terminated) {
+    return { name: "", read: 0 };
+  }
+
+  return { name, read: consumed };
+}
+
+/**
+ * Maps a numeric DNS query type code to its string representation.
+ *
+ * @param type - The numeric DNS query type code.
+ * @returns The string representation of the record type (e.g. "A", "AAAA").
+ */
+export function getQTypeName(type: number): string {
+  return DNS_TYPES[type] || `TYPE${type}`;
+}
+
+/**
+ * Parses an incoming HTTP Request (GET or POST) containing a DNS query packet.
+ *
+/**
+ * Parses raw DNS query bytes into a structured DNSQuery object.
+ *
+ * @param raw - The raw DNS packet buffer.
+ * @returns Parsed DNSQuery or null if invalid/truncated.
+ */
+export function parseDNSQueryFromRaw(raw: Uint8Array): DNSQuery | null {
+  try {
+    // Minimum header length: Header(12) + QTYPE(2) + QCLASS(2) = 16
+    if (raw.length < 16) return null;
+
+    const { name, read } = decodeName(raw, 12);
+    if (read === 0) return null;
+    const qtypeOffset = 12 + read;
+
+    // Boundary check for query type and class
+    if (qtypeOffset + 4 > raw.length) return null;
+
+    const qtypeCode = (raw[qtypeOffset] << 8) | raw[qtypeOffset + 1];
+
+    return {
+      name,
+      type: getQTypeName(qtypeCode),
+      raw
+    };
+  } catch (e) {
+    console.error("DNS Parse Error:", e);
+    return null;
+  }
+}
+
+/**
+ * Parses an incoming HTTP Request (GET or POST) containing a DNS query packet.
+ *
+ * @param request - The incoming Cloudflare Worker Request object.
+ * @returns A promise resolving to the parsed DNSQuery or null if invalid.
+ */
+export async function parseDNSQuery(
+  request: Request
+): Promise<DNSQuery | null> {
+  try {
+    let raw: Uint8Array;
+
+    if (request.method === "GET") {
+      const url = new URL(request.url);
+      const dnsParam = url.searchParams.get("dns");
+      if (!dnsParam) return null;
+
+      let base64 = dnsParam.replace(/-/g, "+").replace(/_/g, "/");
+      while (base64.length % 4) base64 += "=";
+
+      const binary = atob(base64);
+      raw = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        raw[i] = binary.charCodeAt(i);
+      }
+    } else if (request.method === "POST") {
+      const buffer = await request.arrayBuffer();
+      raw = new Uint8Array(buffer);
+    } else {
+      return null;
+    }
+
+    return parseDNSQueryFromRaw(raw);
+  } catch (e) {
+    console.error("DNS Parse Error:", e);
+    return null;
+  }
+}
+
+/**
+ * Parses raw DNS answer packets into structured answer record details.
+ *
+ * @param raw - The raw DNS response packet buffer.
+ * @returns An array of parsed DNS answer objects containing name, type, data, and ttl.
+ */
+export function parseDNSAnswer(
+  raw: Uint8Array
+): { name: string; type: string; data: string; ttl: number }[] {
+  if (raw.length < 12) return [];
+  const ansCount = (raw[6] << 8) | raw[7];
+  if (ansCount === 0) return [];
+
+  const results: { name: string; type: string; data: string; ttl: number }[] = [];
+  let offset = 12;
+
+  // Skip question records safely
+  const qCount = (raw[4] << 8) | raw[5];
+  for (let i = 0; i < qCount; i++) {
+    if (offset >= raw.length) return [];
+    const { read } = decodeName(raw, offset);
+    if (read === 0) return [];
+    offset += read + 4; // QNAME + QTYPE(2) + QCLASS(2)
+    if (offset > raw.length) return [];
+  }
+
+  for (let i = 0; i < ansCount; i++) {
+    if (offset >= raw.length) break;
+
+    const { name, read: nameRead } = decodeName(raw, offset);
+    if (nameRead === 0) break;
+    offset += nameRead;
+
+    // Boundary check 1: Ensure enough bytes for fixed RR header
+    // TYPE(2) + CLASS(2) + TTL(4) + RDLENGTH(2) = 10 bytes
+    if (offset + 10 > raw.length) {
+      break;
+    }
+
+    const typeCode = (raw[offset] << 8) | raw[offset + 1];
+    const ttl =
+      (raw[offset + 4] << 24) |
+      (raw[offset + 5] << 16) |
+      (raw[offset + 6] << 8) |
+      raw[offset + 7];
+    const rdLength = (raw[offset + 8] << 8) | raw[offset + 9];
+    offset += 10;
+
+    // Boundary check 2: Ensure the buffer contains the full RDATA bytes declared by rdLength.
+    // A truncated or malformed packet can declare an rdLength whose bytes are not in the buffer;
+    // indexing past the buffer yields undefined, which would render as
+    // "undefined.undefined.undefined.undefined" for A records. Drop the record and stop parsing
+    // rather than emitting invented data.
+    if (offset + rdLength > raw.length) {
+      break;
+    }
+
+    const type = getQTypeName(typeCode);
+    let data = "";
+
+    if (type === "A" && rdLength === 4) {
+      data = `${raw[offset]}.${raw[offset + 1]}.${raw[offset + 2]}.${raw[offset + 3]}`;
+    } else if (type === "AAAA" && rdLength === 16) {
+      const parts: string[] = [];
+      for (let j = 0; j < 16; j += 2) {
+        parts.push(
+          ((raw[offset + j] << 8) | raw[offset + j + 1]).toString(16)
+        );
+      }
+      // Locate the longest contiguous sequence of "0"s for IPv6 compression
+      let bestStart = -1,
+        bestLen = 0;
+      let currentStart = -1,
+        currentLen = 0;
+      for (let j = 0; j < parts.length; j++) {
+        if (parts[j] === "0") {
+          if (currentStart === -1) currentStart = j;
+          currentLen++;
+        } else {
+          if (currentLen > bestLen) {
+            bestStart = currentStart;
+            bestLen = currentLen;
+          }
+          currentStart = -1;
+          currentLen = 0;
+        }
+      }
+      if (currentLen > bestLen) {
+        bestStart = currentStart;
+        bestLen = currentLen;
+      }
+
+      if (bestLen > 1) {
+        // Replace the longest "0" sequence with "::"
+        const replacement =
+          bestStart === 0 || bestStart + bestLen === parts.length ? ":" : "";
+        parts.splice(bestStart, bestLen, replacement);
+      }
+      data = parts.join(":").replace(":::", "::");
+    } else if (type === "CNAME" || type === "NS" || type === "PTR") {
+      data = decodeName(raw, offset).name;
+    } else if (type === "TXT") {
+      // Process TXT records (which can contain multiple substrings)
+      let txtOffset = offset;
+      const txtParts: string[] = [];
+      const txtEnd = offset + rdLength;
+      while (txtOffset < txtEnd) {
+        const len = raw[txtOffset];
+        if (txtOffset + 1 + len > txtEnd) break;
+        txtParts.push(
+          String.fromCharCode(
+            ...raw.slice(txtOffset + 1, txtOffset + 1 + len)
+          )
+        );
+        txtOffset += len + 1;
+      }
+      data = txtParts.join("");
+    } else if (type === "HTTPS" || type === "SVCB") {
+      // HTTPS/SVCB format: priority (2 bytes) + target name (variable) + parameters (variable)
+      if (rdLength >= 2) {
+        const priority = (raw[offset] << 8) | raw[offset + 1];
+        const { name: target, read: targetRead } = decodeName(raw, offset + 2);
+        let curr = offset + 2 + targetRead;
+        const end = offset + rdLength;
+        const params: string[] = [];
+
+        while (curr + 4 <= end) {
+          const key = (raw[curr] << 8) | raw[curr + 1];
+          const valLen = (raw[curr + 2] << 8) | raw[curr + 3];
+          curr += 4;
+
+          if (curr + valLen > end) break;
+
+          if (key === 1) { // alpn
+            let pCurr = curr;
+            const pEnd = curr + valLen;
+            const alpns: string[] = [];
+            while (pCurr < pEnd) {
+              const aLen = raw[pCurr];
+              if (pCurr + 1 + aLen > pEnd) break;
+              let aStr = "";
+              for (let k = 0; k < aLen; k++) {
+                aStr += String.fromCharCode(raw[pCurr + 1 + k]);
+              }
+              alpns.push(aStr);
+              pCurr += aLen + 1;
+            }
+            params.push(`alpn=${alpns.join(",")}`);
+          } else if (key === 3 && valLen === 2) { // port (RFC 9460)
+            const port = (raw[curr] << 8) | raw[curr + 1];
+            params.push(`port=${port}`);
+          } else if (key === 4) { // ipv4hint
+            const ips: string[] = [];
+            for (let k = 0; k + 4 <= valLen; k += 4) {
+              ips.push(`${raw[curr + k]}.${raw[curr + k + 1]}.${raw[curr + k + 2]}.${raw[curr + k + 3]}`);
+            }
+            params.push(`ipv4hint=${ips.join(",")}`);
+          } else if (key === 5) { // ech
+            let binStr = "";
+            for (let k = 0; k < valLen; k++) {
+              binStr += String.fromCharCode(raw[curr + k]);
+            }
+            params.push(`ech=${btoa(binStr)}`);
+          } else if (key === 6) { // ipv6hint
+            const ips: string[] = [];
+            for (let k = 0; k + 16 <= valLen; k += 16) {
+              const parts: string[] = [];
+              for (let j = 0; j < 16; j += 2) {
+                parts.push(((raw[curr + k + j] << 8) | raw[curr + k + j + 1]).toString(16));
+              }
+              ips.push(parts.join(":"));
+            }
+            params.push(`ipv6hint=${ips.join(",")}`);
+          } else {
+            params.push(`key${key}=[${valLen}B]`);
+          }
+
+          curr += valLen;
+        }
+
+        data = `${priority} ${target || "."}${params.length > 0 ? " " + params.join(" ") : ""}`.trim();
+      } else {
+        data = `[Raw: ${rdLength} bytes]`;
+      }
+    } else {
+      data = `[Raw: ${rdLength} bytes]`;
+    }
+
+    results.push({ name, type, data, ttl });
+    offset += rdLength;
+  }
+
+  return results;
+}

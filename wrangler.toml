@@ -1,0 +1,259 @@
+# Cloudflare Worker project name.
+name = "dns-worker"
+# TypeScript entry point for the Worker.
+main = "src/index.ts"
+# Runtime compatibility date used by Cloudflare Workers.
+compatibility_date = "2026-02-28"
+# Enable Node.js-compatible APIs required by the application.
+compatibility_flags = ["nodejs_compat"]
+# account_id = ""
+# Minify the deployed Worker bundle.
+minify = true
+# workers_dev = false
+# Disable preview URLs for deployed versions.
+preview_urls = false
+
+[build]
+# Build the project before deployment.
+command = "npm run build"
+
+[assets]
+# Local directory containing static files.
+directory = "./static"
+# Binding name used to access static assets from the Worker.
+binding = "ASSETS"
+# Force the Worker to run first for all incoming requests (API, DoH, SPA rewriting)
+run_worker_first = true
+
+# ==============================================================================
+# Cloudflare D1 Database Binding / Cloudflare D1 数据库绑定
+# ==============================================================================
+# D1 Database binding is ONLY required when DATABASE_SERVICE is set to "D1".
+# If you choose Turso (DATABASE_SERVICE = "Turso"), Cloudflare D1 is NOT needed.
+# You can safely comment out or delete the entire [[d1_databases]] block below.
+# 仅当 DATABASE_SERVICE = "D1" 时需要关联此配置项。
+# 若在 [vars] 中设置 DATABASE_SERVICE = "Turso"，Worker 运行时将通过 HTTP (Hrana 协议)
+# 直连远程 Turso 数据库，无需在 Cloudflare 上创建或绑定任何 D1 数据库，可直接将下方 [[d1_databases]] 整段注释或删除。
+[[d1_databases]]
+binding = "DB"
+database_name = "dns_worker_db"
+# Only need to provide your actual D1 `database_id` when using D1; no configuration is required if you choose Turso.
+# 仅在使用 D1 时需要填写您的真实 D1 database_id；选择 Turso 时无需配置。
+database_id = "13d8c24f-064a-40d6-8b10-fa70bb3f79ab"
+
+[triggers]
+# Run scheduled maintenance tasks every minute.
+crons = ["* * * * *"]
+
+[placement]
+# mode = "targeted"
+# region = "aws:ap-southeast-1"
+# Or
+# hostname = "dbs.com.sg"
+# Or
+# mode = "smart"
+# Or
+mode = "off"
+
+[observability]
+# Enable Worker observability features.
+enabled = true
+# Sample one percent of invocations.
+head_sampling_rate = 0.01
+
+[observability.logs]
+# Enable invocation log collection.
+enabled = true
+invocation_logs = true
+# Sample one in every one thousand log events.
+head_sampling_rate = 0.001
+
+[vars]
+# Runtime configuration values exposed to the Worker.
+
+# Database backend service engine selection ("D1" or "Turso").
+# Serverless (Cloudflare Workers) mode defaults to "D1". Set to "Turso" to switch database engine to Turso.
+# 数据库引擎选择（"D1" 或 "Turso"）。Serverless 模式下默认使用 "D1"；配置为 "Turso" 时自动切换使用远程 Turso 数据库。
+DATABASE_SERVICE = "D1"
+
+# Turso (libSQL over HTTP) Database Configuration / Turso 远程数据库配置
+# When DATABASE_SERVICE is set to "Turso", configure your Turso database URL and auth token.
+# 当 DATABASE_SERVICE 配置为 "Turso" 时有效。支持 libsql:// 及 https:// 协议 (例如 "libsql://your-db-org.turso.io")。
+# TURSO_DATABASE_URL = "libsql://your-database-name.turso.io"
+# Recommended: store TURSO_AUTH_TOKEN in Worker Secrets (`npx wrangler secret put TURSO_AUTH_TOKEN`) to avoid committing secrets to git.
+# 推荐使用 Worker Secrets 存储敏感鉴权令牌 (`npx wrangler secret put TURSO_AUTH_TOKEN`)，避免将密钥提交到代码仓库。
+# TURSO_AUTH_TOKEN = ""
+
+# Recommended: configure JWT_SECRET via Worker Secrets / Environment Variables
+# (e.g. `npx wrangler secret put JWT_SECRET` or via dashboard) to keep secrets out of git.
+# JWT_SECRET = ""
+# (Optional) Cloudflare Zone Cache Purge by Tag.
+# When configured, profile config and bloom cache updates will be purged globally across all Cloudflare data centers by Cache-Tag.
+# CF_ZONE_ID can be configured here or in environment variables; CF_PURGE_TOKEN should be stored in Worker Secrets (e.g. `npx wrangler secret put CF_PURGE_TOKEN`).
+# Requires an API token with "Zone -> Cache Purge -> Purge" permission.
+# CF_ZONE_ID = ""
+# CF_PURGE_TOKEN = ""
+# Default upstream for fail-open emergency fallback.
+# Supports HTTPS (DoH, e.g. "https://security.cloudflare-dns.com/dns-query"), TLS/DoT (e.g. "tls://1.1.1.1" or "tls://dns.google:853"), TCP (e.g. "tcp://1.1.1.1:53"), and DNS Stamps ("sdns://...").
+FAIL_OPEN_UPSTREAM = "https://freedns.controld.com/no-ads-malware-typo"
+# Maximum number of access points allowed per profile
+MAX_ACCESS_POINTS_PER_PROFILE = 100
+# Maximum number of profiles allowed per user
+MAX_PROFILES_PER_USER = 10
+# Used to resolve DoH domains
+SUBSTITUTE_DOMAIN="www.wto.org"
+# Time constants
+# Session duration for authenticated users by default (in minutes)
+DEFAULT_SESSION_EXPIRATION_MINUTES=1440
+# Session duration for authenticated users when keeping logged in option is selected (in days)
+OPTIONAL_SESSION_EXPIRATION_DAYS=7
+# Access Token expiration time (in minutes)
+ACCESS_TOKEN_EXPIRATION_MINUTES=1
+# Maximum allowed distance (in km) between session login and current request
+SESSION_GEO_DISTANCE_KM=50
+# TTL for temporary pre-auth session during login (in seconds)
+PREAUTH_TTL_SECONDS=300
+# In-memory retention time for profile bloom filters (in milliseconds)
+BLOOM_MEM_TTL=600000
+# In-memory retention time for profile config per isolate (in milliseconds).
+# Bounds how long a settings change takes to reach isolates that already cached it;
+# the Cache-Tag purge clears colo caches but cannot reach other isolates' memory.
+CONFIG_MEM_TTL=300000
+# Timeout threshold when downloading upstream blocklists (in milliseconds)
+SYNC_TIMEOUT_MS=30000
+# Number of days of inactivity before an account is cleared by cron jobs
+INACTIVITY_THRESHOLD_DAYS=180
+# Throttle interval for updating session "last active" status in D1 (in seconds)
+SESSION_LAST_ACTIVE_UPDATE_INTERVAL=60
+# In-memory authentication micro-cache TTL for dashboard requests (in seconds)
+AUTH_CACHE_TTL_SEC=30
+# Throttle interval for updating profile "last active" status (in seconds)
+THROTTLE_ACTIVE_SEC=3600
+# Minimum interval between automated blocklist profile syncs (in seconds)
+SYNC_PROFILE_INTERVAL_SEC=86400
+# Maximum log rows deleted per cron cleanup run across all profiles (prevents write quota exhaustion)
+LOG_CLEANUP_BATCH_LIMIT=1000
+# Daily budget for log row deletions across all profiles (default: 20000, 20% of 100k daily write quota)
+LOG_CLEANUP_DAILY_BUDGET=20000
+# Minimum query count threshold for domain hourly rollup aggregation (filters single-query noise domains)
+DOMAIN_ROLLUP_MIN_COUNT=2
+
+# Preset Upstream Services
+PRESET_UPSTREAMS = """
+[
+  {
+    "label": "settings.presetCloudflareSecurity",
+    "url": "https://security.cloudflare-dns.com/dns-query"
+  },
+  {
+    "label": "settings.presetCloudflareFamilies",
+    "url": "https://family.cloudflare-dns.com/dns-query"
+  },
+  {
+    "label": "Cloudflare",
+    "url": "https://cloudflare-dns.com/dns-query"
+  },
+  {
+    "label": "settings.presetQuad9",
+    "url": "https://dns.quad9.net/dns-query"
+  },
+  {
+    "label": "settings.presetQuad9Ecs",
+    "url": "https://dns11.quad9.net/dns-query"
+  },
+  {
+    "label": "settings.presetControlDFree",
+    "url": "https://freedns.controld.com/no-ads-malware-typo"
+  },
+  {
+    "label": "settings.presetControlDUncensored",
+    "url": "https://freedns.controld.com/uncensored"
+  },
+  {
+    "label": "settings.presetAdGuard",
+    "url": "https://dns.adguard-dns.com/dns-query"
+  },
+  {
+    "label": "settings.presetAdGuardFamily",
+    "url": "https://family.adguard-dns.com/dns-query"
+  },
+  {
+    "label": "Cloudflare Security (1.1.1.2)",
+    "url": "tcp://1.1.1.2:53"
+  },
+  {
+    "label": "Cloudflare (1.1.1.1)",
+    "url": "tcp://1.1.1.1:53"
+  },
+  {
+    "label": "Quad9 ECS (9.9.9.11)",
+    "url": "tcp://9.9.9.11:9953"
+  },
+  {
+    "label": "Google (8.8.8.8)",
+    "url": "tcp://8.8.8.8:53"
+  }
+]
+"""
+
+# Preset External Filters
+PRESET_EXTERNAL_FILTERS = """
+[
+  {
+    "label": "filtering.presetOisdBig",
+    "url": "https://big.oisd.nl"
+  },
+  {
+    "label": "filtering.presetOisdNsfw",
+    "url": "https://nsfw.oisd.nl"
+  },
+  {
+    "label": "filtering.presetAdGuard",
+    "url": "https://adguardteam.github.io/AdguardFilters/BaseFilter/sections/adservers.txt"
+  },
+  {
+    "label": "filtering.presetStevenBlack",
+    "url": "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+  },
+  {
+    "label": "anti-AD AdGuard Home List",
+    "url": "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-easylist.txt"
+  }
+]
+"""
+
+# Preset ECH Fronting (outer SNI) domains
+PRESET_ECH_FRONTING_DOMAINS = """
+[
+  "cloudflare-ech.com",
+  "crypto.cloudflare.com",
+  "one.one.one.one",
+  "www.cloudflare.com",
+  "encryptedsni.com",
+  "cdnjs.com"
+]
+"""
+
+# Bloom Filter false positive rate
+# Restored to 0.0001 (1 in 10,000) — safe now because each cron trigger
+# processes only ONE list at a time (~100-150k domains), dramatically reducing
+# per-trigger CPU usage vs. the old all-at-once approach.
+BLOOM_FALSE_POSITIVE_RATE=0.0001
+
+# 1M domains @ p=0.0001: bitArray ≈ 2.4 MB (5 × 512KB D1 chunks)
+MAX_SYNC_DOMAINS=1000000
+
+# Maximum domains processed from a single list per cron trigger.
+MAX_LIST_DOMAINS=500000
+
+# Hard cap on log retention days (overrides per-profile user setting).
+# Prevents high-retention profiles (e.g. 360 days) from filling up D1's 500 MB limit.
+MAX_LOG_RETENTION_DAYS=30
+DEFAULT_LOG_RETENTION_DAYS=7
+
+NORMAL_USER_MAX_LOG_RETENTION_DAYS=7
+NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS=1
+
+# Hard cap on log row count per profile. Acts as a circuit-breaker when write
+# rate temporarily exceeds cleanup rate (e.g. high-traffic profiles).
+MAX_LOGS_PER_PROFILE=500000

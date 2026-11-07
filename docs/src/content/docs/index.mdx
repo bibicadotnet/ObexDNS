@@ -1,0 +1,59 @@
+---
+title: DNS Worker Documentation
+description: Privacy-First Protective DNS Resolver & DoH / DoT Server with Dual-Engine Architecture.
+template: splash
+hero:
+  tagline: Protect your first hop on the internet · Intelligent Ad & Threat Blocklists · Full-Stack Protocol Coverage · Local-First 0ms Analytics · NIST FIPS 203 Post-Quantum Zero-Knowledge E2EE
+  image:
+    file: ../../assets/logo.webp
+  actions:
+    - text: Getting Started
+      link: /DNS-Worker/guide/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: GitHub Repository
+      link: https://github.com/Obein/DNS-Worker
+      icon: external
+      variant: secondary
+    - text: Demonstrate
+      link: https://obex.pages.dev/
+      icon: external
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+  <Card title="Serverless-First Edge Network" icon="rocket">
+    Born for Cloudflare Workers & D1 across 300+ global edge locations with zero server maintenance, while also offering standalone self-hosted Serverfull deployment for home routers.
+  </Card>
+  <Card title="Intelligent Ad & Threat Blocking" icon="magnifier">
+    Built-in protective DNS engine intercepts millions of intrusive ads, cross-site telemetry trackers, malware, and phishing domains before connections are established. Accelerated by a high-precision single-layer Bloom filter with sub-millisecond evaluation latency and minimal memory footprint.
+  </Card>
+  <Card title="Custom Rules & Multi-Profile Routing" icon="list-format">
+    Seamlessly subscribe to popular blocklists (OISD, AdGuard, HaGeZi, StevenBlack), configure custom allowlists/blocklists and DNS rewrites, and isolate policies across devices with unique profile keys.
+  </Card>
+  <Card title="Full-Stack Protocols" icon="setting">
+    Native support for Classic UDP 53, DoT 853 (with TLS SNI profile routing), DoH (RFC 8484 over HTTP/2 & HTTP/3), DoQ (RFC 9250), and ECH / DDR (RFC 9460).
+  </Card>
+  <Card title="Post-Quantum Zero-Knowledge E2EE" icon="shield">
+    Powered by NIST FIPS 203 **P256-MLKEM768** hybrid lattice cryptography and hardware Passkeys (WebAuthn), rendering query logs safe from future quantum decryption.
+  </Card>
+  <Card title="Local-First 0ms Analytics" icon="laptop">
+    Embedded in-browser SQLite (WASM + OPFS) delivers instant 0ms log filtering and interactive charts with zero cloud database queries.
+  </Card>
+</CardGrid>
+
+---
+
+## 🛡️ Ad & Threat Interception
+
+DNS Worker is engineered from the ground up as a **Protective DNS** resolver that safeguards your network, mobile devices, and IoT appliances at the internet's foundation:
+
+- **Intrusive Ad & Telemetry Blocking**: Silently suppresses banner ads, video commercials, popups, and invasive operating system telemetry across iOS, Android, macOS, Windows, and Smart TVs without installing client software.
+- **Proactive Threat Neutralization**: Real-time interception of malware distribution nodes, ransomware callbacks, phishing portals, cryptominers, and botnet Command & Control (C2) domains.
+- **High-Performance Bloom Filter Engine**: Powered by a compact bitset Bloom filter architecture, evaluating hundreds of thousands of rules with sub-millisecond latency and near-zero memory footprint without heavy prefix trees.
+- **Flexible Rule Management**: Pre-loaded with top-tier filter subscriptions (OISD Big, AdGuard Base, HaGeZi Multi PRO++, StevenBlack Hosts), alongside custom wildcard/regex matching and DNS rewrites.
+- **Real-Time Audit & Logs**: Live inspection of permitted, blocked, and rewritten queries with an interactive drawer showing matched filter rules, client origin, and latency breakdown.
+
+👉 [Explore Domain Filtering & Threat Blocklists Documentation](/DNS-Worker/filtering/rules/)
