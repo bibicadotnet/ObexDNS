@@ -1,0 +1,316 @@
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Spinner, Intent } from "@blueprintjs/core";
+import { useTranslation } from "react-i18next";
+
+import type {  Profile, ProfileSettings, SettingsViewProps, TestResponse  } from "./types";
+import { SettingsHeader } from "./components/SettingsHeader";
+import { UpstreamCard } from "./components/UpstreamCard";
+import { DefaultPolicyCard } from "./components/DefaultPolicyCard";
+import { LogRetentionCard } from "./components/LogRetentionCard";
+import { LocalRetentionCard } from "./components/LocalRetentionCard";
+import { AdvancedEcsCard } from "./components/AdvancedEcsCard";
+import { BestEffortEchCard } from "./components/BestEffortEchCard";
+import { DnsTestCard } from "./components/DnsTestCard";
+import {
+  getProfileDetails,
+  renameProfile,
+  updateProfileSettings,
+  testResolution,
+  getProfileRules,
+  getProfileLists
+} from "../../services";
+import { executeWithTimeout } from "../../utils/async";
+
+export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRef, currentUser, onSavingChange }) => {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [settings, setSettings] = useState<ProfileSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    onSavingChange?.(saving);
+    return () => {
+      onSavingChange?.(false);
+    };
+  }, [saving, onSavingChange]);
+
+  const isInitialLoad = useRef(true);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastConfirmedSettingsRef = useRef<ProfileSettings | null>(null);
+  const saveSeqRef = useRef(0);
+
+  const cloneSettings = (s: ProfileSettings): ProfileSettings => {
+    return typeof structuredClone === "function" ? structuredClone(s) : JSON.parse(JSON.stringify(s));
+  };
+
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState("");
+
+  // DNS 测试相关状态
+  const [testInput, setTestInput] = useState({
+    domain: "o-o.myaddr.l.google.com",
+    type: "TXT",
+  });
+  const [testResult, setTestResult] = useState<TestResponse | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  useEffect(() => {
+    isInitialLoad.current = true;
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+    const fetchProfile = async () => {
+      setLoading(true);
+      try {
+        const data = await getProfileDetails(profileId) as any;
+        setProfile(data);
+        setEditName(data.name);
+        const parsed = JSON.parse(data.settings);
+        lastConfirmedSettingsRef.current = cloneSettings(parsed);
+        setSettings(parsed);
+        return profile;
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, [profileId]);
+
+  useEffect(() => {
+    if (!loading && settings && isInitialLoad.current) {
+      const timer = setTimeout(() => {
+        isInitialLoad.current = false;
+        if (settings) {
+          lastConfirmedSettingsRef.current = cloneSettings(settings);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, settings]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, []);
+
+  const updateProfileName = async () => {
+    if (!editName || editName === profile?.name) {
+      setIsEditingName(false);
+      return;
+    }
+    const previousName = profile?.name || "";
+    setSaving(true);
+    try {
+      await executeWithTimeout(renameProfile(profileId, editName), 10000);
+      setProfile((prev) => (prev ? { ...prev, name: editName } : null));
+      setIsEditingName(false);
+      toasterRef?.current?.show({
+        message: t("common.saveSuccess", "保存成功"),
+        intent: Intent.SUCCESS,
+        icon: "tick",
+      });
+    } catch (e: any) {
+      console.error(e);
+      // Revert to original profile name
+      setEditName(previousName);
+      setIsEditingName(false);
+      const rawErr = e.message;
+      let errMsg = rawErr;
+      if (rawErr === "The profile name already exists") {
+        errMsg = t("common.profileNameExists", "The profile name already exists");
+      } else if (rawErr === "Invalid Profile Name format") {
+        errMsg = t("common.profileNameFormatError", "Invalid Profile Name format");
+      }
+      toasterRef?.current?.show({
+        message: errMsg || t("common.saveFailed", "保存失败"),
+        intent: Intent.DANGER,
+        icon: "error",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveSettings = useCallback(async (settingsToSave: ProfileSettings) => {
+    if (!settingsToSave) return;
+    const currentSeq = ++saveSeqRef.current;
+    setSaving(true);
+    try {
+      await executeWithTimeout(updateProfileSettings(profileId, settingsToSave as any), 10000);
+      if (currentSeq === saveSeqRef.current) {
+        lastConfirmedSettingsRef.current = cloneSettings(settingsToSave);
+        toasterRef?.current?.show({
+          message: t("common.saveSuccess", "保存成功"),
+          intent: Intent.SUCCESS,
+          icon: "tick",
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      if (currentSeq === saveSeqRef.current) {
+        // 1. 取消正在等待的防抖定时器，防止覆盖回滚
+        if (debounceTimer.current) {
+          clearTimeout(debounceTimer.current);
+          debounceTimer.current = null;
+        }
+        // 2. 将视图显示的值恢复为上一次保存成功的原值
+        if (lastConfirmedSettingsRef.current) {
+          setSettings(cloneSettings(lastConfirmedSettingsRef.current));
+        }
+        // 3. Toast 提示保存失败
+        toasterRef?.current?.show({
+          message: t("common.saveFailed", "保存失败"),
+          intent: Intent.DANGER,
+          icon: "error",
+        });
+      }
+    } finally {
+      if (currentSeq === saveSeqRef.current) {
+        setSaving(false);
+      }
+    }
+  }, [profileId, toasterRef, t]);
+
+  const debouncedSave = useCallback(
+    (newSettings: ProfileSettings) => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      debounceTimer.current = setTimeout(() => {
+        saveSettings(newSettings);
+      }, 600);
+    },
+    [saveSettings],
+  );
+
+  const handleSettingsChange = useCallback(
+    (newSettings: ProfileSettings) => {
+      setSettings(newSettings);
+      if (!isInitialLoad.current) {
+        debouncedSave(newSettings);
+      }
+    },
+    [debouncedSave],
+  );
+
+  const handleDnsTest = async () => {
+    if (!testInput.domain) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const data = await testResolution(profileId, testInput);
+      setTestResult(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const exportProfile = async () => {
+    if (!profile || !settings) return;
+    try {
+      const [rawRules, rawLists] = await Promise.all([
+        getProfileRules(profileId).catch(() => []),
+        getProfileLists(profileId).catch(() => [])
+      ]);
+
+      const seenPatterns = new Set<string>();
+      const rules = (rawRules || []).filter((r) => {
+        const norm = (r.pattern || "").trim().toLowerCase();
+        if (!norm || seenPatterns.has(norm)) return false;
+        seenPatterns.add(norm);
+        return true;
+      });
+
+      const seenUrls = new Set<string>();
+      const filters = (rawLists || [])
+        .filter((l) => {
+          const norm = (l.url || "").trim().toLowerCase();
+          if (!norm || seenUrls.has(norm)) return false;
+          seenUrls.add(norm);
+          return true;
+        })
+        .map((l) => ({
+          url: l.url,
+          enabled: Boolean(l.enabled)
+        }));
+
+      // Profile export schema version: v1 = legacy (rules only), v2 = added external filter lists (filters)
+      const exportData = {
+        version: 2,
+        name: profile.name,
+        settings: settings,
+        rules: rules,
+        filters: filters,
+        exported_at: Math.floor(Date.now() / 1000),
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dns-worker-${profile.name || profileId}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toasterRef?.current?.show({
+        message: t("settings.exportSuccess", "配置成功导出"),
+        intent: Intent.SUCCESS,
+        icon: "download",
+      });
+    } catch (e) {
+      console.error(e);
+      toasterRef?.current?.show({
+        message: t("settings.exportError", "导出失败"),
+        intent: Intent.DANGER,
+        icon: "error",
+      });
+    }
+  };
+
+  if (loading || !settings)
+    return (
+      <div className="p-20 flex justify-center">
+        <Spinner />
+      </div>
+    );
+
+  return (
+    <div className="p-0 sm:px-4 lg:px-8 max-w-5xl mx-auto space-y-8 pb-20">
+      <SettingsHeader
+        profile={profile}
+        isEditingName={isEditingName}
+        setIsEditingName={setIsEditingName}
+        editName={editName}
+        setEditName={setEditName}
+        updateProfileName={updateProfileName}
+        exportProfile={exportProfile}
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <UpstreamCard settings={settings} setSettings={handleSettingsChange} />
+        <DefaultPolicyCard settings={settings} setSettings={handleSettingsChange} />
+        <LogRetentionCard settings={settings} setSettings={handleSettingsChange} isAdmin={currentUser?.role === "admin"} maxRetentionDays={currentUser?.max_log_retention_days ?? (currentUser?.role === "admin" ? 30 : 7)} />
+        <LocalRetentionCard profileId={profileId} toasterRef={toasterRef} />
+        <AdvancedEcsCard settings={settings} setSettings={handleSettingsChange} />
+        <BestEffortEchCard settings={settings} setSettings={handleSettingsChange} />
+      </div>
+
+      <DnsTestCard
+        testInput={testInput}
+        setTestInput={setTestInput}
+        handleDnsTest={handleDnsTest}
+        testing={testing}
+        testResult={testResult}
+      />
+    </div>
+  );
+};

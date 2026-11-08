@@ -1,0 +1,289 @@
+/**
+ * TOTP (Time-based One-Time Password) implementation for Cloudflare Workers
+ * RFC 6238 / RFC 4226 compliant, using Web Crypto API only (no Node.js dependencies)
+ */
+
+import { TOTP_TOKEN_REGEX } from "../utils/validator";
+
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+/**
+ * Encodes a Uint8Array to a Base32 string.
+ */
+function base32Encode(bytes: Uint8Array): string {
+  let result = '';
+  let buffer = 0;
+  let bitsLeft = 0;
+
+  for (const byte of bytes) {
+    buffer = (buffer << 8) | byte;
+    bitsLeft += 8;
+    while (bitsLeft >= 5) {
+      bitsLeft -= 5;
+      result += BASE32_ALPHABET[(buffer >> bitsLeft) & 0x1f];
+    }
+  }
+
+  if (bitsLeft > 0) {
+    result += BASE32_ALPHABET[(buffer << (5 - bitsLeft)) & 0x1f];
+  }
+
+  return result;
+}
+
+/**
+ * Decodes a Base32 string to a Uint8Array.
+ */
+function base32Decode(input: string): Uint8Array {
+  let end = input.length;
+  while (end > 0 && input[end - 1] === '=') {
+    end--;
+  }
+  const normalized = input.slice(0, end).toUpperCase();
+  const bytes: number[] = [];
+  let buffer = 0;
+  let bitsLeft = 0;
+
+  for (const char of normalized) {
+    const val = BASE32_ALPHABET.indexOf(char);
+    if (val === -1) continue; // skip invalid chars
+    buffer = (buffer << 5) | val;
+    bitsLeft += 5;
+    if (bitsLeft >= 8) {
+      bitsLeft -= 8;
+      bytes.push((buffer >> bitsLeft) & 0xff);
+    }
+  }
+
+  return new Uint8Array(bytes);
+}
+
+/**
+ * Generates a cryptographically secure 20-byte TOTP secret encoded as Base32.
+ * @returns Base32-encoded secret string (compatible with Google Authenticator)
+ */
+export function generateTOTPSecret(): string {
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  return base32Encode(bytes);
+}
+
+/**
+ * Computes an HOTP value for a given counter using HMAC-SHA1.
+ * @param secret - Base32-encoded shared secret
+ * @param counter - 8-byte counter value
+ * @returns 6-digit OTP string
+ */
+async function computeHOTP(secret: string, counter: number): Promise<string> {
+  const keyBytes = base32Decode(secret);
+  const counterBytes = new Uint8Array(8);
+  // Write counter as big-endian 64-bit integer
+  const view = new DataView(counterBytes.buffer);
+  view.setUint32(4, counter >>> 0, false);
+  view.setUint32(0, Math.floor(counter / 0x100000000) >>> 0, false);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, counterBytes);
+  const hmac = new Uint8Array(signature);
+
+  // Dynamic truncation
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const code =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+
+  return (code % 1_000_000).toString().padStart(6, '0');
+}
+
+/**
+ * Verifies a TOTP token against a secret, allowing ±1 time step (30s window).
+ * @param secret - Base32-encoded TOTP secret
+ * @param token - 6-digit OTP string from the user
+ * @returns true if the token is valid within the time window
+ */
+export interface TotpVerificationResult {
+  valid: boolean;
+  timeStep?: number;
+}
+
+/**
+ * Verifies a TOTP token against a secret and returns the matched time step for anti-replay tracking.
+ *
+ * @param secret - Base32-encoded TOTP secret
+ * @param token - 6-digit OTP string or hashed token from the user
+ * @param salt - Optional salt if token was pre-hashed by client
+ * @returns TotpVerificationResult with valid status and matched timeStep
+ */
+export async function verifyTOTPWithStep(
+  secret: string,
+  token: string,
+  salt?: string
+): Promise<TotpVerificationResult> {
+  if (!secret || !token) return { valid: false };
+  if (!salt && !TOTP_TOKEN_REGEX.test(token)) return { valid: false };
+
+  try {
+    const timeStep = Math.floor(Date.now() / 1000 / 30);
+
+    // Check current step and ±1 adjacent steps to tolerate clock skew
+    for (const delta of [-1, 0, 1]) {
+      const step = timeStep + delta;
+      const expected = await computeHOTP(secret, step);
+
+      if (salt) {
+        const data = new TextEncoder().encode(expected + salt);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashHex = Array.from(new Uint8Array(hashBuffer))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+        if (hashHex === token) return { valid: true, timeStep: step };
+      } else {
+        if (expected === token) return { valid: true, timeStep: step };
+      }
+    }
+  } catch (e) {
+    console.error("[TOTP Verification Error]:", e);
+    return { valid: false };
+  }
+
+  return { valid: false };
+}
+
+/**
+ * Verifies a TOTP token against a secret, allowing ±1 time step (30s window).
+ * @param secret - Base32-encoded TOTP secret
+ * @param token - 6-digit OTP string from the user
+ * @param salt - Optional client salt for pre-hashed token
+ * @returns true if the token is valid within the time window
+ */
+export async function verifyTOTP(secret: string, token: string, salt?: string): Promise<boolean> {
+  const result = await verifyTOTPWithStep(secret, token, salt);
+  return result.valid;
+}
+
+/**
+ * Generates an otpauth:// URI for QR code generation.
+ * @param secret - Base32-encoded TOTP secret
+ * @param username - Account username label
+ * @param issuer - Service name displayed in the authenticator app
+ * @returns otpauth:// URI string
+ */
+export function getTOTPUri(secret: string, username: string, issuer: string): string {
+  const label = encodeURIComponent(`${issuer}:${username}`);
+  const params = new URLSearchParams({
+    secret,
+    issuer,
+    algorithm: 'SHA1',
+    digits: '6',
+    period: '30',
+  });
+  return `otpauth://totp/${label}?${params.toString()}`;
+}
+
+/**
+ * Generates a single 6-digit group where the first 5 digits are randomly generated
+ * and the 6th digit is a Modulo 11 check digit ensuring the 6-digit integer % 11 === 0.
+ *
+ * @returns 6-digit numeric string
+ */
+export function generateRecoveryGroup(): string {
+  while (true) {
+    const randomBytes = new Uint32Array(1);
+    crypto.getRandomValues(randomBytes);
+    const val = randomBytes[0] % 100000;
+    const rem = val % 11;
+    if (rem < 10) {
+      const first5 = val.toString().padStart(5, '0');
+      const checkDigit = rem.toString();
+      return `${first5}${checkDigit}`;
+    }
+  }
+}
+
+/**
+ * Generates a 30-digit recovery key consisting of 5 groups of 6 digits,
+ * separated by hyphens (e.g., "123453-678908-246802-135798-987659").
+ *
+ * @returns 30-digit formatted recovery key string
+ */
+export function generateRecoveryKey(): string {
+  const groups: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    groups.push(generateRecoveryGroup());
+  }
+  return groups.join('-');
+}
+
+/**
+ * Generates recovery keys as plaintext.
+ * Returns an array containing the 30-digit recovery key.
+ *
+ * @returns Array of plaintext recovery keys
+ */
+export function generateRecoveryKeys(): string[] {
+  return [generateRecoveryKey()];
+}
+
+/**
+ * Hashes a recovery key using SHA-256 for secure storage.
+ * Strips hyphens and whitespace before hashing for robust comparison.
+ *
+ * @param key - Plaintext recovery key
+ * @returns Hex-encoded SHA-256 hash
+ */
+export async function hashRecoveryKey(key: string): Promise<string> {
+  const normalized = key.replace(/[-\s]/g, '').toUpperCase().trim();
+  const data = new TextEncoder().encode(normalized);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Item representing a stored recovery key in the database.
+ */
+export interface StoredRecoveryKeyItem {
+  key: string;
+  hash: string;
+}
+
+/**
+ * Verifies a plaintext recovery key against an array of stored recovery items or hashes.
+ * Returns the index of the matching key, or -1 if no match.
+ *
+ * @param key - Plaintext key entered by the user
+ * @param storedItems - Array of recovery items ({ key, hash }) or legacy SHA-256 hex strings
+ * @returns Index of matching item, or -1
+ */
+export async function findMatchingRecoveryKey(key: string, storedItems: any[]): Promise<number> {
+  const inputHash = await hashRecoveryKey(key);
+  const normalizedInput = key.replace(/[-\s]/g, '').toUpperCase().trim();
+
+  return storedItems.findIndex(item => {
+    if (!item) return false;
+    if (typeof item === 'string') {
+      if (item === inputHash) return true;
+      const normalizedItem = item.replace(/[-\s]/g, '').toUpperCase().trim();
+      return normalizedItem === normalizedInput;
+    } else if (typeof item === 'object') {
+      if (item.hash && item.hash === inputHash) return true;
+      if (item.key) {
+        const normalizedItem = String(item.key).replace(/[-\s]/g, '').toUpperCase().trim();
+        return normalizedItem === normalizedInput;
+      }
+    }
+    return false;
+  });
+}
+
+

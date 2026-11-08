@@ -1,0 +1,322 @@
+import { Env, User, ExecutionContext } from './types';
+import { ScheduledEvent } from '@cloudflare/workers-types';
+import { readCsrfCookie, createCsrfCookie, generateId } from './lib/auth';
+import { generateLinuxSetupScript } from './utils/linuxSetup';
+import { ACCESS_KEY_REGEX } from './utils/validator';
+
+// Middleware imports
+import { applySecurityHeaders, getCurrentUser, validateCsrf } from './lib/middleware';
+
+// Route handlers
+import { handleAuthRequest } from './api/auth';
+import { handleProfilesRequest } from './api/profiles';
+import { handleAccountRequest } from './api/account';
+import { handleSystemRequest } from './api/system';
+import { handleDoHRequest } from './api/doh';
+import { handleScheduled } from './cron';
+import { handleMapDataRequest } from './api/mapData';
+import { isUsableJwtSecret } from './lib/jwt';
+import { isTursoConfigured, getTursoDatabase, getDatabaseService, ensureTursoMigrations } from './lib/turso';
+import { cacheUtils } from './utils/cache';
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    cacheUtils.setOrigin(new URL(request.url).origin);
+    const isServerfull = Boolean(
+      env.SERVERFULL_DEFAULT_PROFILE_KEY !== undefined ||
+      env.SERVERFULL_HOST !== undefined ||
+      env.SERVERFULL_DOT_DOMAIN !== undefined ||
+      env.SERVERFULL_HTTP_PORT !== undefined ||
+      env.SERVERFULL_HTTPS_PORT !== undefined ||
+      env.SERVERFULL_DB_PATH !== undefined
+    );
+    const dbService = getDatabaseService(env, isServerfull);
+    if (dbService === 'Turso' && isTursoConfigured(env)) {
+      env.DB = getTursoDatabase(env);
+    }
+
+    const nonceBytes = new Uint8Array(16);
+    crypto.getRandomValues(nonceBytes);
+    const nonce = Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    let currentUser: User | null = null;
+
+    const handleRequest = async (): Promise<Response> => {
+      const url = new URL(request.url);
+
+      // Map Data API Proxy
+      if (url.pathname === '/world-110m.json') {
+        return handleMapDataRequest(request, env, ctx);
+      }
+
+      // Business API Router
+      if (url.pathname.startsWith('/api/')) {
+        let isDbMissing = false;
+        let dbErrorMessage = '';
+
+        if (dbService === 'Turso') {
+          if (!isTursoConfigured(env) || !env.DB) {
+            isDbMissing = true;
+            dbErrorMessage = 'DATABASE_SERVICE is set to Turso, but TURSO_DATABASE_URL or TURSO_AUTH_TOKEN is not configured.';
+          }
+        } else if (dbService === 'File') {
+          if (!isServerfull) {
+            isDbMissing = true;
+            dbErrorMessage = "DATABASE_SERVICE='File' is not supported in Cloudflare Workers. Please configure D1 database binding or use DATABASE_SERVICE='Turso'.";
+          } else if (!env.DB) {
+            isDbMissing = true;
+            dbErrorMessage = 'Database file is missing. Please restart the service or verify file permissions.';
+          }
+        } else {
+          // Default: 'D1'
+          if (isServerfull) {
+            isDbMissing = true;
+            dbErrorMessage = "DATABASE_SERVICE='D1' is designed for Cloudflare Workers. In Serverfull mode, please set DATABASE_SERVICE='File' or 'Turso'.";
+          } else {
+            try {
+              isDbMissing = !env.DB;
+            } catch (e) {
+              isDbMissing = true;
+            }
+          }
+        }
+
+        const isJwtSecretMissing = !isUsableJwtSecret(env.JWT_SECRET);
+
+        if (isDbMissing || isJwtSecretMissing) {
+          return new Response(JSON.stringify({
+            error: "configuration_error",
+            isDbMissing,
+            isJwtSecretMissing,
+            databaseService: dbService,
+            message: dbErrorMessage || "DNS Worker is not fully configured. Please configure the database and JWT_SECRET secret variable."
+          }), {
+            status: 503,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            }
+          });
+        }
+
+        // Authenticate request
+        currentUser = await getCurrentUser(request, env, ctx);
+
+        const isPublicRoute = [
+          '/api/auth/login', 
+          '/api/auth/signup', 
+          '/api/auth/prelogin', 
+          '/api/auth/check-username',
+          '/api/auth/config',
+          '/api/auth/refresh',
+          '/api/auth/logout',
+          '/api/auth/unlock-session',
+          '/api/clientinfo',
+          '/api/substitute',
+          '/api/resolve',
+          '/api/geoip'
+        ].includes(url.pathname) || 
+        url.pathname.startsWith('/api/icon/') || 
+        url.pathname.startsWith('/api/presets/') ||
+        url.pathname.startsWith('/api/auth/forgot-password');
+
+        // Check authentication boundary
+        if (!currentUser && !isPublicRoute) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+
+        // Handle paused sessions: block all routes except unlock, logout, refresh, and locale preference update
+        if (currentUser && currentUser.isPaused) {
+          const isAllowedWhilePaused = [
+            '/api/auth/unlock-session',
+            '/api/auth/logout',
+            '/api/auth/refresh'
+          ].includes(url.pathname) || (url.pathname === '/api/account/me' && request.method === 'PATCH');
+          if (!isAllowedWhilePaused) {
+            return new Response("session_paused", { status: 403 });
+          }
+        }
+
+        // Validate CSRF for mutating requests
+        if (currentUser && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) && !isPublicRoute) {
+          if (!validateCsrf(request)) {
+            return new Response("CSRF validation failed", { status: 403 });
+          }
+        }
+
+        // Route requests to handlers
+        if (url.pathname.startsWith('/api/auth/')) {
+          return handleAuthRequest(request, env, ctx);
+        }
+        if (
+          url.pathname === '/api/clientinfo' ||
+          url.pathname === '/api/substitute' ||
+          url.pathname === '/api/resolve' ||
+          url.pathname === '/api/geoip' ||
+          url.pathname.startsWith('/api/presets/') ||
+          url.pathname.startsWith('/api/icon/')
+        ) {
+          return handleSystemRequest(request, env);
+        }
+        if (url.pathname.startsWith('/api/profiles')) {
+          return handleProfilesRequest(request, env, currentUser, ctx);
+        }
+        if (url.pathname.startsWith('/api/account') || url.pathname.startsWith('/api/admin')) {
+          return handleAccountRequest(request, env, currentUser!, ctx);
+        }
+        return new Response("API Not Found", { status: 404 });
+      }
+
+      // Linux Setup Script Route
+      if (url.pathname === '/setup.sh') {
+        const key = url.searchParams.get('key');
+        if (!key || !ACCESS_KEY_REGEX.test(key)) {
+          return new Response('Missing or invalid key parameter', { status: 400 });
+        }
+        const script = generateLinuxSetupScript(url.origin, key);
+        return new Response(script, {
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      }
+
+      // DNS-over-HTTPS (DoH) Route: /<5-12 char profile key or access point token>
+      const rawKey = url.pathname.slice(1); 
+      const isKeyValid = ACCESS_KEY_REGEX.test(rawKey);
+      const isDoHRequest = request.method === 'POST' || 
+                           url.searchParams.has('dns') || 
+                           request.headers.get('accept')?.includes('dns-message');
+                            
+      if (isKeyValid && (isDoHRequest || request.method === 'OPTIONS')) {
+        if (request.method === 'OPTIONS') {
+          return new Response(null, {
+            status: 204,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type, Accept',
+              'Access-Control-Max-Age': '86400'
+            }
+          });
+        }
+        return handleDoHRequest(request, env, ctx, rawKey);
+      }
+
+      // Static Assets Hosting with Single Page App (SPA) fallback
+      try {
+        let response = await (env as any).ASSETS.fetch(request);
+        if (response.status === 404 && !url.pathname.startsWith('/assets/') && (request.method === 'GET' || request.method === 'HEAD')) {
+          response = await (env as any).ASSETS.fetch(new Request(url.origin + '/', {
+            method: request.method,
+            headers: request.headers
+          }));
+        }
+
+        // Ensure WASM binary assets are served with the standard MIME type
+        if (url.pathname.endsWith('.wasm')) {
+          const wasmHeaders = new Headers(response.headers);
+          wasmHeaders.set('Content-Type', 'application/wasm');
+          wasmHeaders.set('Cross-Origin-Resource-Policy', 'same-origin');
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: wasmHeaders
+          });
+        }
+
+        const contentType = response.headers.get('Content-Type') || '';
+        if (contentType.includes('text/html')) {
+          let isDbMissing = false;
+          if (dbService === 'Turso') {
+            isDbMissing = !isTursoConfigured(env) || !env.DB;
+          } else if (dbService === 'File') {
+            isDbMissing = !isServerfull || !env.DB;
+          } else {
+            isDbMissing = isServerfull || !env.DB;
+          }
+          const isJwtSecretMissing = !isUsableJwtSecret(env.JWT_SECRET);
+
+          let configStr = "{}";
+          try {
+             configStr = JSON.stringify({
+               nonce,
+               isDbMissing,
+               isJwtSecretMissing,
+               isServerfull,
+               databaseService: dbService,
+               isTurso: dbService === 'Turso',
+               mode: isServerfull ? 'serverfull' : 'cloudflare'
+             });
+          } catch (e) { }
+          
+          return new HTMLRewriter()
+            .on('head', {
+              element(element) {
+                element.prepend(`<script nonce="${nonce}">window.DNS_WORKER_CONFIG = ${configStr};</script>`, { html: true });
+              }
+            })
+            .transform(response);
+        }
+
+        return response;
+      } catch (e) {
+        return new Response("Asset Fetch Error", { status: 500 });
+      }
+    };
+
+    let response = await handleRequest();
+    
+    // Ensure CSRF token is set in cookies if authenticated but cookie is missing from the request
+    const finalUser = currentUser as User | null;
+    if (finalUser && !readCsrfCookie(request.headers.get("Cookie"))) {
+      const isKeepLoggedIn = finalUser.sessionId?.startsWith("k_");
+      try {
+        const csrfToken = generateId(32);
+        response.headers.append("Set-Cookie", createCsrfCookie(csrfToken, env, isKeepLoggedIn));
+      } catch (e) {
+        // If headers are immutable (e.g. from static asset fetch), clone the response and set the header
+        const newHeaders = new Headers(response.headers);
+        const csrfToken = generateId(32);
+        newHeaders.append("Set-Cookie", createCsrfCookie(csrfToken, env, isKeepLoggedIn));
+        response = new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: newHeaders
+        });
+      }
+    }
+
+    // DoH binary responses must not be constrained by HTML CSP/COOP/COEP
+    if (response.headers.get('Content-Type')?.includes('application/dns-message')) {
+      const dohHeaders = new Headers(response.headers);
+      dohHeaders.set('Access-Control-Allow-Origin', '*');
+      dohHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      dohHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Accept');
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: dohHeaders
+      });
+    }
+
+    return applySecurityHeaders(response, nonce);
+  },
+
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (env.SUBSTITUTE_DOMAIN) {
+      cacheUtils.setOrigin(`https://${env.SUBSTITUTE_DOMAIN}`);
+    }
+    const dbService = getDatabaseService(env, false);
+    if (dbService === 'Turso' && isTursoConfigured(env)) {
+      env.DB = getTursoDatabase(env);
+      try {
+        await ensureTursoMigrations(env.DB as any);
+      } catch (err: any) {
+        console.warn('[Turso] Scheduled migration check notice:', err.message || err);
+      }
+    }
+    await handleScheduled(event, env, ctx);
+  }
+};

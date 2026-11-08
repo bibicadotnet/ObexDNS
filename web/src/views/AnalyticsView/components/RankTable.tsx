@@ -1,0 +1,86 @@
+import React from "react";
+import { Card, Elevation, H5, HTMLTable, Tag, Intent } from "@blueprintjs/core";
+import { Lock } from "lucide-react";
+import { useTranslation } from "react-i18next";
+
+export interface RankTableProps {
+  title: string;
+  data: { domain: string; count: number }[];
+  intent: Intent;
+}
+
+interface ColumnConfig {
+  key: string;
+  cellClassName?: string;
+  render: (row: { domain: string; count: number }, index: number) => React.ReactNode;
+}
+
+export const RankTable: React.FC<RankTableProps> = ({ title, data, intent }) => {
+  const { t } = useTranslation();
+
+  const columns: ColumnConfig[] = [
+    {
+      key: "rank",
+      cellClassName: "w-8 opacity-30 font-mono text-xs",
+      render: (_: { domain: string; count: number }, i: number): React.ReactNode => i + 1,
+    },
+    {
+      key: "domain",
+      cellClassName: "font-medium text-sm truncate max-w-50",
+      render: (d: { domain: string; count: number }): React.ReactNode => {
+        if (d.domain === "[Encrypted]") {
+          return (
+            <span className="inline-flex items-center gap-1.5 text-gray-400 dark:text-gray-500 italic font-normal">
+              <Lock size={14} className="text-amber-500 shrink-0" />
+              <span>{t("logs.encryptedRecord", "[加密记录]")}</span>
+            </span>
+          );
+        }
+        if (d.domain === "[Decryption Failed]") {
+          return (
+            <span className="inline-flex items-center gap-1.5 text-red-400 dark:text-red-500 italic font-normal">
+              <Lock size={14} className="text-red-500 shrink-0" />
+              <span>{t("logs.decryptionFailed", "[解密失败]")}</span>
+            </span>
+          );
+        }
+        return d.domain;
+      },
+    },
+    {
+      key: "count",
+      cellClassName: "text-right",
+      render: (d: { domain: string; count: number }): React.ReactNode => (
+        <Tag minimal intent={intent} className="font-bold">
+          {d.count}
+        </Tag>
+      ),
+    },
+  ];
+
+  return (
+    <Card elevation={Elevation.ZERO} className="dark:bg-gray-900 dark:border-gray-800 border border-gray-100 shadow-sm">
+      <H5 className="mb-4 font-bold">{title}</H5>
+      <HTMLTable striped className="w-full">
+        <tbody>
+          {data.map((d, i) => (
+            <tr key={i}>
+              {columns.map((col) => (
+                <td key={col.key} className={col.cellClassName}>
+                  {col.render(d, i)}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {data.length === 0 && (
+            <tr>
+              <td colSpan={columns.length} className="text-center py-8 opacity-50">
+                {t("analytics.noData")}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </HTMLTable>
+    </Card>
+  );
+};

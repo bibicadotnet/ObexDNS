@@ -1,0 +1,185 @@
+---
+title: 域名過濾與威脅攔截
+description: 全面的保護性 DNS 過濾引擎、廣告與惡意域名攔截、訂閱管理、自定義規則、Bloom filter 加速引擎以及過濾環境變數參考。
+sidebar:
+  order: 1
+---
+
+import { Image } from 'astro:assets';
+import filterImg from '../../../../../screenshots/dns.obex-filter.webp';
+import rulesImg from '../../../../../screenshots/dns.obex-rules.webp';
+import logImg from '../../../../../screenshots/dns.obex-log.webp';
+import logDetailImg from '../../../../../screenshots/dns.obex-log_detail.webp';
+
+DNS Worker 內建企業級保護性域名過濾引擎，能夠在亞毫秒級延遲下併發評估數十萬條攔截規則。它可以在網路層為您的家庭與企業裝置築起堅實防線，攔截侵入性廣告、行為追蹤器、釣魚欺詐、惡意軟體、挖礦程式以及殭屍網路命令與控制（C2）域名。
+
+---
+
+## 1. 威脅防禦與保護能力
+
+DNS Worker 在最底層的 DNS 解析階段即可攔截網路威脅——在建立 TCP 握手或發起 TLS 協商之前即掐斷隱患連線。
+
+### 核心攔截威脅類別
+- **惡意軟體與 C2 域名**：攔截勒索病毒回撥、特洛伊木馬分發點、殭屍網路控制端及可疑活動域名。
+- **釣魚與欺詐網站**：阻斷仿冒金融機構、憑證竊取頁面及釣魚詐騙域名。
+- **侵入式廣告與追蹤器**：在所有移動應用、智慧電視和網頁中靜默遮蔽橫幅廣告、影片插播廣告、彈窗及跨站行為分析追蹤。
+- **系統與裝置遙測**：阻斷 Windows、macOS、Android、智慧音箱及各類 IoT 裝置的激進診斷資料收集。
+- **挖礦程式**：阻止瀏覽器挖礦指令碼與後臺加密貨幣挖礦連線。
+
+---
+
+## 2. Web 管理面板規則配置
+
+### 訂閱外部規則黑名單
+
+在 Web 管理面板左側導航中進入 **Filters**（規則訂閱），檢視和管理當前接入點訂閱的外部黑名單。
+
+<Image src={filterImg} alt="規則訂閱與外部黑名單" format="webp" />
+
+1. 在 **External Blocklists**（外部規則列表）區域，點選 **Add Subscription**（新增訂閱）。
+2. 輸入訂閱 URL（相容標準 Adblock Plus 語法、Hosts 檔案及純域名列表格式）。
+3. 官方推薦的主流過濾源：
+   - **OISD Big**：`https://big.oisd.nl`（全面平衡的廣告與追蹤攔截源）
+   - **AdGuard Base**：`https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt`
+   - **HaGeZi Multi PRO++**：`https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.plus.txt`（高強度威脅攔截）
+   - **StevenBlack Hosts**：`https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts`
+4. 點選 **Save & Sync**（儲存並同步）。DNS Worker 會解析規則並生成緊湊布隆過濾器快取：
+   - **域名總數**：顯示解析出的有效去重規則數（通常達數十萬條）。
+   - **同步狀態**：顯示 `Normal`（正常同步）、`Outdated`（需更新）或 `Missing`（同步失敗）。
+   - **全量串行同步**：手動點選「同步所有清單」時，系統採用串行佇列更新，並在清單之間保持 1 秒間隔，防範 CPU 激增與鎖爭用。
+   - **單個清單獨立同步**：在「清單詳情」對話方塊中支援單獨手動同步特定清單，更新後自動重構合併當前設定規則。
+   - **自動排程**：系統後臺 Cron 任務會定期自動抓取最新規則，每次觸發採用時間分片更新單個清單，分攤邊緣計算負載。
+
+---
+
+### 自定義白名單、黑名單與重寫規則
+
+進入 **Rules**（自定義規則）頁面，根據特定需求配置即時生效的個性化規則：
+
+<Image src={rulesImg} alt="自定義規則管理" format="webp" />
+
+- **Allowlist (白名單)**：直接放行的信任域名，優先於外部規則（用於解除誤殺或保障公司業務通道）。
+- **Blocklist (黑名單)**：明確禁止解析的惡意或廣告域名，攔截優先順序最高。
+- **DNS Rewrites (重寫 / 重定向)**：將特定域名解析至指定 IP 地址或內網主機（例如區域網自建服務，或強制開啟 SafeSearch 如 `forcesafesearch.google.com`）。
+- **子域名比對規則**：取消單獨的「比對子域名」開關。若要比對子網域，需使用萬用字元 `*.example.com`，直接輸入 `example.com` 不會比對子網域。
+- **支援匹配語法**：
+  - 精確域名：`ad.example.com`
+  - 子域名萬用字元：`*.tracking.company.com` 或 `||adservice.google.com^`
+  - 正規表示式：`^analytics-[0-9]+\..*$`
+
+---
+
+### 攔截響應模式
+
+在接入點配置中，可以按需指定攔截髮生時的 DNS 響應行為：
+
+| 攔截模式 | 返回行為 | 優勢 |
+| :--- | :--- | :--- |
+| **Zero IP (0.0.0.0 / ::)** | IPv4 返回 `0.0.0.0`，IPv6 返回 `::` | **推薦首選**。客戶端以最快速度終止連線，避免超時重試。 |
+| **NXDOMAIN** | 返回 RCODE 3 (域名不存在) | 符合標準，向客戶端明確指示該域名不存在。 |
+| **Refused** | 返回 RCODE 5 (拒絕解析) | 清晰區分常規查詢錯誤與安全策略阻斷。 |
+
+---
+
+## 3. 即時威脅審計與查詢日誌
+
+進入 **Logs**（查詢日誌）頁面，即時監控網路威脅攔截情況與正常請求流動：
+
+<Image src={logImg} alt="即時查詢日誌與威脅阻斷" format="webp" />
+
+- **即時狀態標識**：
+  - `BLOCK` (紅色)：命中黑名單或惡意規則的請求，展示合成的攔截 IP（`0.0.0.0`）及命中原因。
+  - `PASS` (綠色)：已成功轉發至上游安全遞歸併正常返回的合法請求。
+  - `REWRITE` (藍色)：命中重寫規則並返回預設重定向目標的請求。
+- **威脅審計抽屜**：點選任意日誌條目即可滑出詳細審計抽屜，精準檢視命中的規則來源、客戶端 IP、地理歸屬、上游解析耗時及端到端加密狀態。
+
+<Image src={logDetailImg} alt="查詢日誌詳情審計抽屜" format="webp" />
+
+---
+
+## 4. 匹配引擎架構：分層混合架構 (Tiered Hybrid Architecture)
+
+為在資源受限的環境（如 512MB 記憶體的 VPS 或 128MB 限制的 Cloudflare Workers 邊緣節點）中實現超低延遲的大規模規則匹配，同時完整相容主流 AdGuard Home 過濾語法，DNS Worker 採用了**分層混合匹配架構**：
+
+```mermaid
+flowchart TD
+    REQ["收到查詢請求 (例如 sub.adserver.tracker.com)"]
+    L1["階段 1: 自定義規則 (Local Rules)<br/>(白名單 / 重定向 / 黑名單，可選匹配子域)"]
+    L2["階段 2: 外部列表白名單例外 (@@)<br/>(記憶體雜湊集合 O(1) 匹配 + 標籤逐級回溯)"]
+    L3["階段 3: 外部列表 DNS 重寫 ($dnsrewrite)<br/>(A / AAAA / CNAME / NXDOMAIN / REFUSED)"]
+    L4["階段 4: 雙態前綴布隆過濾器 (Bloom Filter)<br/>(|| 泛子域與精確域名黑名單 ~90%)"]
+    L5["階段 5: 正則與複雜萬用字元池 (Regex Pool)<br/>(頂級域名索引加速，MAX_REGEX_RULES 上限保護)"]
+    PASS["放行通過 (Clean / Whitelist)"]
+    BLOCK["攔截阻斷 (Block / Rewrite)"]
+
+    REQ --> L1
+    L1 -->|命中白名單| PASS
+    L1 -->|命中黑名單/重定向| BLOCK
+    L1 -->|未命中| L2
+
+    L2 -->|命中白名單例外| PASS
+    L2 -->|未命中| L3
+
+    L3 -->|命中重寫規則| BLOCK
+    L3 -->|未命中| L4
+
+    L4 -->|命中布隆黑名單| BLOCK
+    L4 -->|未命中| L5
+
+    L5 -->|命中複雜正則| BLOCK
+    L5 -->|未命中| PASS
+```
+
+1. **分級高效短路**：
+   - **階段 1：本地自定義規則**：優先順序最高。支援單域名精確匹配與自定義子域名匹配。
+   - **階段 2：外部列表白名單例外（`@@`）**：採用記憶體雜湊集合（Hash Set，`Set<string>`）維護，先以 $O(1)$ 查表，再進行父級標籤逐級回溯（Parent Walk）。命中即刻放行，徹底消除布隆過濾器的假陽性誤判風險。
+   - **階段 3：外部列表 DNS 重寫（`$dnsrewrite`）**：支援將域名即時合成為指定 IPv4、IPv6、CNAME 或阻斷狀態（NXDOMAIN / REFUSED）。
+   - **階段 4：雙態前綴布隆過濾器**：海量靜態黑名單的主力防線。透過字首區分單域名黑名單與帶 `||` 的泛子域黑名單，在微秒級時間內完成匹配，杜絕單域名規則誤殺子域名。
+   - **階段 5：正則與複雜萬用字元池**：對 `/regex/` 及複雜萬用字元建立頂級域名（Apex Domain）倒排索引，大幅收窄正則評估範圍，單配置預設上限為 1000 條。
+
+---
+
+## 5. 過濾環境變數速查
+
+在 `.env`（Serverfull 模式）或 `wrangler.toml`（Serverless 模式）中配置以下過濾引數：
+
+### `MAX_REGEX_RULES`
+- **支援模式**：Serverless & Serverfull
+- **預設值**：`1000`
+- **說明**：單個 Profile 允許合併的最大 AdGuard 正則表達式和複雜萬用字元規則上限。超額規則將被安全丟棄並記錄警告日誌，嚴防複雜正則拖慢 DNS 整體查詢效能。
+
+### `PRESET_EXTERNAL_FILTERS`
+- **支援模式**：Serverless & Serverfull
+- **`wrangler.toml` 格式**：多行 TOML 字串，內含 JSON 陣列物件 `[{ label, url }]`。
+- **`.env.serverfull` 格式**：JSON 字串。
+- **預設值**：內建精選過濾源，包括 OISD Big (`https://big.oisd.nl`)、OISD NSFW、AdGuard Base 及 StevenBlack hosts。
+
+### `BLOOM_FALSE_POSITIVE_RATE`
+- **支援模式**：Serverless & Serverfull
+- **預設值**：`0.0001`（萬分之一）
+- **說明**：布隆過濾器的誤報率設計閾值。極低的萬分之一閾值在最小化記憶體開銷的同時徹底壓低了二次驗證頻率。
+
+### `MAX_SYNC_DOMAINS`、`MAX_LIST_DOMAINS` & `MAX_LIST_BYTES`
+- **支援模式**：Serverless & Serverfull
+- **預設值**：`MAX_SYNC_DOMAINS=1000000`（總計 100 萬條上限），`MAX_LIST_DOMAINS=500000`（單列表 50 萬條上限），`MAX_LIST_BYTES=20971520`（單列表 20 MB 上限）。
+- **說明**：安全保護邊界，防止抓取過大規則源時發生無節制記憶體佔用與大流量耗盡。若外部列表超出 `MAX_LIST_BYTES`，系統將安全截斷至上限並於列表同步狀態明確標註警告，杜絕靜默丟失。
+
+### `BLOOM_MEM_TTL` & `SYNC_TIMEOUT_MS`
+- **預設值**：`BLOOM_MEM_TTL=600000`（記憶體快取 10 分鐘），`SYNC_TIMEOUT_MS=30000`（規則下載超時 30 秒）。
+- **說明**：編譯後布隆過濾器的記憶體快取保鮮時間，以及外部列表抓取超時保護。
+
+### `CONFIG_MEM_TTL`
+- **支援模式**：Serverless & Serverfull
+- **預設值**：`300000`（5 分鐘）
+- **說明**：每個 Worker 例項在記憶體中快取配置檔案設定與規則的時長。Cache-Tag 清除（`CF_ZONE_ID` / `CF_PURGE_TOKEN`）會清除所有資料中心的快取副本，但無法清除其他例項的記憶體副本，因此該值決定了設定變更最長需要多久才能全域性生效。調低該值（如 `60000`）成本很低：重新讀取通常由 Cache API 提供，而非訪問資料庫。
+
+### `SUBSTITUTE_DOMAIN`
+- **支援模式**：Serverless & Serverfull
+- **預設值**：`www.okx.com`
+- **說明**：用於網路連通性探測、測速及上游健康檢查的基準域名。
+
+### `BLOCK_MODE`
+- **支援模式**：Serverless & Serverfull
+- **預設值**：`zero_ip` (`0.0.0.0` / `::`)
+- **可選值**：`zero_ip`、`nxdomain`、`refused`
+- **說明**：未在接入點單獨指定攔截模式時的全域性後備策略。
