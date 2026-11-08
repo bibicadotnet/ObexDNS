@@ -162,6 +162,8 @@ export class NodeD1PreparedStatement implements D1PreparedStatement {
 }
 
 export class NodeD1Database implements D1Database {
+  private transactionLock: Promise<void> = Promise.resolve();
+
   constructor(
     public readonly rawDb: DatabaseSync,
     public readonly dbPath?: string
@@ -185,18 +187,38 @@ export class NodeD1Database implements D1Database {
   }
 
   async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
-    this.rawDb.exec('BEGIN IMMEDIATE');
+    if (!statements || statements.length === 0) {
+      return [];
+    }
+
+    // Queue / serialize batch transactions so concurrent async operations
+    // never execute overlapping BEGIN IMMEDIATE statements on the same SQLite connection.
+    const previousLock = this.transactionLock;
+    let releaseLock: () => void;
+    this.transactionLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+
+    await previousLock;
+
     try {
-      const results: D1Result<T>[] = [];
-      for (const stmt of statements) {
-        const res = await stmt.run<T>();
-        results.push(res);
+      this.rawDb.exec('BEGIN IMMEDIATE');
+      try {
+        const results: D1Result<T>[] = [];
+        for (const stmt of statements) {
+          const res = await stmt.run<T>();
+          results.push(res);
+        }
+        this.rawDb.exec('COMMIT');
+        return results;
+      } catch (err) {
+        try {
+          this.rawDb.exec('ROLLBACK');
+        } catch {}
+        throw err;
       }
-      this.rawDb.exec('COMMIT');
-      return results;
-    } catch (err) {
-      this.rawDb.exec('ROLLBACK');
-      throw err;
+    } finally {
+      releaseLock!();
     }
   }
 

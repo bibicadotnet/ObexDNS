@@ -55,9 +55,9 @@ export async function syncSingleSystemList(
   let count = 0;
   let domainsSinceYield = 0;
 
-  // Check if existing Bloom is current v2 format
+  // Check if existing Bloom is current v2 format (if list has no bloom domains, existingBloom is null and considered valid)
   const existingBloom = await model.getSystemListBloom(systemListId);
-  const isBloomCurrent = BloomFilter.isCurrentVersion(existingBloom);
+  const isBloomCurrent = !existingBloom || BloomFilter.isCurrentVersion(existingBloom);
   const useCacheHeaders = !force && isBloomCurrent && Boolean(systemList.etag || systemList.last_modified);
 
   const { error: fetchError, truncated, notModified, etag, lastModified } = await fetchListContent(

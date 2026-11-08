@@ -185,6 +185,25 @@ export async function handleProfileListsRequest(
       return new Response("Failed to update list", { status: 500 });
     }
 
+    // If enabling a system list that was never synced before, trigger immediate system sync
+    if (body.enabled) {
+      await systemListsManager.ensureLoaded(env.DB, false, env);
+      if (systemListsManager.isSystemUrl(list.url)) {
+        const sysId = systemListsManager.getIdByUrl(list.url);
+        if (sysId) {
+          const sysModel = new SystemListModel(env.DB);
+          const sysList = await sysModel.getSystemListById(sysId);
+          if (!sysList?.last_synced_at) {
+            ctx.waitUntil(
+              syncSingleSystemList(sysId, env, false)
+                .then(() => systemListsManager.ensureLoaded(env.DB, true, env))
+                .then(() => pipeline.clearCache(profileId, true, env))
+            );
+          }
+        }
+      }
+    }
+
     // Rebuild the merged profile bloom from the per-list blooms already stored.
     // rebuildProfileBloom skips the incremental orchestrator deliberately: that
     // path would re-download every remaining list, and with 2+ active lists it

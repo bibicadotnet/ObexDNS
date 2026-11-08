@@ -87,6 +87,9 @@ let memoryCircuitBreakerUntil = 0;
 /** Whether a deferred flush timer has already been scheduled */
 let isFlushScheduled = false;
 
+/** Concurrency guard: prevents multiple flush loops from executing simultaneously */
+let isFlushing = false;
+
 /** Timestamp of the last successful or attempted flush */
 let lastFlushTime = Date.now();
 
@@ -151,137 +154,148 @@ export async function tripWriteCircuitBreaker(cache?: any): Promise<void> {
  * @param ctx ExecutionContext to extend background lifetime
  */
 export async function flushLogBatch(env: Env, ctx?: ExecutionContext): Promise<void> {
-  isFlushScheduled = false;
-  lastFlushTime = Date.now();
-
+  if (isFlushing) {
+    return;
+  }
   if (logBatchQueue.length === 0) {
     return;
   }
 
-  const cache = (caches as any).default;
-  if (await isWriteQuotaTripped(cache)) {
-    logBatchQueue.length = 0;
-    return;
-  }
+  isFlushing = true;
+  try {
+    isFlushScheduled = false;
+    lastFlushTime = Date.now();
 
-  // Atomically extract up to MAX_BATCH_SIZE raw logs from the front of the queue
-  const logsToFlush = logBatchQueue.splice(0, MAX_BATCH_SIZE);
+    const cache = (caches as any).default;
+    if (await isWriteQuotaTripped(cache)) {
+      logBatchQueue.length = 0;
+      return;
+    }
 
-  if (logsToFlush.length === 0) {
-    return;
-  }
+    // Atomically extract up to MAX_BATCH_SIZE raw logs from the front of the queue
+    const logsToFlush = logBatchQueue.splice(0, MAX_BATCH_SIZE);
 
-  const logModel = new LogModel(env.DB);
-  const statements: D1PreparedStatement[] = [];
+    if (logsToFlush.length === 0) {
+      return;
+    }
 
-  // Generate atomic rollup UPSERT statements from unencrypted in-memory logs BEFORE sensitive data encryption
-  const rollupStatements = logModel.aggregation.createRollupUpsertStatements(logsToFlush);
-  if (rollupStatements.length > 0) {
-    statements.push(...rollupStatements);
-  }
+    const logModel = new LogModel(env.DB);
+    const statements: D1PreparedStatement[] = [];
 
-  // Group logs by profile to batch E2EE public key lookup
-  const profileIds = Array.from(new Set(logsToFlush.map((l) => l.profile_id)));
-  const keyMap = new Map<string, ProfileLogPublicKey | null>();
-  const dekMap = new Map<string, ActiveDek | null>();
+    // Generate atomic rollup UPSERT statements from unencrypted in-memory logs BEFORE sensitive data encryption
+    const rollupStatements = logModel.aggregation.createRollupUpsertStatements(logsToFlush);
+    if (rollupStatements.length > 0) {
+      statements.push(...rollupStatements);
+    }
 
-  await Promise.all(
-    profileIds.map(async (pid) => {
-      const pubKey = await getProfileLogPublicKey(env.DB, pid);
-      if (pubKey) {
-        keyMap.set(pid, pubKey);
-        if ("pqc_pk" in pubKey) {
-          // Directly ensure an active, unexpired DEK is provisioned.
-          // ensureActiveDek checks in-memory expiration (existing.expiresAt > now)
-          // and rotates only when the key has expired, incurring zero D1 I/O while valid.
-          const activeDek = await ensureActiveDek(env.DB, pid, pubKey.pqc_pk);
-          if (activeDek) {
-            dekMap.set(pid, activeDek);
+    // Group logs by profile to batch E2EE public key lookup
+    const profileIds = Array.from(new Set(logsToFlush.map((l) => l.profile_id)));
+    const keyMap = new Map<string, ProfileLogPublicKey | null>();
+    const dekMap = new Map<string, ActiveDek | null>();
+
+    await Promise.all(
+      profileIds.map(async (pid) => {
+        const pubKey = await getProfileLogPublicKey(env.DB, pid);
+        if (pubKey) {
+          keyMap.set(pid, pubKey);
+          if ("pqc_pk" in pubKey) {
+            // Directly ensure an active, unexpired DEK is provisioned.
+            // ensureActiveDek checks in-memory expiration (existing.expiresAt > now)
+            // and rotates only when the key has expired, incurring zero D1 I/O while valid.
+            const activeDek = await ensureActiveDek(env.DB, pid, pubKey.pqc_pk);
+            if (activeDek) {
+              dekMap.set(pid, activeDek);
+            }
           }
         }
-      }
-    })
-  );
+      })
+    );
 
-  for (const log of logsToFlush) {
-    const pubKey = keyMap.get(log.profile_id);
-    if (pubKey) {
-      try {
-        const sensitiveData = {
-          domain: log.domain,
-          client_ip: log.client_ip,
-          geo_country: log.geo_country,
-          answer: log.answer,
-          dest_geoip: log.dest_geoip,
-          dest_country_code: log.dest_country_code,
-          dest_country: log.dest_country,
-          dest_isp: log.dest_isp,
-          ecs: log.ecs,
-          upstream: log.upstream,
-          reason: log.reason,
-        };
+    for (const log of logsToFlush) {
+      const pubKey = keyMap.get(log.profile_id);
+      if (pubKey) {
+        try {
+          const sensitiveData = {
+            domain: log.domain,
+            client_ip: log.client_ip,
+            geo_country: log.geo_country,
+            answer: log.answer,
+            dest_geoip: log.dest_geoip,
+            dest_country_code: log.dest_country_code,
+            dest_country: log.dest_country,
+            dest_isp: log.dest_isp,
+            ecs: log.ecs,
+            upstream: log.upstream,
+            reason: log.reason,
+          };
 
-        if ("pqc_pk" in pubKey) {
-          // Post-Quantum Periodic Envelope Encryption
-          // ZERO expiration checks here: directly use the active DEK
-          const activeDek = dekMap.get(log.profile_id);
-          if (activeDek) {
-            const encrypted = await encryptSensitiveLogDataWithDek(activeDek.dek, sensitiveData);
-            log.encrypt_version = 2;
-            log.kem_key_id = activeDek.kemKeyId;
+          if ("pqc_pk" in pubKey) {
+            // Post-Quantum Periodic Envelope Encryption
+            // ZERO expiration checks here: directly use the active DEK
+            const activeDek = dekMap.get(log.profile_id);
+            if (activeDek) {
+              const encrypted = await encryptSensitiveLogDataWithDek(activeDek.dek, sensitiveData);
+              log.encrypt_version = 2;
+              log.kem_key_id = activeDek.kemKeyId;
+              log.encrypted_payload = encrypted;
+            }
+          } else if ("kty" in pubKey) {
+            // Legacy P-256 E2EE (ECDH JWK)
+            const encrypted = await encryptSensitiveLogData(pubKey, sensitiveData);
+            log.encrypt_version = 1;
+            log.kem_key_id = null;
             log.encrypted_payload = encrypted;
           }
-        } else if ("kty" in pubKey) {
-          // Legacy P-256 E2EE (ECDH JWK)
-          const encrypted = await encryptSensitiveLogData(pubKey, sensitiveData);
-          log.encrypt_version = 1;
-          log.kem_key_id = null;
-          log.encrypted_payload = encrypted;
-        }
 
-        if (log.encrypt_version && log.encrypt_version > 0) {
-          log.domain = "";
-          log.client_ip = "";
-          log.geo_country = "";
-          log.answer = undefined;
-          log.dest_geoip = undefined;
-          log.dest_country_code = null;
-          log.dest_country = null;
-          log.dest_isp = null;
-          log.ecs = undefined;
-          log.upstream = undefined;
-          log.reason = undefined;
+          if (log.encrypt_version && log.encrypt_version > 0) {
+            log.domain = "";
+            log.client_ip = "";
+            log.geo_country = "";
+            log.answer = undefined;
+            log.dest_geoip = undefined;
+            log.dest_country_code = null;
+            log.dest_country = null;
+            log.dest_isp = null;
+            log.ecs = undefined;
+            log.upstream = undefined;
+            log.reason = undefined;
+          }
+        } catch (encErr) {
+          console.error(`[LogBatcher] Encryption failed for profile ${log.profile_id}:`, encErr);
         }
-      } catch (encErr) {
-        console.error(`[LogBatcher] Encryption failed for profile ${log.profile_id}:`, encErr);
+      } else {
+        log.encrypt_version = 0;
+        log.kem_key_id = null;
       }
-    } else {
-      log.encrypt_version = 0;
-      log.kem_key_id = null;
+      statements.push(logModel.createInsertStatement(log));
     }
-    statements.push(logModel.createInsertStatement(log));
-  }
 
-  try {
-    await env.DB.batch(statements);
-  } catch (err: any) {
-    const errorMsg = String(err?.message || err);
+    try {
+      await env.DB.batch(statements);
+    } catch (err: any) {
+      const errorMsg = String(err?.message || err);
 
-    // Detect Cloudflare D1 row write quota exhaustion
-    if (
-      errorMsg.includes("exceeded D1's free tier daily row write limit") ||
-      errorMsg.includes("row write limit") ||
-      errorMsg.includes("daily write limit")
-    ) {
-      await tripWriteCircuitBreaker(cache);
-    } else {
-      console.warn(`[LogBatcher] Batch write failed (${statements.length} stmts):`, errorMsg);
+      // Detect Cloudflare D1 row write quota exhaustion
+      if (
+        errorMsg.includes("exceeded D1's free tier daily row write limit") ||
+        errorMsg.includes("row write limit") ||
+        errorMsg.includes("daily write limit")
+      ) {
+        await tripWriteCircuitBreaker(cache);
+      } else {
+        console.warn(`[LogBatcher] Batch write failed (${statements.length} stmts):`, errorMsg);
+        // Re-queue the failed logs at the front if queue is not overflowing, so logs aren't lost
+        if (logBatchQueue.length < 1000) {
+          logBatchQueue.unshift(...logsToFlush);
+        }
+      }
     }
-  }
-
-  // If there are still items remaining in queue, schedule the next batch
-  if (logBatchQueue.length > 0) {
-    scheduleDeferredFlush(env, ctx);
+  } finally {
+    isFlushing = false;
+    // If there are still items remaining in queue, schedule the next batch
+    if (logBatchQueue.length > 0) {
+      scheduleDeferredFlush(env, ctx);
+    }
   }
 }
 

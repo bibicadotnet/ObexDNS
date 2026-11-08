@@ -45,11 +45,14 @@ export async function syncSingleList(
       if (sysId) {
         const sysModel = new SystemListModel(env.DB);
         let sysList = await sysModel.getSystemListById(sysId);
-        // Tránh tải trùng lặp khi force=true: nếu system list vừa được đồng bộ trong 60s qua thì bỏ qua tải lại
-        const isFresh = sysList?.last_synced_at && (now - sysList.last_synced_at < 60);
-        if (force && !isFresh) {
-          await syncSingleSystemList(sysId, env, true);
+        // Tránh tải trùng lặp khi force=true: nếu system list vừa được đồng bộ trong 60s qua thì bỏ qua tải lại.
+        // Tuy nhiên, nếu system list chưa từng được đồng bộ (neverSynced), bắt buộc phải tải ngay để profile có tác dụng lọc.
+        const isFresh = Boolean(sysList?.last_synced_at && (now - sysList.last_synced_at < 60));
+        const neverSynced = !sysList?.last_synced_at;
+        if ((force && !isFresh) || neverSynced) {
+          await syncSingleSystemList(sysId, env, force || neverSynced);
           sysList = await sysModel.getSystemListById(sysId);
+          await systemListsManager.ensureLoaded(env.DB, true, env);
         }
         await listModel.updateListSyncStatus(
           list.id,
@@ -87,8 +90,8 @@ export async function syncSingleList(
 
   // 检查已有布隆过滤器是否为最新版本 (v2)；若不是最新版或被指定 force，则忽略 ETag/304 强制重新下载并构建
   const existingBloom = await listBloomModel.getListBloom(list.id);
-  const isBloomCurrent = BloomFilter.isCurrentVersion(existingBloom);
-  const useCacheHeaders = !force && isBloomCurrent;
+  const isBloomCurrent = !existingBloom || BloomFilter.isCurrentVersion(existingBloom);
+  const useCacheHeaders = !force && isBloomCurrent && Boolean(list.etag || list.last_modified);
 
   // 流式下载并按行解析规则，分流分类存储，携带协商缓存头
   const { error: fetchError, truncated, notModified, etag, lastModified } = await fetchListContent(
