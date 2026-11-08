@@ -200,21 +200,30 @@ async function syncProfileListRows(
  * Employs on-demand optimization: only lists that are currently active in at least
  * one profile (or explicitly forced) are downloaded/synced, avoiding unnecessary
  * bandwidth and CPU consumption for dormant presets.
+ *
+ * When profileId is specified (e.g. from a user's dashboard "Sync All Lists" action),
+ * the sync scope is strictly scoped to the active system lists belonging to that profile.
  */
-export async function syncAllSystemLists(env: Env, force: boolean = false): Promise<void> {
+export async function syncAllSystemLists(env: Env, force: boolean = false, profileId?: string): Promise<void> {
   if (env?.DB) {
     await systemListsManager.ensureLoaded(env.DB, false, env);
   }
   const model = new SystemListModel(env.DB);
   const lists = await model.getSystemLists();
 
-  // Determine which system lists are actively in use by at least one profile
+  // Determine which system lists are actively in use (scoped to profileId if specified)
   const activeUrls = new Set<string>();
   if (env?.DB) {
     try {
-      const activeRows = await env.DB
-        .prepare("SELECT DISTINCT url FROM lists WHERE enabled = 1")
-        .all<{ url: string }>();
+      const activeRows = profileId
+        ? await env.DB
+            .prepare("SELECT DISTINCT url FROM lists WHERE enabled = 1 AND profile_id = ?")
+            .bind(profileId)
+            .all<{ url: string }>()
+        : await env.DB
+            .prepare("SELECT DISTINCT url FROM lists WHERE enabled = 1")
+            .all<{ url: string }>();
+
       if (activeRows?.results) {
         for (const row of activeRows.results) {
           activeUrls.add(row.url.trim().toLowerCase());
@@ -229,8 +238,9 @@ export async function syncAllSystemLists(env: Env, force: boolean = false): Prom
     const listNorm = list.url.trim().toLowerCase();
     const isActiveInProfile = activeUrls.has(listNorm);
 
-    // Skip dormant system presets if no profile is actively using them (unless force=true)
-    if (!isActiveInProfile && !force) {
+    // Skip dormant system presets if no profile is actively using them.
+    // When profileId is specified, strictly skip any system list not active in this profile even if force=true.
+    if (!isActiveInProfile && (!force || profileId)) {
       continue;
     }
 

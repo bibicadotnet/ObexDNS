@@ -226,7 +226,7 @@ export async function handleProfileListsRequest(
       const url = new URL(request.url);
       const force = url.searchParams.get('force') === 'true';
       ctx.waitUntil(
-        syncAllSystemLists(env, force)
+        syncAllSystemLists(env, force, profileId)
           .then(() => syncAllListsForProfile(profileId, env, ctx, force))
       );
       return new Response(JSON.stringify({ message: "Sync started" }), { status: 202 });
