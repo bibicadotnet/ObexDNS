@@ -19,9 +19,11 @@ export interface Env {
   PRESET_EXTERNAL_FILTERS?: string;
   PRESET_ECH_FRONTING_DOMAINS?: string;
   DEFAULT_PROFILE_FILTER_URLS?: string;
+  SYSTEM_FILTER_URLS?: string;
   BLOOM_FALSE_POSITIVE_RATE?: string | number;
   THROTTLE_ACTIVE_SEC?: string | number;
   SYNC_PROFILE_INTERVAL_SEC?: string | number;
+  SYNC_SYSTEM_INTERVAL_SEC?: string | number;
   TURNSTILE_SECRET_KEY?: string;
   MAX_SYNC_DOMAINS?: string | number;
   MAX_LIST_DOMAINS?: string | number;

@@ -39,10 +39,19 @@ export const DEFAULT_PRESET_UPSTREAMS: readonly PresetUpstream[] = [
  * Built-in default preset blocklists and external filters.
  */
 export const DEFAULT_PRESET_EXTERNAL_FILTERS: readonly PresetFilter[] = [
-  { label: 'filtering.presetOisdBig', url: 'https://big.oisd.nl' },
-  { label: 'filtering.presetOisdNsfw', url: 'https://nsfw.oisd.nl' },
-  { label: 'filtering.presetAdGuard', url: 'https://adguardteam.github.io/AdguardFilters/BaseFilter/sections/adservers.txt' },
-  { label: 'filtering.presetStevenBlack', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts' }
+  { label: 'Blocklist (ABPVN + AdGuard DNS + 1Hosts Lite)', url: 'https://lists.bibica.net/blocklists.txt' },
+  { label: 'Whitelist (ShadowWhisperer)', url: 'https://lists.bibica.net/whitelist.txt' },
+  { label: 'DNS Rewrites', url: 'https://lists.bibica.net/rewrites.txt' },
+  { label: 'HaGeZi Light', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/light.txt' },
+  { label: 'HaGeZi Multi NORMAL', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/multi.txt' },
+  { label: 'HaGeZi Pro', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt' },
+  { label: 'HaGeZi Pro++', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.plus.txt' },
+  { label: 'HaGeZi Ultimate', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/ultimate.txt' },
+  { label: 'HaGeZi Threat Intelligence (Medium)', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt' },
+  { label: 'HaGeZi NSFW', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/nsfw.txt' },
+  { label: 'StevenBlack Unified Hosts', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts' },
+  { label: 'OISD Big', url: 'https://big.oisd.nl' },
+  { label: 'OISD NSFW', url: 'https://nsfw.oisd.nl' }
 ];
 
 /**
@@ -127,12 +136,9 @@ export function getPresetExternalFilters(env?: { PRESET_EXTERNAL_FILTERS?: strin
 
 /**
  * Built-in default filter list URLs applied automatically to new user profiles and default registration profile.
+ * Default in code is empty: administrators configure this via DEFAULT_PROFILE_FILTER_URLS in .env if desired.
  */
-export const DEFAULT_PROFILE_FILTER_URLS: readonly string[] = [
-  'https://lists.bibica.net/blocklists.txt',
-  'https://lists.bibica.net/whitelist.txt',
-  'https://lists.bibica.net/rewrites.txt'
-];
+export const DEFAULT_PROFILE_FILTER_URLS: readonly string[] = [];
 
 /**
  * Resolves configured default profile filter list URLs from environment variable or falls back to built-in presets.
@@ -165,4 +171,78 @@ export function getDefaultProfileFilterUrls(env?: { DEFAULT_PROFILE_FILTER_URLS?
     }
   }
   return [...DEFAULT_PROFILE_FILTER_URLS];
+}
+
+/**
+ * Resolves configured system shared filter list URLs and preset filters.
+ * When SYSTEM_FILTER_URLS is omitted or empty, defaults to DEFAULT_PROFILE_FILTER_URLS + PRESET_EXTERNAL_FILTERS.
+ * When SYSTEM_FILTER_URLS is explicitly provided, only uses the explicitly configured URLs (plus DEFAULT_PROFILE_FILTER_URLS).
+ *
+ * @param env - Worker or Serverfull environment bindings.
+ * @returns Array of sanitized unique system filter list URL and label pairs.
+ */
+export function getSystemFilterEntries(env?: {
+  SYSTEM_FILTER_URLS?: string;
+  DEFAULT_PROFILE_FILTER_URLS?: string;
+  PRESET_EXTERNAL_FILTERS?: string;
+}): { url: string; label?: string }[] {
+  const seen = new Set<string>();
+  const entries: { url: string; label?: string }[] = [];
+
+  const add = (url: string, label?: string) => {
+    const trimmed = url.trim();
+    if (!trimmed || !isSafeUrl(trimmed)) return;
+    const lower = trimmed.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      entries.push({ url: trimmed, label: label || undefined });
+    }
+  };
+
+  const hasExplicitSystemUrls = Boolean(env?.SYSTEM_FILTER_URLS && env.SYSTEM_FILTER_URLS.trim().length > 0);
+
+  if (hasExplicitSystemUrls) {
+    // 1. Explicit SYSTEM_FILTER_URLS provided by admin
+    const raw = env!.SYSTEM_FILTER_URLS!.trim();
+    if (raw.startsWith('[') && raw.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((u: any) => {
+            const urlStr = typeof u === 'string' ? u : u?.url;
+            const labelStr = typeof u === 'object' ? u?.label : undefined;
+            if (urlStr) add(urlStr, labelStr);
+          });
+        }
+      } catch {}
+    } else {
+      raw.split(/[\r\n,]+/).forEach(u => add(u));
+    }
+
+    // Include DEFAULT_PROFILE_FILTER_URLS if defined
+    const defaultUrls = getDefaultProfileFilterUrls(env);
+    defaultUrls.forEach(u => add(u));
+  } else {
+    // 2. Fallback when SYSTEM_FILTER_URLS is omitted: DEFAULT_PROFILE_FILTER_URLS + PRESET_EXTERNAL_FILTERS
+    const defaultUrls = getDefaultProfileFilterUrls(env);
+    defaultUrls.forEach(u => add(u));
+
+    const presets = getPresetExternalFilters(env);
+    for (const p of presets) {
+      add(p.url, p.label);
+    }
+  }
+
+  return entries;
+}
+
+/**
+ * Resolves all system shared filter list URLs.
+ */
+export function getSystemFilterUrls(env?: {
+  SYSTEM_FILTER_URLS?: string;
+  DEFAULT_PROFILE_FILTER_URLS?: string;
+  PRESET_EXTERNAL_FILTERS?: string;
+}): string[] {
+  return getSystemFilterEntries(env).map(e => e.url);
 }

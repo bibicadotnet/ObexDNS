@@ -23,7 +23,7 @@ export const pipelineConfig = {
 
     // Ensure system shared lists are active in memory before building/checking config
     if (env.DB) {
-      await systemListsManager.ensureLoaded(env.DB).catch((e) => {
+      await systemListsManager.ensureLoaded(env.DB, false, env).catch((e) => {
         console.warn("[Config] Non-critical systemListsManager load error:", e);
       });
     }
@@ -144,7 +144,7 @@ export const pipelineConfig = {
           return null;
         }),
         listModel.getLists(profileId).catch(() => []),
-        systemListsManager.ensureLoaded(env.DB).catch(() => {})
+        systemListsManager.ensureLoaded(env.DB, false, env).catch(() => {})
       ]);
 
       if (!profile) {

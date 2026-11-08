@@ -171,6 +171,10 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # Minimum interval between automated blocklist profile syncs (in seconds) / 自动同步外部规则列表最小间隔 (秒)
 # SYNC_PROFILE_INTERVAL_SEC=86400
 
+# Minimum interval between automated system shared filter lists syncs (in seconds, default 21600 = 6 hours)
+# 系统共享规则列表自动同步最小间隔 (秒，默认 21600 = 6 小时)
+# SYNC_SYSTEM_INTERVAL_SEC=21600
+
 # ------------------------------------------------------------------------------
 # Quotas, Retention & Inactivity Policy (Optional) / 系统配额、日志保留与闲置清理策略 (选填)
 # ------------------------------------------------------------------------------
@@ -214,11 +218,15 @@ SUBSTITUTE_DOMAIN=www.okx.com
 PRESET_UPSTREAMS='[{"label":"settings.presetCloudflareSecurity","url":"https://security.cloudflare-dns.com/dns-query"},{"label":"settings.presetCloudflareFamilies","url":"https://family.cloudflare-dns.com/dns-query"},{"label":"Cloudflare","url":"https://cloudflare-dns.com/dns-query"},{"label":"settings.presetQuad9","url":"https://dns.quad9.net/dns-query"},{"label":"settings.presetQuad9Ecs","url":"https://dns11.quad9.net/dns-query"},{"label":"settings.presetControlDFree","url":"https://freedns.controld.com/no-ads-malware-typo"},{"label":"settings.presetControlDUncensored","url":"https://freedns.controld.com/uncensored"},{"label":"settings.presetAdGuard","url":"https://dns.adguard-dns.com/dns-query"},{"label":"settings.presetAdGuardFamily","url":"https://family.adguard-dns.com/dns-query"},{"label":"Cloudflare Security (1.1.1.2)","url":"tcp://1.1.1.2:53"},{"label":"Cloudflare (1.1.1.1)","url":"tcp://1.1.1.1:53"},{"label":"Quad9 ECS (9.9.9.11)","url":"tcp://9.9.9.11:9953"},{"label":"Google (8.8.8.8)","url":"tcp://8.8.8.8:53"}]'
 
 # Preset External Filters (JSON string) / 预设外部规则过滤列表 (JSON 字符串)
-PRESET_EXTERNAL_FILTERS='[{"label":"filtering.presetOisdBig","url":"https://big.oisd.nl"},{"label":"filtering.presetOisdNsfw","url":"https://nsfw.oisd.nl"},{"label":"filtering.presetAdGuard","url":"https://adguardteam.github.io/AdguardFilters/BaseFilter/sections/adservers.txt"},{"label":"filtering.presetStevenBlack","url":"https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"}]'
+PRESET_EXTERNAL_FILTERS='[{"label":"Blocklist (ABPVN + AdGuard DNS + 1Hosts Lite)","url":"https://lists.bibica.net/blocklists.txt"},{"label":"Whitelist (ShadowWhisperer)","url":"https://lists.bibica.net/whitelist.txt"},{"label":"DNS Rewrites","url":"https://lists.bibica.net/rewrites.txt"},{"label":"HaGeZi Light","url":"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/light.txt"},{"label":"HaGeZi Multi NORMAL","url":"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/multi.txt"},{"label":"HaGeZi Pro","url":"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt"},{"label":"HaGeZi Pro++","url":"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.plus.txt"},{"label":"HaGeZi Ultimate","url":"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/ultimate.txt"},{"label":"HaGeZi Threat Intelligence (Medium)","url":"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt"},{"label":"HaGeZi NSFW","url":"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/nsfw.txt"},{"label":"StevenBlack Unified Hosts","url":"https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"},{"label":"OISD Big","url":"https://big.oisd.nl"},{"label":"OISD NSFW","url":"https://nsfw.oisd.nl"}]'
 
 # Default profile external filter URLs (comma-separated, newline-separated, or JSON array)
-# Automatically added to newly created profiles and default registration profile
-DEFAULT_PROFILE_FILTER_URLS='https://lists.bibica.net/blocklists.txt,https://lists.bibica.net/whitelist.txt,https://lists.bibica.net/rewrites.txt'
+# Automatically added to newly created profiles and default registration profile. Left empty by default.
+# DEFAULT_PROFILE_FILTER_URLS=''
+
+# System shared filter URLs (defaults to PRESET_EXTERNAL_FILTERS + DEFAULT_PROFILE_FILTER_URLS if omitted)
+# Shared globally with two-tier Bloom filter architecture across all profiles
+# SYSTEM_FILTER_URLS=''
 
 # Preset ECH Fronting (outer SNI) domains (JSON string) / 预设 ECH 前置外层 SNI 域名 (JSON 字符串)
 PRESET_ECH_FRONTING_DOMAINS='["cloudflare-ech.com","crypto.cloudflare.com","one.one.one.one","www.cloudflare.com","encryptedsni.com","cdnjs.com"]'

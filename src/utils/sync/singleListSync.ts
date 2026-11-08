@@ -39,7 +39,7 @@ export async function syncSingleList(
 ): Promise<SingleListSyncResult> {
   // ── 系统共享列表快速通道 (System Shared List Fast Path) ───────────────────
   if (env?.DB) {
-    await systemListsManager.ensureLoaded(env.DB);
+    await systemListsManager.ensureLoaded(env.DB, false, env);
     if (systemListsManager.isSystemUrl(list.url)) {
       const sysId = systemListsManager.getIdByUrl(list.url);
       if (sysId) {
@@ -158,10 +158,13 @@ export async function syncSingleList(
         `[Sync] Profile ${profileId}: list #${list.id} truncated at ${(maxListBytes / 1024 / 1024).toFixed(0)} MB with ${count} rules. Warning: ${syncError}`
       );
     }
-    // 写入列表级布隆过滤器和扩展规则到数据库
-    const saveOps: Promise<any>[] = [
-      listBloomModel.upsertListBloom(list.id, listBloom.toUint8Array().buffer as ArrayBuffer, now)
-    ];
+    // 写入列表级布隆过滤器和扩展规则到数据库 (若列表无域名拦截规则则跳过 Bloom 存储)
+    const saveOps: Promise<any>[] = [];
+    if (!listBloom.isEmpty()) {
+      saveOps.push(listBloomModel.upsertListBloom(list.id, listBloom.toUint8Array().buffer as ArrayBuffer, now));
+    } else {
+      saveOps.push(listBloomModel.clearListBlooms(list.id));
+    }
     if (env?.DB) {
       saveOps.push(new AdguardRulesModel(env.DB).upsertListRules(list.id, adguardPayload, now));
     }

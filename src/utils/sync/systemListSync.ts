@@ -129,11 +129,16 @@ export async function syncSingleSystemList(
       console.warn(`[SystemListSync] System list #${systemListId} truncated with ${count} rules.`);
     }
 
-    // Save Bloom and AdGuard rules
-    await Promise.all([
-      model.upsertSystemListBloom(systemListId, listBloom.toUint8Array().buffer as ArrayBuffer, now),
+    // Save Bloom and AdGuard rules (skip saving empty Bloom for whitelist/rewrites to save DB & RAM)
+    const saveOps: Promise<any>[] = [
       model.upsertSystemListAdguard(systemListId, adguardPayload, now)
-    ]);
+    ];
+    if (!listBloom.isEmpty()) {
+      saveOps.push(model.upsertSystemListBloom(systemListId, listBloom.toUint8Array().buffer as ArrayBuffer, now));
+    } else {
+      saveOps.push(model.clearSystemListBloom(systemListId));
+    }
+    await Promise.all(saveOps);
 
     await model.updateMetadata(systemListId, {
       etag: etag || null,
@@ -187,11 +192,43 @@ async function syncProfileListRows(
 
 /**
  * Synchronizes all registered system-wide shared filter lists.
+ * Employs on-demand optimization: only lists that are currently active in at least
+ * one profile (or explicitly forced) are downloaded/synced, avoiding unnecessary
+ * bandwidth and CPU consumption for dormant presets.
  */
 export async function syncAllSystemLists(env: Env, force: boolean = false): Promise<void> {
+  if (env?.DB) {
+    await systemListsManager.ensureLoaded(env.DB, false, env);
+  }
   const model = new SystemListModel(env.DB);
   const lists = await model.getSystemLists();
+
+  // Determine which system lists are actively in use by at least one profile
+  const activeUrls = new Set<string>();
+  if (env?.DB) {
+    try {
+      const activeRows = await env.DB
+        .prepare("SELECT DISTINCT url FROM lists WHERE enabled = 1")
+        .all<{ url: string }>();
+      if (activeRows?.results) {
+        for (const row of activeRows.results) {
+          activeUrls.add(row.url.trim().toLowerCase());
+        }
+      }
+    } catch (e) {
+      console.warn("[SystemListSync] Could not check active profile lists:", e);
+    }
+  }
+
   for (const list of lists) {
+    const listNorm = list.url.trim().toLowerCase();
+    const isActiveInProfile = activeUrls.has(listNorm);
+
+    // Skip dormant system presets if no profile is actively using them (unless force=true)
+    if (!isActiveInProfile && !force) {
+      continue;
+    }
+
     try {
       await syncSingleSystemList(list.id, env, force);
     } catch (err) {

@@ -105,9 +105,9 @@ export function parseAdGuardLine(line: string): ParsedAdGuardRule | null {
     return { kind: AdGuardRuleKind.UNSUPPORTED, raw: trimmed };
   }
 
-  // 2. Comments and metadata (lines starting with '!' or standalone '#')
+  // 2. Comments and metadata (lines starting with '!', standalone '#', or section headers '[')
   const firstChar = trimmed.charCodeAt(0);
-  if (firstChar === 33 || firstChar === 35) { // '!' or '#'
+  if (firstChar === 33 || firstChar === 35 || firstChar === 91) { // '!', '#', '['
     return { kind: AdGuardRuleKind.COMMENT, raw: trimmed };
   }
 

@@ -59,7 +59,7 @@ export async function handleProfileListsRequest(
       let buffer: ArrayBuffer | null = null;
       let adguardPayload: any = null;
 
-      await systemListsManager.ensureLoaded(env.DB);
+      await systemListsManager.ensureLoaded(env.DB, false, env);
       if (systemListsManager.isSystemUrl(list.url)) {
         const sysId = systemListsManager.getIdByUrl(list.url);
         if (sysId) {
@@ -224,7 +224,7 @@ export async function handleProfileListsRequest(
 
       const url = new URL(request.url);
       const force = url.searchParams.get('force') === 'true';
-      await systemListsManager.ensureLoaded(env.DB);
+      await systemListsManager.ensureLoaded(env.DB, false, env);
       if (systemListsManager.isSystemUrl(list.url)) {
         const sysId = systemListsManager.getIdByUrl(list.url);
         if (sysId) {
@@ -241,7 +241,7 @@ export async function handleProfileListsRequest(
 
     const body = await request.json() as any;
     const MAX_CUSTOM_LISTS = Number(env?.MAX_CUSTOM_LISTS_PER_PROFILE) || 5;
-    await systemListsManager.ensureLoaded(env.DB);
+    await systemListsManager.ensureLoaded(env.DB, false, env);
     const existingLists = await listModel.getLists(profileId);
     const currentCustomCount = existingLists.filter(l => !systemListsManager.isSystemUrl(l.url)).length;
 

@@ -7,6 +7,7 @@ import { D1Database } from "@cloudflare/workers-types";
 import { SystemListModel } from "../../models/systemList";
 import { BloomFilter } from "../../utils/bloom";
 import { AdGuardProfileEngine, AdGuardPayload } from "../adguard";
+import { getSystemFilterUrls, getSystemFilterEntries } from "../../constants/presets";
 
 export interface SystemListCacheItem {
   id: number;
@@ -74,7 +75,7 @@ class SystemListsManager {
    * Ensures system lists are loaded in memory.
    * Cached with TTL (10 minutes) or refreshed immediately if invalidated.
    */
-  async ensureLoaded(db: D1Database, force: boolean = false): Promise<void> {
+  async ensureLoaded(db: D1Database, force: boolean = false, env?: any): Promise<void> {
     const now = Date.now();
     if (!force && this.lastLoadedTs > 0 && now - this.lastLoadedTs < 600000 && this.items.size > 0) {
       return;
@@ -87,6 +88,26 @@ class SystemListsManager {
     this.loadPromise = (async () => {
       try {
         const model = new SystemListModel(db);
+
+        // Auto-seed/register any configured system lists and preset filters from env
+        if (env) {
+          const configuredEntries = getSystemFilterEntries(env);
+          for (const entry of configuredEntries) {
+            await model.addSystemList(entry.url, entry.label);
+          }
+
+          // Cleanup obsolete system_lists in DB no longer present in configured entries
+          if (configuredEntries.length > 0) {
+            const configuredSet = new Set(configuredEntries.map((e) => e.url.trim().toLowerCase()));
+            const currentDbLists = await model.getSystemLists();
+            for (const cl of currentDbLists) {
+              if (!configuredSet.has(cl.url.trim().toLowerCase())) {
+                await db.prepare("DELETE FROM system_lists WHERE id = ?").bind(cl.id).run().catch(() => {});
+              }
+            }
+          }
+        }
+
         const lists = await model.getSystemLists();
         const newItems = new Map<number, SystemListCacheItem>();
         const newUrlToId = new Map<string, number>();
@@ -110,6 +131,9 @@ class SystemListsManager {
             const bloomBuf = await model.getSystemListBloom(list.id);
             if (bloomBuf) {
               bloom = BloomFilter.fromUint8Array(new Uint8Array(bloomBuf));
+              if (bloom.isEmpty()) {
+                bloom = null;
+              }
             }
           } catch (e) {
             console.error(`[SystemListsManager] Failed to load Bloom for system list #${list.id}:`, e);

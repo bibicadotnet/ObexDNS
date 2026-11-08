@@ -11,6 +11,8 @@ import { SystemSettingsModel } from './models/systemSettings';
 
 /** In-memory throttle tracker for cron cleanup phase across executions in the same isolate */
 let lastCleanupMemoryTs = 0;
+/** In-memory throttle tracker for system shared lists sync phase */
+let lastSystemSyncMemoryTs = 0;
 
 /**
  * Handles cron-scheduled events to run background cleanup and list synchronization.
@@ -124,17 +126,55 @@ export async function handleScheduled(
       console.error("[Cron] Cloudflare IP range sync failed:", e);
     }
 
-    // ── SYSTEM SHARED LISTS SYNC (Every 6–12 Hours with ETag/304) ────────────
+    // ── SYSTEM SHARED LISTS SYNC (Configurable Interval with ETag/304) ───────
     try {
-      const lastSystemSyncKey = "cron:last_system_lists_sync";
       const SYSTEM_SYNC_INTERVAL_SEC = Number(env.SYNC_SYSTEM_INTERVAL_SEC) || 21600; // 6 hours default
       let shouldSyncSystem = true;
-      const lastSysSync = await cacheUtils.get<number>(cache, lastSystemSyncKey);
-      if (lastSysSync && (now - lastSysSync < SYSTEM_SYNC_INTERVAL_SEC)) {
+
+      // 1. Fast L1 in-memory check (0ms, Node.js & warm isolate)
+      if (lastSystemSyncMemoryTs && now - lastSystemSyncMemoryTs < SYSTEM_SYNC_INTERVAL_SEC) {
         shouldSyncSystem = false;
       }
+
+      const lastSystemSyncKey = "cron:last_system_lists_sync";
+
+      // 2. L2 Cache API check (Cloudflare Workers)
+      if (shouldSyncSystem && cache) {
+        const lastSysSync = await cacheUtils.get<number>(cache, lastSystemSyncKey);
+        if (lastSysSync && now - lastSysSync < SYSTEM_SYNC_INTERVAL_SEC) {
+          lastSystemSyncMemoryTs = lastSysSync;
+          shouldSyncSystem = false;
+        }
+      }
+
+      // 3. Persistent DB fallback check via system_settings (survives container/process restarts)
+      if (shouldSyncSystem && env.DB) {
+        try {
+          const persisted = await settingsModel.get("cron_last_system_lists_sync");
+          if (persisted) {
+            const persistedTs = parseInt(persisted, 10) || 0;
+            if (now - persistedTs < SYSTEM_SYNC_INTERVAL_SEC) {
+              lastSystemSyncMemoryTs = persistedTs;
+              shouldSyncSystem = false;
+            }
+          }
+        } catch (err) {
+          console.warn("[Cron] Failed to read persistent system sync timestamp:", err);
+        }
+      }
+
       if (shouldSyncSystem) {
-        await cacheUtils.set(cache, lastSystemSyncKey, now, SYSTEM_SYNC_INTERVAL_SEC);
+        lastSystemSyncMemoryTs = now;
+        if (cache) {
+          await cacheUtils.set(cache, lastSystemSyncKey, now, SYSTEM_SYNC_INTERVAL_SEC);
+        }
+        if (env.DB) {
+          try {
+            await settingsModel.set("cron_last_system_lists_sync", String(now));
+          } catch (err) {
+            console.warn("[Cron] Failed to persist system sync timestamp:", err);
+          }
+        }
         await syncAllSystemLists(env);
       }
     } catch (e: unknown) {

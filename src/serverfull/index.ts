@@ -151,8 +151,8 @@ async function bootstrap(): Promise<void> {
     env.DB = db;
   }
 
-  // Pre-load System Shared Lists into Memory
-  systemListsManager.ensureLoaded(env.DB).then(async () => {
+  // Pre-load System Shared Lists into Memory and auto-register configured URLs
+  systemListsManager.ensureLoaded(env.DB, false, env).then(async () => {
     const sysModel = new SystemListModel(env.DB);
     const sysLists = await sysModel.getSystemLists();
     const needsSync = sysLists.some(l => !l.last_synced_at);

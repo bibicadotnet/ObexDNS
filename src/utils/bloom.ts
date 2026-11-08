@@ -250,6 +250,18 @@ export class BloomFilter {
   }
 
   /**
+   * 检查布隆过滤器是否完全为空（没有置位的 bit）
+   */
+  isEmpty(): boolean {
+    const arr = this.bitArray;
+    const len = arr.length;
+    for (let i = 0; i < len; i++) {
+      if (arr[i] !== 0) return false;
+    }
+    return true;
+  }
+
+  /**
    * 导出为二进制格式。
    * 默认启用 Deflate 压缩（BLMZ 魔数封装），对于稀疏或常见订阅规则布隆过滤器，
    * 体积可缩减 70% ~ 99%，大幅减轻 D1 BLOB 存储行数与跨网络/缓存 I/O。

@@ -32,7 +32,7 @@ export async function combineAndPromote(
   const adguardRulesModel = env?.DB ? new AdguardRulesModel(env.DB) : null;
 
   if (env?.DB) {
-    await systemListsManager.ensureLoaded(env.DB);
+    await systemListsManager.ensureLoaded(env.DB, false, env);
   }
   // 过滤掉系统共享列表：系统共享列表走全局 Tier 1 Bloom，无需合并进各 Profile 的 Bloom
   const customLists = activeLists.filter((l) => !systemListsManager.isSystemUrl(l.url));
