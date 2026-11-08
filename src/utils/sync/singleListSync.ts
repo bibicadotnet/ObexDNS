@@ -59,8 +59,8 @@ export async function syncSingleList(
           sysList?.last_synced_at || now,
           null,
           sysList?.sync_error || null,
-          sysList?.etag || null,
-          sysList?.last_modified || null
+          null, // Không lưu ETag của system list vào dòng của profile (tránh bẫy 304 rỗng khi bị gỡ khỏi system)
+          null  // Không lưu last_modified của system list vào dòng của profile
         );
         return { syncError: sysList?.sync_error || null, notModified: true };
       }
@@ -88,9 +88,14 @@ export async function syncSingleList(
   let count = 0;
   let domainsSinceYield = 0;
 
-  // 检查已有布隆过滤器是否为最新版本 (v2)；若不是最新版或被指定 force，则忽略 ETag/304 强制重新下载并构建
+  // 检查已有布隆过滤器或扩展规则；若没有本地数据或 Bloom 并非最新版 (v2)，则忽略 ETag 强制完整下载
   const existingBloom = await listBloomModel.getListBloom(list.id);
-  const isBloomCurrent = !existingBloom || BloomFilter.isCurrentVersion(existingBloom);
+  const existingRules = env?.DB ? await new AdguardRulesModel(env.DB).getListRules(list.id) : null;
+  const hasLocalData = Boolean(
+    existingBloom ||
+    (existingRules && (existingRules.exceptions.length > 0 || Object.keys(existingRules.rewrites).length > 0 || existingRules.patterns.length > 0))
+  );
+  const isBloomCurrent = existingBloom ? BloomFilter.isCurrentVersion(existingBloom) : hasLocalData;
   const useCacheHeaders = !force && isBloomCurrent && Boolean(list.etag || list.last_modified);
 
   // 流式下载并按行解析规则，分流分类存储，携带协商缓存头

@@ -103,6 +103,8 @@ class SystemListsManager {
             for (const cl of currentDbLists) {
               if (!configuredSet.has(cl.url.trim().toLowerCase())) {
                 await db.prepare("DELETE FROM system_lists WHERE id = ?").bind(cl.id).run().catch(() => {});
+                // Reset sync state for existing profile list rows so they immediately re-download as fresh custom lists
+                await db.prepare("UPDATE lists SET etag = NULL, last_modified = NULL, last_synced_at = NULL WHERE url = ?").bind(cl.url).run().catch(() => {});
               }
             }
           }

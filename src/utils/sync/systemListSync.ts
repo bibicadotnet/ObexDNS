@@ -55,9 +55,14 @@ export async function syncSingleSystemList(
   let count = 0;
   let domainsSinceYield = 0;
 
-  // Check if existing Bloom is current v2 format (if list has no bloom domains, existingBloom is null and considered valid)
+  // Check if existing Bloom is current v2 format, or if non-bloom rules (whitelist/rewrite) exist locally
   const existingBloom = await model.getSystemListBloom(systemListId);
-  const isBloomCurrent = !existingBloom || BloomFilter.isCurrentVersion(existingBloom);
+  const existingRules = await model.getSystemListAdguard(systemListId);
+  const hasLocalData = Boolean(
+    existingBloom ||
+    (existingRules && (existingRules.exceptions.length > 0 || Object.keys(existingRules.rewrites).length > 0 || existingRules.patterns.length > 0))
+  );
+  const isBloomCurrent = existingBloom ? BloomFilter.isCurrentVersion(existingBloom) : hasLocalData;
   const useCacheHeaders = !force && isBloomCurrent && Boolean(systemList.etag || systemList.last_modified);
 
   const { error: fetchError, truncated, notModified, etag, lastModified } = await fetchListContent(
