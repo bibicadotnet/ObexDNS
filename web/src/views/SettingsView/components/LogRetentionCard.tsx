@@ -87,48 +87,42 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({
             : t("settings.retentionDesc")}
         </p>
 
-        <div className="pt-3 border-t border-gray-100 dark:border-gray-800/80">
-          <Switch
-            label={t("settings.skipLogOnPass", "不记录放行记录")}
-            checked={!isLoggingDisabled && !!settings.skip_log_on_pass}
-            disabled={isLoggingDisabled}
-            onChange={(e) =>
-              setSettings({
-                ...settings,
-                skip_log_on_pass: e.currentTarget.checked,
-              })
-            }
-          />
-          <p className="text-xs opacity-60 mt-1">
-            {t(
-              "settings.skipLogOnPassDesc",
-              "启用后不记录正常放行的 DNS 查询，仅记录被拦截、重定向或解析失败的记录。可大幅减少存储占用与写操作。"
-            )}
-          </p>
-        </div>
-
-        {profileId && (
-          <div className="pt-3 border-t border-gray-100 dark:border-gray-800/80 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                {t("settings.clearProfileLogsTitle", "清空此配置日志")}
-              </p>
-              <p className="text-xs opacity-60">
-                {t("settings.clearProfileLogsDesc", "永久清空此配置的所有解析查询日志及统计分析数据。")}
-              </p>
-            </div>
-            <Button
-              minimal
-              small
-              intent={Intent.DANGER}
-              icon={<Trash2 size={13} />}
-              text={t("settings.clearProfileLogsBtn", "清空日志")}
-              loading={clearing}
-              disabled={clearing}
-              onClick={() => setIsAlertOpen(true)}
+        <div className="pt-3 border-t border-gray-100 dark:border-gray-800/80 space-y-3">
+          <div>
+            <Switch
+              label={t("settings.skipLogOnPass", "不记录放行记录")}
+              checked={!isLoggingDisabled && !!settings.skip_log_on_pass}
+              disabled={isLoggingDisabled}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  skip_log_on_pass: e.currentTarget.checked,
+                })
+              }
             />
+            <p className="text-xs opacity-60 mt-1">
+              {t(
+                "settings.skipLogOnPassDesc",
+                "启用后不记录正常放行的 DNS 查询，仅记录被拦截、重定向或解析失败的记录。可大幅减少存储占用与写操作。"
+              )}
+            </p>
           </div>
-        )}
+
+          {profileId && (
+            <div className="pt-1 flex justify-end">
+              <Button
+                minimal
+                small
+                intent={Intent.DANGER}
+                icon={<Trash2 size={13} />}
+                text={t("settings.clearProfileLogs", "清空配置日志")}
+                loading={clearing}
+                disabled={clearing}
+                onClick={() => setIsAlertOpen(true)}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <Alert
