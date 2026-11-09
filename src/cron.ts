@@ -80,7 +80,18 @@ export async function handleScheduled(
 
       try {
         const userModel = new UserModel(env.DB, env);
-        const { clearedProfiles, deletedUsers } = await userModel.applyInactivityPolicy(now);
+        const profileInactivityDays = env.INACTIVITY_THRESHOLD_DAYS !== undefined && env.INACTIVITY_THRESHOLD_DAYS !== ''
+          ? Number(env.INACTIVITY_THRESHOLD_DAYS)
+          : 30;
+        const userInactivityDays = env.INACTIVITY_USER_DAYS !== undefined && env.INACTIVITY_USER_DAYS !== ''
+          ? Number(env.INACTIVITY_USER_DAYS)
+          : 90;
+
+        const { clearedProfiles, deletedUsers } = await userModel.applyInactivityPolicy(
+          now,
+          profileInactivityDays,
+          userInactivityDays
+        );
         if (clearedProfiles > 0 || deletedUsers > 0) {
           console.log(`[Cron] Inactivity cleanup: cleared ${clearedProfiles} profile(s), deleted ${deletedUsers} user(s).`);
         }

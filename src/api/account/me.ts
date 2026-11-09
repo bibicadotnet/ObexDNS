@@ -34,6 +34,13 @@ export async function handleMeRequest(
         ? Math.min(Number(env.NORMAL_USER_MAX_LOG_RETENTION_DAYS), globalMaxRetention)
         : Math.min(7, globalMaxRetention);
 
+      const profileInactivityDays = env.INACTIVITY_THRESHOLD_DAYS !== undefined && env.INACTIVITY_THRESHOLD_DAYS !== ''
+        ? Number(env.INACTIVITY_THRESHOLD_DAYS)
+        : 30;
+      const userInactivityDays = env.INACTIVITY_USER_DAYS !== undefined && env.INACTIVITY_USER_DAYS !== ''
+        ? Number(env.INACTIVITY_USER_DAYS)
+        : 90;
+
       const passkeyModel = new PasskeyModel(env.DB);
       const passkeysCount = await passkeyModel.countByUser(user.id);
       const mfaEnabled = !!(dbUser?.totp_enabled) || passkeysCount > 0;
@@ -73,6 +80,8 @@ export async function handleMeRequest(
         session_lock_timeout: dbUser?.session_lock_timeout ?? 15,
         max_log_retention_days: user.role === 'admin' ? adminMaxRetention : normalUserMax,
         jwt_secret_warning: jwtSecretWarning,
+        inactivity_threshold_days: profileInactivityDays,
+        inactivity_user_days: userInactivityDays,
       }), { headers: { 'Content-Type': 'application/json' } });
     }
 

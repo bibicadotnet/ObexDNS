@@ -64,6 +64,56 @@ export const DangerZoneCard: React.FC<DangerZoneCardProps> = ({ isAdmin, onLogsC
     }
   };
 
+  const renderInactivityContent = () => {
+    if (isAdmin) {
+      return (
+        <Callout intent={Intent.PRIMARY} icon="info-sign" title={t("account.inactivityPolicy")}>
+          <p className="text-sm">
+            {t("account.inactivityAdminNotice", "Tài khoản Quản trị viên (Admin) không bao giờ bị xóa tự động.")}
+            {user?.inactivity_threshold_days === 0 && user?.inactivity_user_days === 0 && (
+              <span className="block mt-1 opacity-75">
+                {t("account.inactivityDisabled", "Chính sách tự động xóa do không hoạt động hiện đang được TẮT trên hệ thống.")}
+              </span>
+            )}
+          </p>
+        </Callout>
+      );
+    }
+
+    const profileDays = user?.inactivity_threshold_days ?? 30;
+    const userDays = user?.inactivity_user_days ?? 90;
+
+    if (profileDays === 0 && userDays === 0) {
+      return (
+        <Callout intent={Intent.NONE} icon="info-sign" title={t("account.inactivityPolicy")}>
+          <p className="text-sm">
+            {t("account.inactivityDisabled", "Chính sách tự động xóa do không hoạt động hiện đang được TẮT trên hệ thống.")}
+          </p>
+        </Callout>
+      );
+    }
+
+    const parts: string[] = [];
+    if (profileDays > 0) {
+      parts.push(t("account.inactivityProfilePart", {
+        days: profileDays,
+        defaultValue: `Tất cả nhật ký truy vấn và cấu hình DNS của các tài khoản không có hoạt động phân giải trong ${profileDays} ngày sẽ được tự động xóa.`
+      }));
+    }
+    if (userDays > 0) {
+      parts.push(t("account.inactivityUserPart", {
+        days: userDays,
+        defaultValue: `Bản thân tài khoản sẽ bị xóa sau ${userDays} ngày không có hoạt động phân giải hoặc đăng nhập.`
+      }));
+    }
+
+    return (
+      <Callout intent={Intent.WARNING} icon="info-sign" title={t("account.inactivityPolicy")}>
+        <p className="text-sm">{parts.join(" ")}</p>
+      </Callout>
+    );
+  };
+
   return (
     <>
       <H4 className="text-red-500 flex items-center gap-2">
@@ -104,9 +154,7 @@ export const DangerZoneCard: React.FC<DangerZoneCardProps> = ({ isAdmin, onLogsC
           </Card>
         )}
       </div>
-      <Callout intent={Intent.WARNING} icon="info-sign" title={t("account.inactivityPolicy")}>
-        <p className="text-sm">{t("account.inactivityDesc")}</p>
-      </Callout>
+      {renderInactivityContent()}
 
       <Dialog
         isOpen={deleteDialogOpen}

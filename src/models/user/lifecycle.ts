@@ -27,71 +27,92 @@ export class UserLifecycleModel {
 
   /**
    * Applies the inactivity retention policies:
-   * 1. 30 days of no DNS resolution activity: cleans up all query logs, pre-aggregated hourly rollups, and DNS profiles.
-   * 2. 90 days of no login activity: deletes the zombie user account and all remaining metadata.
+   * 1. Profile resolution inactivity: cleans up query logs, pre-aggregated rollups, and DNS profiles (0 to disable, default 30 days).
+   * 2. User login inactivity: deletes zombie user accounts (0 to disable, default 90 days).
    *
    * @param now Current timestamp in seconds.
+   * @param profileInactivityDays Days of DNS inactivity before clearing profiles/logs (0 to disable).
+   * @param userInactivityDays Days of login inactivity before deleting user accounts (0 to disable).
    * @returns Statistics on cleared profiles and deleted user accounts.
    */
-  async applyInactivityPolicy(now: number): Promise<InactivityPolicyResult> {
-    const thirtyDaysAgo = now - 30 * 24 * 3600;
-    const ninetyDaysAgo = now - 90 * 24 * 3600;
+  async applyInactivityPolicy(
+    now: number,
+    profileInactivityDays = 30,
+    userInactivityDays = 90
+  ): Promise<InactivityPolicyResult> {
+    const stmts: any[] = [];
+    let profileDeleteIndex = -1;
+    let userDeleteIndex = -1;
 
-    // 1. 超过 30 天无解析记录的账户，其所有关联查询日志、预聚合时序及 DNS 配置将被自动清理
-    const deleteRollupsStmt = this.db.prepare(`
-      DELETE FROM hourly_rollups
-      WHERE profile_id IN (
-        SELECT id FROM profiles
+    // 1. Clear query logs, rollups, and profiles if profileInactivityDays > 0
+    if (profileInactivityDays > 0) {
+      const profileThreshold = now - profileInactivityDays * 24 * 3600;
+
+      const deleteRollupsStmt = this.db.prepare(`
+        DELETE FROM hourly_rollups
+        WHERE profile_id IN (
+          SELECT id FROM profiles
+          WHERE owner_id IN (
+            SELECT id FROM users
+            WHERE role = 'user'
+              AND (last_active_at < ? OR (last_active_at IS NULL AND created_at < ?))
+          )
+        )
+      `).bind(profileThreshold, profileThreshold);
+
+      const deleteLogsStmt = this.db.prepare(`
+        DELETE FROM logs
+        WHERE profile_id IN (
+          SELECT id FROM profiles
+          WHERE owner_id IN (
+            SELECT id FROM users
+            WHERE role = 'user'
+              AND (last_active_at < ? OR (last_active_at IS NULL AND created_at < ?))
+          )
+        )
+      `).bind(profileThreshold, profileThreshold);
+
+      const deleteProfilesStmt = this.db.prepare(`
+        DELETE FROM profiles 
         WHERE owner_id IN (
-          SELECT id FROM users
-          WHERE role = 'user'
+          SELECT id FROM users 
+          WHERE role = 'user' 
             AND (last_active_at < ? OR (last_active_at IS NULL AND created_at < ?))
         )
-      )
-    `).bind(thirtyDaysAgo, thirtyDaysAgo);
+      `).bind(profileThreshold, profileThreshold);
 
-    const deleteLogsStmt = this.db.prepare(`
-      DELETE FROM logs
-      WHERE profile_id IN (
-        SELECT id FROM profiles
-        WHERE owner_id IN (
-          SELECT id FROM users
-          WHERE role = 'user'
-            AND (last_active_at < ? OR (last_active_at IS NULL AND created_at < ?))
-        )
-      )
-    `).bind(thirtyDaysAgo, thirtyDaysAgo);
+      stmts.push(deleteRollupsStmt, deleteLogsStmt, deleteProfilesStmt);
+      profileDeleteIndex = stmts.length - 1;
+    }
 
-    const deleteProfilesStmt = this.db.prepare(`
-      DELETE FROM profiles 
-      WHERE owner_id IN (
-        SELECT id FROM users 
-        WHERE role = 'user' 
-          AND (last_active_at < ? OR (last_active_at IS NULL AND created_at < ?))
-      )
-    `).bind(thirtyDaysAgo, thirtyDaysAgo);
+    // 2. Remove inactive user accounts if userInactivityDays > 0
+    if (userInactivityDays > 0) {
+      const userThreshold = now - userInactivityDays * 24 * 3600;
 
-    // 2. 账户本身在 90 天无登录后将予移除
-    const deleteUsersStmt = this.db.prepare(`
-      DELETE FROM users
-      WHERE role = 'user'
-        AND (
-          SELECT COALESCE(MAX(timestamp), created_at) 
-          FROM user_activity_log 
-          WHERE user_id = users.id
-        ) < ?
-    `).bind(ninetyDaysAgo);
+      const deleteUsersStmt = this.db.prepare(`
+        DELETE FROM users
+        WHERE role = 'user'
+          AND (last_active_at IS NULL OR last_active_at < ?)
+          AND (
+            SELECT COALESCE(MAX(timestamp), created_at) 
+            FROM user_activity_log 
+            WHERE user_id = users.id
+          ) < ?
+      `).bind(userThreshold, userThreshold);
 
-    const results = await this.db.batch([
-      deleteRollupsStmt,
-      deleteLogsStmt,
-      deleteProfilesStmt,
-      deleteUsersStmt
-    ]);
+      stmts.push(deleteUsersStmt);
+      userDeleteIndex = stmts.length - 1;
+    }
+
+    if (stmts.length === 0) {
+      return { clearedProfiles: 0, deletedUsers: 0 };
+    }
+
+    const results = await this.db.batch(stmts);
 
     return {
-      clearedProfiles: results[2].meta.changes || 0,
-      deletedUsers: results[3].meta.changes || 0
+      clearedProfiles: profileDeleteIndex >= 0 ? (results[profileDeleteIndex]?.meta?.changes || 0) : 0,
+      deletedUsers: userDeleteIndex >= 0 ? (results[userDeleteIndex]?.meta?.changes || 0) : 0
     };
   }
 }

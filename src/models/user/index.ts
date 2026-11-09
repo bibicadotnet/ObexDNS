@@ -164,7 +164,11 @@ export class UserModel {
   /**
    * Executes the periodic inactivity cleanup policy.
    */
-  async applyInactivityPolicy(now: number): Promise<InactivityPolicyResult> {
-    return this.lifecycle.applyInactivityPolicy(now);
+  async applyInactivityPolicy(
+    now: number,
+    profileInactivityDays?: number,
+    userInactivityDays?: number
+  ): Promise<InactivityPolicyResult> {
+    return this.lifecycle.applyInactivityPolicy(now, profileInactivityDays, userInactivityDays);
   }
 }

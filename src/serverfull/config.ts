@@ -213,7 +213,12 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     BLOOM_MEM_TTL: process.env.BLOOM_MEM_TTL || 600000,
     CONFIG_MEM_TTL: process.env.CONFIG_MEM_TTL || 300000,
     SYNC_TIMEOUT_MS: process.env.SYNC_TIMEOUT_MS || 30000,
-    INACTIVITY_THRESHOLD_DAYS: process.env.INACTIVITY_THRESHOLD_DAYS || 180,
+    INACTIVITY_THRESHOLD_DAYS: process.env.INACTIVITY_THRESHOLD_DAYS !== undefined && process.env.INACTIVITY_THRESHOLD_DAYS !== ''
+      ? Number(process.env.INACTIVITY_THRESHOLD_DAYS)
+      : 30,
+    INACTIVITY_USER_DAYS: process.env.INACTIVITY_USER_DAYS !== undefined && process.env.INACTIVITY_USER_DAYS !== ''
+      ? Number(process.env.INACTIVITY_USER_DAYS)
+      : 90,
     THROTTLE_ACTIVE_SEC: process.env.THROTTLE_ACTIVE_SEC || 3600,
     SYNC_PROFILE_INTERVAL_SEC: process.env.SYNC_PROFILE_INTERVAL_SEC || 86400,
     SYNC_SYSTEM_INTERVAL_SEC: process.env.SYNC_SYSTEM_INTERVAL_SEC || 21600,

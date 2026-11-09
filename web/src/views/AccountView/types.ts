@@ -18,6 +18,8 @@ export interface UserInfo {
   session_lock_timeout?: number;
   max_log_retention_days?: number;
   jwt_secret_warning?: boolean;
+  inactivity_threshold_days?: number;
+  inactivity_user_days?: number;
 }
 
 export interface ActivityEntry {
