@@ -7,6 +7,7 @@ import type {
   GlobalProfileSettings,
   TestResponse
 } from "./types";
+import { localDb } from "./localDb";
 
 /**
  * 包装 fetch 方法，当请求 Profile 相关接口遇到 404 (不存在或无权限) 时，直接引导前端至 404 界面
@@ -271,6 +272,11 @@ export async function clearProfileLogs(profileId: string): Promise<void> {
     method: "DELETE"
   });
   if (!res.ok) throw new Error(await res.text());
+  try {
+    await localDb.clearProfile(profileId);
+  } catch (err) {
+    console.warn("[clearProfileLogs] Failed to clear local DB cache:", err);
+  }
 }
 
 export async function getProfileAnalytics(profileId: string, type: string, queryParams: string, options?: { signal?: AbortSignal }): Promise<any> {

@@ -120,6 +120,7 @@ export const LogsView: React.FC<LogsViewProps> = ({ profileId, onQuickAction, to
         exporting={exporting}
         loading={loading}
         syncing={syncing}
+        toasterRef={toasterRef}
       />
 
       {isE2eeEnabled && !isE2eeUnlocked && (

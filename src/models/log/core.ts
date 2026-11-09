@@ -225,17 +225,31 @@ export class LogCoreModel {
   }
 
   /**
-   * Deletes all logs belonging to all profiles of an owner.
+   * Deletes all logs and hourly rollups belonging to a specific profile.
+   *
+   * @param profileId - Profile identifier.
+   * @returns Promise resolving to true if delete succeeded.
+   */
+  async deleteByProfile(profileId: string): Promise<boolean> {
+    const results = await this.db.batch([
+      this.db.prepare("DELETE FROM logs WHERE profile_id = ?").bind(profileId),
+      this.db.prepare("DELETE FROM hourly_rollups WHERE profile_id = ?").bind(profileId)
+    ]);
+    return results.every(r => r.success);
+  }
+
+  /**
+   * Deletes all logs and hourly rollups belonging to all profiles of an owner.
    *
    * @param ownerId - User identifier.
    * @returns Promise resolving to true if delete succeeded.
    */
   async deleteByOwner(ownerId: string): Promise<boolean> {
-    const result = await this.db
-      .prepare("DELETE FROM logs WHERE profile_id IN (SELECT id FROM profiles WHERE owner_id = ?)")
-      .bind(ownerId)
-      .run();
-    return result.success;
+    const results = await this.db.batch([
+      this.db.prepare("DELETE FROM logs WHERE profile_id IN (SELECT id FROM profiles WHERE owner_id = ?)").bind(ownerId),
+      this.db.prepare("DELETE FROM hourly_rollups WHERE profile_id IN (SELECT id FROM profiles WHERE owner_id = ?)").bind(ownerId)
+    ]);
+    return results.every(r => r.success);
   }
 
   /**

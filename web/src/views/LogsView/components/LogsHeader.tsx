@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { Tag, Button, Intent, Switch, InputGroup } from "@blueprintjs/core";
+import { Tag, Button, Intent, Switch, InputGroup, Alert, OverlayToaster } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import type { TimeRange } from "../types";
 import type { AccessPoint } from "../../../types/auth";
+import { clearProfileLogs } from "../../../services";
 import { TimeRangeSelector } from "./TimeRangeSelector";
 import { StatusFilter } from "./StatusFilter";
 import { AccessPointFilter } from "./AccessPointFilter";
@@ -37,6 +38,7 @@ export interface LogsHeaderProps {
   exporting: boolean;
   loading?: boolean;
   syncing?: boolean;
+  toasterRef?: React.RefObject<OverlayToaster | null>;
 }
 
 export const LogsHeader: React.FC<LogsHeaderProps> = ({
@@ -67,9 +69,35 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
   exporting,
   loading = false,
   syncing = false,
+  toasterRef,
 }) => {
   const { t } = useTranslation();
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isClearAlertOpen, setIsClearAlertOpen] = useState(false);
+  const [clearingLogs, setClearingLogs] = useState(false);
+
+  const handleClearLogs = async () => {
+    setClearingLogs(true);
+    try {
+      await clearProfileLogs(profileId);
+      setIsClearAlertOpen(false);
+      toasterRef?.current?.show({
+        message: t("logs.clearLogsSuccess", "日志已成功清空"),
+        intent: Intent.SUCCESS,
+        icon: "tick",
+      });
+      fetchLogs(range, true, false, true);
+    } catch (err) {
+      console.error("[LogsHeader] Failed to clear profile logs:", err);
+      toasterRef?.current?.show({
+        message: t("logs.clearLogsError", "清空日志失败"),
+        intent: Intent.DANGER,
+        icon: "error",
+      });
+    } finally {
+      setClearingLogs(false);
+    }
+  };
 
   const hasActiveFilters = statusFilter !== null || accessPointIdFilter !== null || destCountryFilter !== null || ispFilter !== null;
 
@@ -135,13 +163,22 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
               logRetentionDays={logRetentionDays}
             />
             {/* Real-time Refresh Toggle */}
-            <div className="flex items-center justify-end gap-4">
+            <div className="flex items-center justify-end gap-2 sm:gap-4 flex-wrap">
               <Button
                 icon="download"
                 onClick={onExport}
                 loading={exporting}
                 title={t("logs.export", "Export Logs")}
                 text={isMobile ? undefined : t("logs.export", "Export Logs")}
+              />
+              <Button
+                icon="trash"
+                intent={Intent.DANGER}
+                variant="minimal"
+                onClick={() => setIsClearAlertOpen(true)}
+                loading={clearingLogs}
+                title={t("logs.clearLogs", "清空日志")}
+                text={isMobile ? undefined : t("logs.clearLogs", "清空日志")}
               />
               <Switch
                 label={t("logs.realtime")}
@@ -220,6 +257,24 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
           </div>
         </div>
       )}
+
+      <Alert
+        isOpen={isClearAlertOpen}
+        confirmButtonText={t("common.confirm", "确认清空")}
+        cancelButtonText={t("common.cancel", "取消")}
+        intent={Intent.DANGER}
+        icon="trash"
+        onConfirm={handleClearLogs}
+        onCancel={() => setIsClearAlertOpen(false)}
+        loading={clearingLogs}
+      >
+        <p>
+          {t(
+            "logs.confirmClearLogs",
+            "确定要清空此配置的所有解析日志吗？此操作不可撤销。"
+          )}
+        </p>
+      </Alert>
     </div>
   );
 };

@@ -24,6 +24,18 @@ export async function handleProfileLogsAndAnalyticsRequest(
       return handleProfileLogsWs(request, env, user, profile, ctx);
     }
 
+    if (request.method === 'DELETE') {
+      await logModel.deleteByProfile(profileId);
+      await logModel.kemKeys.cleanupProfileOrphans(profileId, 0);
+      const dbAny = env.DB as unknown as { vacuum?: () => void };
+      if (typeof dbAny?.vacuum === 'function') {
+        dbAny.vacuum();
+      }
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     if (request.method !== 'GET') {
       return new Response("Method Not Allowed", { status: 405 });
     }

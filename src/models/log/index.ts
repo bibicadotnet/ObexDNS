@@ -60,6 +60,10 @@ export class LogModel {
     return this.core.getLog(profileId, logId, timestamp);
   }
 
+  async deleteByProfile(profileId: string): Promise<boolean> {
+    return this.core.deleteByProfile(profileId);
+  }
+
   async deleteByOwner(ownerId: string): Promise<boolean> {
     return this.core.deleteByOwner(ownerId);
   }
