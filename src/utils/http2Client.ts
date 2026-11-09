@@ -66,12 +66,16 @@ export class Http2SessionPool {
     const session = http2.connect(origin);
 
     session.on('error', (err: Error) => {
-      // Evict session from pool on error
-      this.sessions.delete(origin);
+      // Evict session from pool on error if it is still the current active instance
+      if (this.sessions.get(origin) === session) {
+        this.sessions.delete(origin);
+      }
     });
 
     session.on('close', () => {
-      this.sessions.delete(origin);
+      if (this.sessions.get(origin) === session) {
+        this.sessions.delete(origin);
+      }
     });
 
     // Unref socket so it does not prevent Node process termination
@@ -101,8 +105,16 @@ export class Http2SessionPool {
       const timer = setTimeout(() => {
         if (!isSettled) {
           isSettled = true;
+          // Gracefully evict session from pool on timeout so new queries use a fresh session
+          // while allowing any other in-flight streams on this session to complete
+          if (this.sessions.get(url.origin) === session) {
+            this.sessions.delete(url.origin);
+          }
           try {
             req.destroy(new Error(`HTTP/2 Request Timeout (${timeoutMs}ms)`));
+          } catch {}
+          try {
+            session.close();
           } catch {}
           reject(new Error(`HTTP/2 Request Timeout (${timeoutMs}ms)`));
         }
@@ -148,8 +160,13 @@ export class Http2SessionPool {
         if (!isSettled) {
           isSettled = true;
           clearTimeout(timer);
-          // If session is unhealthy, remove it from pool
-          this.sessions.delete(url.origin);
+          // If session is unhealthy, gracefully evict it from pool
+          if (this.sessions.get(url.origin) === session) {
+            this.sessions.delete(url.origin);
+          }
+          try {
+            session.close();
+          } catch {}
           reject(err);
         }
       });

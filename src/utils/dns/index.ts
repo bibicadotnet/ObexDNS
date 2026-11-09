@@ -9,7 +9,8 @@ export {
 export {
   buildDNSQuery,
   buildResponse,
-  buildResponseMulti
+  buildResponseMulti,
+  createServFail
 } from "./encoder";
 export { encodeRData } from "./rdata";
 export { injectEcsIntoQuery } from "./injectEcs";

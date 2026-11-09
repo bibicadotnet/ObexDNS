@@ -1,5 +1,5 @@
 import { Context, Env, ExecutionContext } from '../types';
-import { parseDNSQuery } from '../utils/dns';
+import { parseDNSQuery, createServFail } from '../utils/dns';
 import { pipeline } from '../pipeline';
 import { ProfileModel, ProfileWithBloom } from '../models/profile';
 import { UserModel } from '../models/user';
@@ -11,6 +11,27 @@ import {
 } from '../pipeline/cache';
 import { resolveUpstreamEndpoint, fetchFromUpstream } from '../pipeline/resolver/transport';
 import { DEFAULT_FAIL_OPEN_UPSTREAM } from '../constants/presets';
+
+/**
+ * Compiles a compliant RFC 8484 DNS over HTTPS Response.
+ * Ensures that if the answer wire payload is empty or invalid (< 12 bytes),
+ * a standard SERVFAIL (RCODE 2) packet is returned with max-age=0 to prevent client crash.
+ */
+function formatDohResponse(
+  answer: Uint8Array | null | undefined,
+  queryRaw: Uint8Array | null | undefined,
+  ttl: number = 60
+): Response {
+  const isSuccess = Boolean(answer && answer.length >= 12);
+  const effectiveAnswer = isSuccess ? answer! : createServFail(queryRaw || undefined);
+
+  return new Response(effectiveAnswer as any, {
+    headers: {
+      "Content-Type": "application/dns-message",
+      "Cache-Control": isSuccess && ttl > 0 ? `max-age=${ttl}` : "max-age=0, no-cache, no-store"
+    }
+  });
+}
 
 /** In-memory throttle tracker for profile and user last_active database updates */
 const activeThrottleMemoryMap = new Map<string, number>();
@@ -263,12 +284,7 @@ export async function handleDoHRequest(
       }
     })());
 
-    return new Response(result.answer as any, {
-      headers: {
-        'Content-Type': 'application/dns-message',
-        'Cache-Control': `max-age=${result.ttl}`
-      }
-    });
+    return formatDohResponse(result.answer, queryRaw, result.ttl);
   } catch (e: any) {
     console.error(`[DoH Pipeline] Internal Error:`, e);
     try {
@@ -280,12 +296,7 @@ export async function handleDoHRequest(
       if (rawBytes && rawBytes.length > 0) {
         const endpoint = resolveUpstreamEndpoint(failOpenUpstream);
         const transportRes = await fetchFromUpstream(endpoint, rawBytes);
-        return new Response(transportRes.answer as any, {
-          headers: {
-            "Content-Type": "application/dns-message",
-            "Cache-Control": "max-age=60"
-          }
-        });
+        return formatDohResponse(transportRes.answer, rawBytes, 60);
       }
 
       // If wire query bytes couldn't be decoded and upstream is HTTP(S), proxy request directly
