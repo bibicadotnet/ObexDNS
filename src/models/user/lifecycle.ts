@@ -94,9 +94,12 @@ export class UserLifecycleModel {
         WHERE role = 'user'
           AND (last_active_at IS NULL OR last_active_at < ?)
           AND (
-            SELECT COALESCE(MAX(timestamp), created_at) 
-            FROM user_activity_log 
-            WHERE user_id = users.id
+            SELECT COALESCE(MAX(val), users.created_at)
+            FROM (
+              SELECT MAX(COALESCE(s.last_active_at, s.created_at)) AS val FROM sessions s WHERE s.user_id = users.id
+              UNION ALL
+              SELECT MAX(l.timestamp) AS val FROM user_activity_log l WHERE l.user_id = users.id
+            )
           ) < ?
       `).bind(userThreshold, userThreshold);
 

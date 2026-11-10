@@ -62,6 +62,13 @@ export class UserCoreModel {
         (SELECT COUNT(1) FROM passkeys p WHERE p.user_id = u.id) as passkeys_count,
         u.timezone,
         u.locale,
+        (
+          SELECT MAX(val) FROM (
+            SELECT MAX(COALESCE(s.last_active_at, s.created_at)) AS val FROM sessions s WHERE s.user_id = u.id
+            UNION ALL
+            SELECT MAX(l.timestamp) AS val FROM user_activity_log l WHERE l.user_id = u.id
+          )
+        ) as last_active_at,
         u.last_active_at as last_resolve_at
       FROM users u
       ORDER BY u.created_at DESC
