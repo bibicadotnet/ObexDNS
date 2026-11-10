@@ -118,13 +118,17 @@ class SystemListsManager {
           newUrlToId.set(list.url, list.id);
 
           const existing = this.items.get(list.id);
-          const lastSync = list.last_synced_at || 0;
+          // 以「内容版本」而不是 last_synced_at 判断是否需要重载：
+          // 304 Not Modified 也会刷新 last_synced_at，但内容没变，不应触发 inflate + JSON.parse + 正则重编译。
+          // force 只绕过 TTL（见上方），不再强制重载每一个列表（否则 K 个列表变更 => O(N*K) 次全量重载）。
+          const contentStamp = await model.getContentStamp(list.id);
 
-          // If already in memory and not modified since last load, preserve existing instances
-          if (existing && existing.updatedAt === lastSync && !force) {
-            newItems.set(list.id, existing);
+          if (existing && existing.updatedAt === contentStamp) {
+            newItems.set(list.id, existing.name === (list.name || null) ? existing : { ...existing, name: list.name || null });
             continue;
           }
+
+          let loadFailed = false;
 
           let bloom: BloomFilter | null = null;
           let adguard: AdGuardProfileEngine | null = null;
@@ -138,6 +142,7 @@ class SystemListsManager {
               }
             }
           } catch (e) {
+            loadFailed = true;
             console.error(`[SystemListsManager] Failed to load Bloom for system list #${list.id}:`, e);
           }
 
@@ -147,6 +152,7 @@ class SystemListsManager {
               adguard = new AdGuardProfileEngine(adguardPayload);
             }
           } catch (e) {
+            loadFailed = true;
             console.error(`[SystemListsManager] Failed to load AdGuard rules for system list #${list.id}:`, e);
           }
 
@@ -156,7 +162,8 @@ class SystemListsManager {
             name: list.name || null,
             bloom,
             adguard,
-            updatedAt: lastSync
+            // -1: 加载失败的条目不会被复用，下一次 ensureLoaded 会重试
+            updatedAt: loadFailed ? -1 : contentStamp
           });
         }
 

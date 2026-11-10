@@ -43,6 +43,15 @@ export class AdguardRulesModel {
     }
   }
 
+  /** True when the stored payload contains any rule; avoids JSON.parse of the whole payload. */
+  async hasListRules(listId: number): Promise<boolean> {
+    const emptyLen = JSON.stringify({ exceptions: [], rewrites: {}, patterns: [] }).length;
+    const row = await this.db.prepare(
+      "SELECT 1 AS present FROM list_adguard_rules WHERE list_id = ? AND length(payload) > ? LIMIT 1"
+    ).bind(listId, emptyLen).first<{ present: number }>();
+    return !!row;
+  }
+
   /**
    * Deletes the AdGuard extended rules for a specific list.
    */

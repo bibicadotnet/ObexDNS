@@ -118,11 +118,15 @@ export class BloomFilter {
     const size = this.size;
     const k = this.hashes;
 
+    // Double Hashing: pos_i = (h1 + i * h2) % m, 计算结果与原公式逐位一致。
+    // 只做 2 次取模，其后用整数加法 + 条件减法递推（pos, step < m < 2^31，全程 int32），
+    // 避免每个哈希一次的 double fmod（h1 + i*h2 超过 2^32，V8 无法走 int32 取模快路径）。
+    let pos = h1 % size;
+    const step = h2_mixed % size;
     for (let i = 0; i < k; i++) {
-      // Double Hashing: (h1 + i * h2) % m
-      const pos = (h1 + i * h2_mixed) % size;
-      // 32位数组优化: index / 32 => pos >>> 5, index % 32 => pos & 31
       arr[pos >>> 5] |= (1 << (pos & 31));
+      pos += step;
+      if (pos >= size) pos -= size;
     }
   }
 
@@ -153,9 +157,12 @@ export class BloomFilter {
     const size = this.size;
     const k = this.hashes;
 
+    let pos = h1 % size;
+    const step = h2_mixed % size;
     for (let i = 0; i < k; i++) {
-      const pos = (h1 + i * h2_mixed) % size;
       arr[pos >>> 5] |= (1 << (pos & 31));
+      pos += step;
+      if (pos >= size) pos -= size;
     }
   }
 
@@ -184,11 +191,14 @@ export class BloomFilter {
     const size = this.size;
     const k = this.hashes;
 
+    let pos = h1 % size;
+    const step = h2_mixed % size;
     for (let i = 0; i < k; i++) {
-      const pos = (h1 + i * h2_mixed) % size;
       if ((arr[pos >>> 5] & (1 << (pos & 31))) === 0) {
         return false;
       }
+      pos += step;
+      if (pos >= size) pos -= size;
     }
     return true;
   }
@@ -219,11 +229,14 @@ export class BloomFilter {
     const size = this.size;
     const k = this.hashes;
 
+    let pos = h1 % size;
+    const step = h2_mixed % size;
     for (let i = 0; i < k; i++) {
-      const pos = (h1 + i * h2_mixed) % size;
       if ((arr[pos >>> 5] & (1 << (pos & 31))) === 0) {
         return false;
       }
+      pos += step;
+      if (pos >= size) pos -= size;
     }
     return true;
   }

@@ -258,7 +258,7 @@ async function _executeSyncAllListsForProfile(
     }
 
     // 检查 Profile 级已合并布隆过滤器是否为最新版本 (v2)
-    const existingProfileBloom = await profileBloomModel.getProfileBloom(profileId);
+    const existingProfileBloom = await profileBloomModel.getProfileBloomHeader(profileId);
     const isProfileBloomCurrent = BloomFilter.isCurrentVersion(existingProfileBloom);
 
     // 若全部列表均命中 304 协商缓存且已合并布隆也是最新 v2 格式，直接跳过合并晋升阶段，零 CPU/DB 消耗
@@ -371,7 +371,7 @@ async function _executeSyncSingleListForProfile(
     const { notModified } = await syncSingleList(profileId, list, env, listModel, listBloomModel, now, force);
 
     // 2. 检查 Profile 级布隆过滤器是否为最新版本
-    const existingProfileBloom = await profileBloomModel.getProfileBloom(profileId);
+    const existingProfileBloom = await profileBloomModel.getProfileBloomHeader(profileId);
     const isProfileBloomCurrent = BloomFilter.isCurrentVersion(existingProfileBloom);
 
     // 3. 若列表处于启用状态且内容发生变动（或 Profile 布隆非最新），触发 Profile 布隆过滤器与 AdGuard 规则的重构合并

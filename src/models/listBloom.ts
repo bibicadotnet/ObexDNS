@@ -44,6 +44,15 @@ export class ListBloomModel {
     return !!row;
   }
 
+  /** First 20 bytes (BLMZ header) of the stored Bloom; avoids loading all chunks just to check the version. */
+  async getListBloomHeader(listId: number): Promise<Uint8Array | null> {
+    const row = await this.db.prepare(
+      "SELECT substr(bloom_filter_chunk, 1, 20) AS head FROM list_blooms WHERE list_id = ? AND chunk_index = 0"
+    ).bind(listId).first<{ head: ArrayBuffer | Uint8Array | null }>();
+    if (!row || !row.head) return null;
+    return row.head instanceof Uint8Array ? row.head : new Uint8Array(row.head);
+  }
+
   async getListBloom(listId: number): Promise<ArrayBuffer | null> {
     const { results } = await this.db.prepare(
       "SELECT bloom_filter_chunk FROM list_blooms WHERE list_id = ? ORDER BY chunk_index ASC"

@@ -39,6 +39,15 @@ export class ProfileBloomModel {
     return results.every(r => r.success);
   }
 
+  /** First 20 bytes (BLMZ header) of the active Bloom; enough for BloomFilter.isCurrentVersion(). */
+  async getProfileBloomHeader(profileId: string): Promise<Uint8Array | null> {
+    const row = await this.db.prepare(
+      "SELECT substr(bloom_filter_chunk, 1, 20) AS head FROM profile_blooms WHERE profile_id = ? AND chunk_index = 0"
+    ).bind(profileId).first<{ head: ArrayBuffer | Uint8Array | null }>();
+    if (!row || !row.head) return null;
+    return row.head instanceof Uint8Array ? row.head : new Uint8Array(row.head);
+  }
+
   async getProfileBloom(profileId: string): Promise<ArrayBuffer | null> {
     const { results } = await this.db.prepare(
       "SELECT bloom_filter_chunk FROM profile_blooms WHERE profile_id = ? ORDER BY chunk_index ASC"

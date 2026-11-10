@@ -146,6 +146,43 @@ export class SystemListModel {
     return combined.buffer as ArrayBuffer;
   }
 
+  /**
+   * Reads only the first 20 bytes (BLMZ header) of the stored Bloom instead of
+   * concatenating every ~1.5MB chunk. Enough for BloomFilter.isCurrentVersion().
+   */
+  async getSystemListBloomHeader(systemListId: number): Promise<Uint8Array | null> {
+    const row = await this.db.prepare(
+      "SELECT substr(bloom_filter_chunk, 1, 20) AS head FROM system_list_blooms WHERE system_list_id = ? AND chunk_index = 0"
+    ).bind(systemListId).first<{ head: ArrayBuffer | Uint8Array | null }>();
+    if (!row || !row.head) return null;
+    return row.head instanceof Uint8Array ? row.head : new Uint8Array(row.head);
+  }
+
+  /** True when the stored AdGuard payload holds any rule (no JSON.parse of the payload). */
+  async hasSystemListAdguardRules(systemListId: number): Promise<boolean> {
+    const emptyLen = JSON.stringify({ exceptions: [], rewrites: {}, patterns: [] }).length;
+    const row = await this.db.prepare(
+      "SELECT 1 AS present FROM system_list_adguard_rules WHERE system_list_id = ? AND length(payload) > ? LIMIT 1"
+    ).bind(systemListId, emptyLen).first<{ present: number }>();
+    return !!row;
+  }
+
+  /**
+   * Content version of a system list = last time its Bloom / rules were actually rewritten.
+   * Unlike system_lists.last_synced_at, this does NOT move on a 304 Not Modified, so it is the
+   * right key for deciding whether the in-memory copy is stale.
+   */
+  async getContentStamp(systemListId: number): Promise<number> {
+    const row = await this.db.prepare(
+      `SELECT MAX(u) AS stamp FROM (
+         SELECT MAX(updated_at) AS u FROM system_list_blooms WHERE system_list_id = ?
+         UNION ALL
+         SELECT MAX(updated_at) AS u FROM system_list_adguard_rules WHERE system_list_id = ?
+       )`
+    ).bind(systemListId, systemListId).first<{ stamp: number | null }>();
+    return Number(row?.stamp) || 0;
+  }
+
   // ─── System List AdGuard Extended Rules Storage ───────────────────────────
 
   async getSystemListAdguard(systemListId: number): Promise<AdGuardPayload | null> {

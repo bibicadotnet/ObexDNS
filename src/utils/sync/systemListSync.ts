@@ -45,7 +45,7 @@ export async function syncSingleSystemList(
   const yieldBatchSize = Number(env.SYNC_YIELD_BATCH_SIZE) || 5000;
   const yieldSleepMs = Number(env.SYNC_YIELD_SLEEP_MS) || 10;
 
-  const listBloom = BloomFilter.create(maxDomains, falsePositiveRate);
+  let listBloom = null as BloomFilter | null; // lazily allocated, see singleListSync.ts
   const adguardPayload: AdGuardPayload = {
     exceptions: [],
     rewrites: {},
@@ -56,13 +56,10 @@ export async function syncSingleSystemList(
   let domainsSinceYield = 0;
 
   // Check if existing Bloom is current v2 format, or if non-bloom rules (whitelist/rewrite) exist locally
-  const existingBloom = await model.getSystemListBloom(systemListId);
-  const existingRules = await model.getSystemListAdguard(systemListId);
-  const hasLocalData = Boolean(
-    existingBloom ||
-    (existingRules && (existingRules.exceptions.length > 0 || Object.keys(existingRules.rewrites).length > 0 || existingRules.patterns.length > 0))
-  );
-  const isBloomCurrent = existingBloom ? BloomFilter.isCurrentVersion(existingBloom) : hasLocalData;
+  const existingBloomHead = await model.getSystemListBloomHeader(systemListId);
+  const hasExistingRules = await model.hasSystemListAdguardRules(systemListId);
+  const hasLocalData = Boolean(existingBloomHead || hasExistingRules);
+  const isBloomCurrent = existingBloomHead ? BloomFilter.isCurrentVersion(existingBloomHead) : hasLocalData;
   const useCacheHeaders = !force && isBloomCurrent && Boolean(systemList.etag || systemList.last_modified);
 
   const { error: fetchError, truncated, notModified, etag, lastModified } = await fetchListContent(
@@ -72,6 +69,7 @@ export async function syncSingleSystemList(
     (rule: ParsedAdGuardRule) => {
       if (count < maxListDomains) {
         if (rule.kind === AdGuardRuleKind.BLOOM_DOMAIN && rule.domain) {
+          if (!listBloom) listBloom = BloomFilter.create(maxDomains, falsePositiveRate);
           if (rule.includeSubdomains) {
             listBloom.addPipePipe(rule.domain);
           } else {
@@ -138,7 +136,7 @@ export async function syncSingleSystemList(
     const saveOps: Promise<any>[] = [
       model.upsertSystemListAdguard(systemListId, adguardPayload, now)
     ];
-    if (!listBloom.isEmpty()) {
+    if (listBloom && !listBloom.isEmpty()) {
       saveOps.push(model.upsertSystemListBloom(systemListId, listBloom.toUint8Array().buffer as ArrayBuffer, now));
     } else {
       saveOps.push(model.clearSystemListBloom(systemListId));

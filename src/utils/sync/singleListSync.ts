@@ -78,7 +78,8 @@ export async function syncSingleList(
   const yieldSleepMs = Number(env.SYNC_YIELD_SLEEP_MS) || 10;
 
   // 创建对应的列表布隆过滤器与扩展规则载荷
-  const listBloom = BloomFilter.create(maxDomains, falsePositiveRate);
+  // 惰性分配：304 时完全不分配 ~2.4MB 位数组
+  let listBloom = null as BloomFilter | null;
   const adguardPayload: AdGuardPayload = {
     exceptions: [],
     rewrites: {},
@@ -89,13 +90,11 @@ export async function syncSingleList(
   let domainsSinceYield = 0;
 
   // 检查已有布隆过滤器或扩展规则；若没有本地数据或 Bloom 并非最新版 (v2)，则忽略 ETag 强制完整下载
-  const existingBloom = await listBloomModel.getListBloom(list.id);
-  const existingRules = env?.DB ? await new AdguardRulesModel(env.DB).getListRules(list.id) : null;
-  const hasLocalData = Boolean(
-    existingBloom ||
-    (existingRules && (existingRules.exceptions.length > 0 || Object.keys(existingRules.rewrites).length > 0 || existingRules.patterns.length > 0))
-  );
-  const isBloomCurrent = existingBloom ? BloomFilter.isCurrentVersion(existingBloom) : hasLocalData;
+  // 只读 20 字节头与 EXISTS 探针，不再整块读出 ~2.4MB Bloom / JSON.parse 整个规则载荷
+  const existingBloomHead = await listBloomModel.getListBloomHeader(list.id);
+  const hasExistingRules = env?.DB ? await new AdguardRulesModel(env.DB).hasListRules(list.id) : false;
+  const hasLocalData = Boolean(existingBloomHead || hasExistingRules);
+  const isBloomCurrent = existingBloomHead ? BloomFilter.isCurrentVersion(existingBloomHead) : hasLocalData;
   const useCacheHeaders = !force && isBloomCurrent && Boolean(list.etag || list.last_modified);
 
   // 流式下载并按行解析规则，分流分类存储，携带协商缓存头
@@ -106,6 +105,7 @@ export async function syncSingleList(
     (rule: ParsedAdGuardRule) => {
       if (count < maxListDomains) {
         if (rule.kind === AdGuardRuleKind.BLOOM_DOMAIN && rule.domain) {
+          if (!listBloom) listBloom = BloomFilter.create(maxDomains, falsePositiveRate);
           if (rule.includeSubdomains) {
             // 零内存分配：预计算前缀哈希种子，无需拼接产生新字符串
             listBloom.addPipePipe(rule.domain);
@@ -168,7 +168,7 @@ export async function syncSingleList(
     }
     // 写入列表级布隆过滤器和扩展规则到数据库 (若列表无域名拦截规则则跳过 Bloom 存储)
     const saveOps: Promise<any>[] = [];
-    if (!listBloom.isEmpty()) {
+    if (listBloom && !listBloom.isEmpty()) {
       saveOps.push(listBloomModel.upsertListBloom(list.id, listBloom.toUint8Array().buffer as ArrayBuffer, now));
     } else {
       saveOps.push(listBloomModel.clearListBlooms(list.id));
