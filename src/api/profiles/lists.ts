@@ -211,8 +211,8 @@ export async function handleProfileListsRequest(
     // the new bloom is promoted.
     ctx.waitUntil(
       rebuildProfileBloom(profileId, env, ctx)
-        .then(() => pipeline.clearCache(profileId, true, env))
         .catch((e) => console.error(`[Lists] bloom rebuild failed for ${profileId}:`, e))
+        .finally(() => pipeline.clearCache(profileId, true, env))
     );
 
     return new Response(JSON.stringify({ id: listId, enabled: body.enabled }), {
@@ -367,8 +367,8 @@ export async function handleProfileListsRequest(
     // 触发纯内存重构合并，并在落库后清除缓存，彻底消除竞态条件与 pending 阻塞
     ctx.waitUntil(
       rebuildProfileBloom(profileId, env, ctx)
-        .then(() => pipeline.clearCache(profileId, true, env))
         .catch((e) => console.error(`[Lists] Bloom rebuild after delete failed for ${profileId}:`, e))
+        .finally(() => pipeline.clearCache(profileId, true, env))
     );
     return new Response(null, { status: 204 });
   }

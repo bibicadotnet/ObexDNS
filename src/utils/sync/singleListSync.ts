@@ -171,7 +171,7 @@ export async function syncSingleList(
     if (listBloom && !listBloom.isEmpty()) {
       saveOps.push(listBloomModel.upsertListBloom(list.id, listBloom.toUint8Array().buffer as ArrayBuffer, now));
     } else {
-      saveOps.push(listBloomModel.clearListBlooms(list.id));
+      saveOps.push(listBloomModel.deleteListBloom(list.id));
     }
     if (env?.DB) {
       saveOps.push(new AdguardRulesModel(env.DB).upsertListRules(list.id, adguardPayload, now));

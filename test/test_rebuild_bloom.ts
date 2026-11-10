@@ -41,6 +41,9 @@ async function runTests() {
               if (sql.includes("FROM profiles WHERE id = ?")) {
                 return profileStore.id === args[0] ? profileStore : null;
               }
+              if (sql.includes("FROM list_blooms WHERE list_id = ?")) {
+                return listBloomStore.has(args[0]) ? { present: 1 } : null;
+              }
               return null;
             },
             async all() {

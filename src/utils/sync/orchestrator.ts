@@ -6,6 +6,8 @@ import { ListBloomModel } from "../../models/listBloom";
 import { combineAndPromote } from "./combine";
 import { syncSingleList } from "./singleListSync";
 import { BloomFilter } from "../bloom";
+import { AdguardRulesModel } from "../../models/adguardRules";
+import { systemListsManager } from "../../lib/filtering/systemListsManager";
 
 /**
  * 正在执行的同步任务描述
@@ -437,23 +439,32 @@ async function _executeRebuildProfileBloom(
   const listBloomModel = new ListBloomModel(env.DB);
   const profileBloomModel = new ProfileBloomModel(env.DB);
   const profileModel = new ProfileModel(env.DB);
+  const adguardRulesModel = env?.DB ? new AdguardRulesModel(env.DB) : null;
 
   const profile = await profileModel.getById(profileId);
   const priorListUpdatedAt = profile?.list_updated_at ?? 0;
+
+  // Nạp system lists vào RAM trước khi kiểm tra isSystemUrl (tránh map urlToId bị rỗng khi process mới khởi động)
+  if (env?.DB) {
+    await systemListsManager.ensureLoaded(env.DB, false, env);
+  }
 
   // A list can be enabled while it has no bloom yet - added disabled in bulk, or
   // its last sync failed. combineAndPromote would skip it silently, so fetch it
   // first. hasListBloom is an existence probe: getListBloom would concatenate
   // every chunk of every list just to answer a boolean.
+  // Coi list là "đã có dữ liệu" nếu là system list, hoặc đã có Bloom, hoặc đã có AdGuard rules.
   const activeLists = (await listModel.getLists(profileId)).filter((l) => !!l.enabled);
   const presence = await Promise.all(
-    activeLists.map((l) =>
-      listBloomModel
-        .hasListBloom(l.id)
-        // Treat an unreadable row as present rather than downloading on a
-        // transient D1 error; cron will catch it on its next pass.
-        .catch(() => true)
-    )
+    activeLists.map(async (l) => {
+      if (systemListsManager.isSystemUrl(l.url)) return true;
+      const hasBloom = await listBloomModel.hasListBloom(l.id).catch(() => true);
+      if (hasBloom) return true;
+      if (adguardRulesModel) {
+        return adguardRulesModel.hasListRules(l.id).catch(() => true);
+      }
+      return false;
+    })
   );
 
   // Sync the list that is actually missing, rather than delegating to
