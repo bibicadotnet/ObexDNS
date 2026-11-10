@@ -9,6 +9,17 @@ import worker from '../../index';
 import { Env, ExecutionContext } from '../../types';
 import { extractClientIp } from './clientIp';
 
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-connection',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'proxy-authenticate',
+  'proxy-authorization',
+]);
+
 /**
  * Creates a shared request dispatch handler for Node.js http and https servers.
  *
@@ -51,8 +62,10 @@ export function createHttpRequestHandler(
 
       const headers = new Headers();
       for (const [k, v] of Object.entries(req.headers)) {
-        // Skip HTTP/2 pseudo-headers (:path, :authority, :method, :scheme) which are invalid in Web Fetch Headers
+        // Skip HTTP/2 pseudo-headers (:path, :authority...) and hop-by-hop headers (RFC 9110 §7.6.1)
         if (!v || k.startsWith(':')) continue;
+        const lowerKey = k.toLowerCase();
+        if (HOP_BY_HOP_HEADERS.has(lowerKey)) continue;
         if (Array.isArray(v)) {
           v.forEach((val) => headers.append(k, val));
         } else {
