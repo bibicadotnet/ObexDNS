@@ -137,6 +137,10 @@ export function createHttpRequestHandler(
           // Handled separately below to support multiple Set-Cookie headers
           return;
         }
+        // Do not forward hop-by-hop / connection-specific headers in responses (RFC 9110 §7.6.1 & RFC 9113 §8.2.2)
+        if (HOP_BY_HOP_HEADERS.has(lowerKey) || (req.httpVersion === '2.0' && lowerKey === 'upgrade')) {
+          return;
+        }
         if (defaultProto === 'https' && lowerKey === 'alt-svc') {
           res.setHeader('Alt-Svc', `h3=":${port}"; ma=86400, h3-29=":${port}"; ma=86400`);
         } else {
