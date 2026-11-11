@@ -8,6 +8,7 @@ import { syncSingleList } from "./singleListSync";
 import { BloomFilter } from "../bloom";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
+import { pipelineCache } from "../../pipeline/cache";
 
 /**
  * 正在执行的同步任务描述
@@ -92,6 +93,11 @@ async function _executeSyncNextListForProfile(
     if (activeLists.length === 0) {
       await profileBloomModel.clearProfileBlooms(profileId);
       await profileModel.updateListUpdatedAt(profileId, now);
+      if (ctx && typeof ctx.waitUntil === "function") {
+        ctx.waitUntil(pipelineCache.clear(profileId, true, env));
+      } else {
+        await pipelineCache.clear(profileId, true, env);
+      }
       return;
     }
 
@@ -243,6 +249,11 @@ async function _executeSyncAllListsForProfile(
     if (activeLists.length === 0) {
       await profileBloomModel.clearProfileBlooms(profileId);
       await profileModel.updateListUpdatedAt(profileId, now);
+      if (ctx && typeof ctx.waitUntil === "function") {
+        ctx.waitUntil(pipelineCache.clear(profileId, true, env));
+      } else {
+        await pipelineCache.clear(profileId, true, env);
+      }
       return;
     }
 

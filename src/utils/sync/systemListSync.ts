@@ -12,6 +12,7 @@ import { BloomFilter } from "../bloom";
 import { fetchListContent } from "../listFetcher";
 import { AdGuardRuleKind, AdGuardPayload, ParsedAdGuardRule } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
+import { pipelineCache } from "../../pipeline/cache";
 
 const DEFAULT_MAX_LIST_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -157,6 +158,29 @@ export async function syncSingleSystemList(
     // Invalidate and reload in-memory cache
     systemListsManager.invalidate();
     await systemListsManager.ensureLoaded(env.DB, true);
+
+    // Invalidate pipeline cache (dnsCache, configCache, L2 Cache API & Edge Cache-Tags)
+    // for all active profiles subscribing to this system list
+    if (env?.DB) {
+      try {
+        const affected = await env.DB
+          .prepare("SELECT DISTINCT profile_id FROM lists WHERE url = ? AND enabled = 1")
+          .bind(systemList.url.trim())
+          .all<{ profile_id: string }>();
+
+        if (affected?.results && affected.results.length > 0) {
+          const clearTasks = affected.results.map((row) =>
+            pipelineCache.clear(row.profile_id, false, env).catch((e) =>
+              console.warn(`[SystemListSync] Failed to clear cache for profile ${row.profile_id}:`, e)
+            )
+          );
+          await Promise.all(clearTasks);
+          console.log(`[SystemListSync] Cleared pipeline cache for ${affected.results.length} profile(s) using system list #${systemListId}.`);
+        }
+      } catch (err) {
+        console.warn("[SystemListSync] Failed to clear pipeline cache for affected profiles:", err);
+      }
+    }
 
     console.log(`[SystemListSync] Successfully updated system list #${systemListId} with ${count} rules.`);
   } else {

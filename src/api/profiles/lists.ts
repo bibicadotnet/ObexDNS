@@ -247,7 +247,10 @@ export async function handleProfileListsRequest(
       if (systemListsManager.isSystemUrl(list.url)) {
         const sysId = systemListsManager.getIdByUrl(list.url);
         if (sysId) {
-          ctx.waitUntil(syncSingleSystemList(sysId, env, force));
+          ctx.waitUntil(
+            syncSingleSystemList(sysId, env, force)
+              .then(() => pipeline.clearCache(profileId, false, env))
+          );
         }
       } else {
         ctx.waitUntil(syncSingleListForProfile(profileId, listId, env, ctx, force));

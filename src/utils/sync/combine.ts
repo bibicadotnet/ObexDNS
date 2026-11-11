@@ -132,5 +132,7 @@ export async function combineAndPromote(
 
   if (ctx && typeof ctx.waitUntil === "function") {
     ctx.waitUntil(pipelineCache.clear(profileId, true, env));
+  } else {
+    await pipelineCache.clear(profileId, true, env);
   }
 }
