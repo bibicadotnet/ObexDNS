@@ -32,12 +32,17 @@ export class LogRetentionModel {
    * @param maxRetentionDays - Hard cap on log retention days (default 30).
    * @param batchLimit - Maximum total log rows deleted across all profiles in this run (default 1000).
    * @param dailyBudget - Maximum total log rows deleted across all profiles per day (default 20000).
+   * @param orphanKeyOptions - Orphaned kem_keys cleanup tuning: minimum key age in seconds (default 86400)
+   *   and max keys deleted per run (default 100).
    */
   async cleanupGlobal(
     maxRetentionDays = 30,
     batchLimit = 1000,
-    dailyBudget = 20000
+    dailyBudget = 20000,
+    orphanKeyOptions: { safetyWindowSec?: number; batchLimit?: number } = {}
   ): Promise<void> {
+    const orphanSafetyWindowSec = orphanKeyOptions.safetyWindowSec ?? 86400;
+    const orphanBatchLimit = orphanKeyOptions.batchLimit ?? 100;
     try {
       const { results: profiles } = await this.db.prepare(
         "SELECT id, settings FROM profiles"
@@ -179,7 +184,7 @@ export class LogRetentionModel {
       if (newlyDeletedLogs > 0 || isDailyOrphanCheckDue) {
         try {
           const kemKeyModel = new KemKeyModel(this.db);
-          const deletedOrphanKeys = await kemKeyModel.cleanupOrphans(86400, 100);
+          const deletedOrphanKeys = await kemKeyModel.cleanupOrphans(orphanSafetyWindowSec, orphanBatchLimit);
           if (isDailyOrphanCheckDue) {
             await this.settingsModel.set("kem_orphan_cleanup_date", todayDate).catch(() => {});
           }

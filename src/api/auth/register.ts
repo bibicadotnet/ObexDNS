@@ -18,6 +18,7 @@ import { generateRecoveryKey, hashRecoveryKey } from "../../lib/totp";
 import { cacheUtils } from "../../utils/cache";
 import { PASSWORD_REGEX, USERNAME_REGEX } from "../../utils/validator";
 import { verifyTurnstile } from "./utils";
+import { getAuthLimits, PENALTY_LIMIT } from "./authLimits";
 import { getDefaultUpstreamUrl, getDefaultProfileFilterUrls } from "../../constants/presets";
 import { syncAllListsForProfile } from "../../utils/sync";
 
@@ -35,7 +36,7 @@ export async function handleAuthRegisterRequest(request: Request, env: Env, ctx?
     return new Response("password_leaked", { status: 400 });
   }
 
-  if (await cacheUtils.isRateLimited(cache, `signup:${clientIp}`, 10, 60)) {
+  if (await cacheUtils.isRateLimited(cache, `signup:${clientIp}`, getAuthLimits(env).signupMax, getAuthLimits(env).signupWindowSec)) {
     return new Response("Too many attempts", { status: 429 });
   }
 

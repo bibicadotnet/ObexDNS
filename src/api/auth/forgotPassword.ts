@@ -8,6 +8,7 @@ import { cacheUtils } from "../../utils/cache";
 import { generateId, hashPassword } from "../../utils/crypto";
 import { PASSWORD_REGEX } from "../../utils/validator";
 import { verifyTurnstile } from "./utils";
+import { getAuthLimits, PENALTY_LIMIT } from "./authLimits";
 import { generateWebAuthnChallenge, verifyAuthenticationResponse } from "../../lib/webauthn";
 import { verifyTOTPWithStep, findMatchingRecoveryKey } from "../../lib/totp";
 import { StoredRecoveryKey } from "../../models/user";
@@ -42,7 +43,7 @@ export async function handleForgotPasswordRequest(request: Request, env: Env): P
 
   // Step 1: Init recovery session
   if (path === '/api/auth/forgot-password/init' && request.method === 'POST') {
-    if (await cacheUtils.isRateLimited(cache, `forgot_pw_ip:${clientIp}`, 10, 600)) {
+    if (await cacheUtils.isRateLimited(cache, `forgot_pw_ip:${clientIp}`, getAuthLimits(env).forgotMax, getAuthLimits(env).forgotWindowSec)) {
       return new Response("Too many attempts", { status: 429 });
     }
 
@@ -65,7 +66,7 @@ export async function handleForgotPasswordRequest(request: Request, env: Env): P
 
     const user = await userModel.getByUsername(username);
     if (!user) {
-      await cacheUtils.isRateLimited(cache, `forgot_pw_ip:${clientIp}`, 100, 600); // penalty
+      await cacheUtils.isRateLimited(cache, `forgot_pw_ip:${clientIp}`, PENALTY_LIMIT, getAuthLimits(env).forgotWindowSec); // penalty
       return new Response("User not found", { status: 404 });
     }
 
@@ -112,7 +113,7 @@ export async function handleForgotPasswordRequest(request: Request, env: Env): P
           type: "public-key",
           transports: p.transports ? JSON.parse(p.transports) : undefined
         })),
-        timeout: 60000,
+        timeout: getAuthLimits(env).webauthnTimeoutMs,
         userVerification: "preferred"
       };
     }

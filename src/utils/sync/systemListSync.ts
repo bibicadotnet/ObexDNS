@@ -9,7 +9,7 @@ import { Env } from "../../types";
 import { SystemListModel } from "../../models/systemList";
 import { ListModel } from "../../models/list";
 import { BloomFilter } from "../bloom";
-import { fetchListContent } from "../listFetcher";
+import { fetchListContent, getListFetchTuning } from "../listFetcher";
 import { AdGuardRuleKind, AdGuardPayload, ParsedAdGuardRule } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
 import { pipelineCache } from "../../pipeline/cache";
@@ -36,7 +36,7 @@ export async function syncSingleSystemList(
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const timeoutMs = Number(env.SYNC_TIMEOUT_MS) || 90000;
+  const timeoutMs = Number(env.SYNC_TIMEOUT_MS) || 30000;
   const maxListDomains = Number(env.MAX_LIST_DOMAINS) || 500000;
   const maxDomains = Number(env.MAX_SYNC_DOMAINS) || 1000000;
   const maxListBytes = Number(env.MAX_LIST_BYTES) || DEFAULT_MAX_LIST_BYTES;
@@ -109,7 +109,10 @@ export async function syncSingleSystemList(
         }
       }
     },
-    useCacheHeaders ? { etag: systemList.etag, lastModified: systemList.last_modified } : {}
+    {
+      ...(useCacheHeaders ? { etag: systemList.etag, lastModified: systemList.last_modified } : {}),
+      ...getListFetchTuning(env)
+    }
   );
 
   // 304 Not Modified

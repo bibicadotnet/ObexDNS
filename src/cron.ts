@@ -6,6 +6,7 @@ import { ProfileModel } from './models/profile';
 import { syncNextListForProfile, syncAllSystemLists } from './utils/sync';
 import { syncCloudflareIpRanges } from './utils/ech';
 import { cacheUtils } from './utils/cache';
+import { envNumber } from './utils/envNumber';
 
 import { SystemSettingsModel } from './models/systemSettings';
 
@@ -31,13 +32,14 @@ export async function handleScheduled(
     const cache = typeof caches !== 'undefined' ? (caches as any).default : null;
     const now = Math.floor(Date.now() / 1000);
 
-    // ── CLEANUP (Hourly Throttled) ────────────────────────────────────────────
-    // Heavy D1 cleanups are throttled to run at most once per hour (3,600s)
-    // rather than every minute, saving ~98% of cron D1 read/write operations.
+    // ── CLEANUP (Throttled, default hourly) ───────────────────────────────────
+    // Heavy D1 cleanups are throttled to run at most once per CLEANUP_INTERVAL_SEC
+    // (default 3,600s) rather than every minute, saving ~98% of cron D1 read/write operations.
+    const cleanupIntervalSec = envNumber(env.CLEANUP_INTERVAL_SEC, 3600, { min: 60 });
     let shouldRunCleanup = true;
 
     // 1. Fast L1 in-memory check (0ms, 0 subrequests)
-    if (lastCleanupMemoryTs && now - lastCleanupMemoryTs < 3600) {
+    if (lastCleanupMemoryTs && now - lastCleanupMemoryTs < cleanupIntervalSec) {
       shouldRunCleanup = false;
     }
 
@@ -47,7 +49,7 @@ export async function handleScheduled(
     if (shouldRunCleanup) {
       // 2. L2 Cache API check
       const lastCleanup = await cacheUtils.get<number>(cache, lastCleanupKey);
-      if (lastCleanup && now - lastCleanup < 3600) {
+      if (lastCleanup && now - lastCleanup < cleanupIntervalSec) {
         lastCleanupMemoryTs = lastCleanup;
         shouldRunCleanup = false;
       }
@@ -59,7 +61,7 @@ export async function handleScheduled(
         const persisted = await settingsModel.get("cron_last_cleanup_timestamp");
         if (persisted) {
           const persistedTs = parseInt(persisted, 10) || 0;
-          if (now - persistedTs < 3600) {
+          if (now - persistedTs < cleanupIntervalSec) {
             lastCleanupMemoryTs = persistedTs;
             shouldRunCleanup = false;
           }
@@ -71,7 +73,7 @@ export async function handleScheduled(
 
     if (shouldRunCleanup) {
       lastCleanupMemoryTs = now;
-      await cacheUtils.set(cache, lastCleanupKey, now, 3600);
+      await cacheUtils.set(cache, lastCleanupKey, now, cleanupIntervalSec);
       try {
         await settingsModel.set("cron_last_cleanup_timestamp", String(now));
       } catch (err) {
@@ -101,16 +103,13 @@ export async function handleScheduled(
 
       try {
         const logModel = new LogModel(env.DB);
-        const maxRetentionDays = env.MAX_LOG_RETENTION_DAYS !== undefined && env.MAX_LOG_RETENTION_DAYS !== ''
-          ? Number(env.MAX_LOG_RETENTION_DAYS)
-          : 30;
-        const cleanupBatchLimit = env.LOG_CLEANUP_BATCH_LIMIT !== undefined && env.LOG_CLEANUP_BATCH_LIMIT !== ''
-          ? Number(env.LOG_CLEANUP_BATCH_LIMIT)
-          : 1000;
-        const cleanupDailyBudget = env.LOG_CLEANUP_DAILY_BUDGET !== undefined && env.LOG_CLEANUP_DAILY_BUDGET !== ''
-          ? Number(env.LOG_CLEANUP_DAILY_BUDGET)
-          : 20000;
-        await logModel.cleanupGlobal(maxRetentionDays, cleanupBatchLimit, cleanupDailyBudget);
+        const maxRetentionDays = envNumber(env.MAX_LOG_RETENTION_DAYS, 30);
+        const cleanupBatchLimit = envNumber(env.LOG_CLEANUP_BATCH_LIMIT, 1000);
+        const cleanupDailyBudget = envNumber(env.LOG_CLEANUP_DAILY_BUDGET, 20000);
+        await logModel.cleanupGlobal(maxRetentionDays, cleanupBatchLimit, cleanupDailyBudget, {
+          safetyWindowSec: envNumber(env.LOG_ORPHAN_KEY_MIN_AGE_SEC, 86400),
+          batchLimit: envNumber(env.LOG_ORPHAN_KEY_BATCH_LIMIT, 100, { min: 1 }),
+        });
       } catch (e) {
         console.error("[Cron] Global log cleanup failed:", e);
       }
@@ -130,9 +129,10 @@ export async function handleScheduled(
     }
 
     // ── CLOUDFLARE IPS SYNC ───────────────────────────────────────────────────
-    // Syncs official Cloudflare IP ranges daily from https://www.cloudflare.com/ips-v4 / v6
+    // Syncs official Cloudflare IP ranges (default once per day, see CF_IP_SYNC_INTERVAL_SEC)
+    // from https://www.cloudflare.com/ips-v4 / v6
     try {
-      await syncCloudflareIpRanges(env.DB);
+      await syncCloudflareIpRanges(env.DB, false, envNumber(env.CF_IP_SYNC_INTERVAL_SEC, 86400, { min: 60 }));
     } catch (e) {
       console.error("[Cron] Cloudflare IP range sync failed:", e);
     }
@@ -196,7 +196,7 @@ export async function handleScheduled(
     // Processes ONE list for a single stale profile per trigger.
     // The profile's active Bloom Filter is NOT updated until all its lists are
     // done (A/B pattern): staging accumulates incrementally, active stays intact.
-    // Idle periods are throttled to every 10 minutes (600s) to eliminate redundant D1 polls.
+    // Idle periods are throttled to SYNC_IDLE_INTERVAL_SEC (default 1800s = 30 min) to eliminate redundant D1 polls.
     try {
       const lastIdleSyncKey = "cron:last_idle_sync_check";
       const IDLE_SYNC_INTERVAL_SEC = Number(env.SYNC_IDLE_INTERVAL_SEC) || 1800;

@@ -1,4 +1,5 @@
 import { isSafeUrlWithDnsCheck } from "./validator";
+import { envNumber } from "./envNumber";
 import { parseAdGuardLine, AdGuardRuleKind, ParsedAdGuardRule } from "../lib/adguard";
 
 /** 单个列表的拉取结果 */
@@ -23,6 +24,28 @@ export interface FetchListResult {
 export interface FetchListOptions {
   etag?: string | null;
   lastModified?: string | null;
+  /** Max retry attempts after the first request (default 2, i.e. 3 requests total). 0 disables retries. */
+  maxRetries?: number;
+  /** Base exponential backoff delay in ms (default 1000: 1s -> 2s -> ...) */
+  retryDelayMs?: number;
+  /** Max HTTP 3xx redirects followed per request (default 5) */
+  maxRedirects?: number;
+}
+
+/**
+ * Reads list download tuning (retries / backoff / redirects) from env, with safe defaults.
+ * Env: LIST_FETCH_MAX_RETRIES, LIST_FETCH_RETRY_DELAY_MS, LIST_FETCH_MAX_REDIRECTS
+ */
+export function getListFetchTuning(env: {
+  LIST_FETCH_MAX_RETRIES?: string | number;
+  LIST_FETCH_RETRY_DELAY_MS?: string | number;
+  LIST_FETCH_MAX_REDIRECTS?: string | number;
+}): Pick<FetchListOptions, "maxRetries" | "retryDelayMs" | "maxRedirects"> {
+  return {
+    maxRetries: envNumber(env.LIST_FETCH_MAX_RETRIES, MAX_RETRIES, { max: 10 }),
+    retryDelayMs: envNumber(env.LIST_FETCH_RETRY_DELAY_MS, BASE_RETRY_DELAY_MS, { min: 100 }),
+    maxRedirects: envNumber(env.LIST_FETCH_MAX_REDIRECTS, MAX_REDIRECTS, { max: 20 }),
+  };
 }
 
 /** 回调函数：支持同步返回 void（绝大多数场景），仅在出让 CPU 时返回 Promise */
@@ -52,6 +75,7 @@ const DEFAULT_FETCH_HEADERS: HeadersInit = {
 
 const MAX_RETRIES = 2; // 最多重试 2 次（共 3 次请求）
 const BASE_RETRY_DELAY_MS = 1000; // 基础退避延迟（1s -> 2s）
+const MAX_REDIRECTS = 5; // 单次请求最多跟随的重定向次数
 
 /**
  * 流式拉取单个订阅列表并逐行解析域名。
@@ -76,13 +100,15 @@ export async function fetchListContent(
   options?: FetchListOptions
 ): Promise<FetchListResult> {
   const deadline = Date.now() + timeoutMs;
-  const MAX_REDIRECTS = 5;
+  const maxRetries = options?.maxRetries ?? MAX_RETRIES;
+  const baseRetryDelayMs = options?.retryDelayMs ?? BASE_RETRY_DELAY_MS;
+  const maxRedirects = options?.maxRedirects ?? MAX_REDIRECTS;
   let lastError: string | null = null;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // 若为重试轮次，先等待指数退避时间（需确保剩余总超时预算充足）
     if (attempt > 0) {
-      const backoffMs = BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+      const backoffMs = baseRetryDelayMs * Math.pow(2, attempt - 1);
       const remainingBeforeBackoff = deadline - Date.now();
       if (remainingBeforeBackoff <= backoffMs + 1000) {
         break;
@@ -154,10 +180,10 @@ export async function fetchListContent(
           }
 
           redirectCount++;
-          if (redirectCount > MAX_REDIRECTS) {
+          if (redirectCount > maxRedirects) {
             return {
               count: 0,
-              error: `Too many redirects (max ${MAX_REDIRECTS})`,
+              error: `Too many redirects (max ${maxRedirects})`,
               truncated: false,
             };
           }
@@ -191,9 +217,9 @@ export async function fetchListContent(
         lastError = `HTTP error! Status: ${response.status} ${statusText}`;
 
         // 若命中瞬态错误码且尚有重试机会与充足超时预算，进入下一轮退避重试
-        if (TRANSIENT_HTTP_STATUSES.has(response.status) && attempt < MAX_RETRIES && deadline - Date.now() > 2000) {
+        if (TRANSIENT_HTTP_STATUSES.has(response.status) && attempt < maxRetries && deadline - Date.now() > 2000) {
           console.warn(
-            `[Fetcher] Transient HTTP ${response.status} for ${url}. Retrying attempt ${attempt + 1}/${MAX_RETRIES}...`
+            `[Fetcher] Transient HTTP ${response.status} for ${url}. Retrying attempt ${attempt + 1}/${maxRetries}...`
           );
           continue;
         }
@@ -302,9 +328,9 @@ export async function fetchListContent(
       };
     } catch (e: any) {
       lastError = e.message || String(e);
-      if (attempt < MAX_RETRIES && deadline - Date.now() > 2000) {
+      if (attempt < maxRetries && deadline - Date.now() > 2000) {
         console.warn(
-          `[Fetcher] Transient network error for ${url}: ${lastError}. Retrying attempt ${attempt + 1}/${MAX_RETRIES}...`
+          `[Fetcher] Transient network error for ${url}: ${lastError}. Retrying attempt ${attempt + 1}/${maxRetries}...`
         );
         continue;
       }

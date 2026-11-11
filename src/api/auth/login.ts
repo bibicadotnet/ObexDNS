@@ -21,6 +21,7 @@ import { ActivityLogModel } from "../../models/activityLog";
 import { SystemSettingsModel } from "../../models/systemSettings";
 import { cacheUtils } from "../../utils/cache";
 import { verifyTurnstile } from "./utils";
+import { getAuthLimits, PENALTY_LIMIT } from "./authLimits";
 import { generateWebAuthnChallenge, verifyAuthenticationResponse } from "../../lib/webauthn";
 
 /**
@@ -36,7 +37,7 @@ export async function handleLoginRequest(request: Request, env: Env): Promise<Re
 
   // 第一步：预登录 (只验证用户名和 Turnstile)
   if (url.pathname === '/api/auth/prelogin' && request.method === 'POST') {
-    if (await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, 10, 900)) {
+    if (await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, getAuthLimits(env).loginMax, getAuthLimits(env).loginWindowSec)) {
       return new Response("Too many attempts", { status: 429 });
     }
     const { username, turnstileToken } = await request.json() as any;
@@ -58,7 +59,7 @@ export async function handleLoginRequest(request: Request, env: Env): Promise<Re
       if (isEmpty) {
         return new Response("no_users_registered", { status: 404 });
       }
-      await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, 100, 900); // penalty
+      await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, PENALTY_LIMIT, getAuthLimits(env).loginWindowSec); // penalty
       return new Response("User not found", { status: 404 });
     }
 
@@ -87,7 +88,7 @@ export async function handleLoginRequest(request: Request, env: Env): Promise<Re
           type: "public-key",
           transports: p.transports ? JSON.parse(p.transports) : undefined
         })),
-        timeout: 60000,
+        timeout: getAuthLimits(env).webauthnTimeoutMs,
         userVerification: "preferred"
       };
     }
@@ -128,7 +129,7 @@ export async function handleLoginRequest(request: Request, env: Env): Promise<Re
     if (request.headers.get("X-Password-Leaked") === "true" || request.headers.get("Exposed-Credential-Check") === "true") {
       return new Response("password_leaked", { status: 400 });
     }
-    if (await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, 10, 900)) {
+    if (await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, getAuthLimits(env).loginMax, getAuthLimits(env).loginWindowSec)) {
       return new Response("Too many login attempts", { status: 429 });
     }
 
@@ -180,7 +181,7 @@ export async function handleLoginRequest(request: Request, env: Env): Promise<Re
         // Nonce challenge-response validation
         const expectedResponse = await hmacSha256(user.hashed_password, nonce);
         if (password !== expectedResponse) {
-          await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, 100, 900);
+          await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, PENALTY_LIMIT, getAuthLimits(env).loginWindowSec);
           await activityLog.record(userId, 'login_fail', clientIp, userAgent, { reason: 'wrong_password' });
           const remaining = await recordFailedPreauthAttempt(cache, preauthToken, env);
           if (remaining <= 0) {
@@ -193,7 +194,7 @@ export async function handleLoginRequest(request: Request, env: Env): Promise<Re
         // Plaintext validation (v1)
         const passwordValid = await verifyPassword(password, user.hashed_password, 1);
         if (!passwordValid) {
-          await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, 100, 900);
+          await cacheUtils.isRateLimited(cache, `login_fail:${clientIp}`, PENALTY_LIMIT, getAuthLimits(env).loginWindowSec);
           await activityLog.record(userId, 'login_fail', clientIp, userAgent, { reason: 'wrong_password' });
           const remaining = await recordFailedPreauthAttempt(cache, preauthToken, env);
           if (remaining <= 0) {

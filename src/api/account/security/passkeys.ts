@@ -11,6 +11,7 @@ import {
   verifyAuthenticationResponse
 } from "../../../lib/webauthn";
 import { cacheUtils } from "../../../utils/cache";
+import { getAuthLimits } from "../../auth/authLimits";
 import { generateRecoveryKeys, hashRecoveryKey } from "../../../lib/totp";
 import { verifyUserReauth, ReauthPayload } from "./reauth";
 
@@ -87,7 +88,7 @@ export async function handlePasskeysRequest(
     const options = {
       challenge,
       rpId,
-      timeout: 60000,
+      timeout: getAuthLimits(env).webauthnTimeoutMs,
       userVerification: "preferred",
       allowCredentials: availablePasskeys.map((p) => ({
         id: p.credential_id,
@@ -213,7 +214,7 @@ export async function handlePasskeysRequest(
         userVerification: "preferred",
         residentKey: "preferred"
       },
-      timeout: 60000,
+      timeout: getAuthLimits(env).webauthnTimeoutMs,
       excludeCredentials: existingPasskeys.map((p) => ({
         id: p.credential_id,
         type: "public-key",

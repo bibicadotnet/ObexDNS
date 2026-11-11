@@ -121,11 +121,13 @@ export async function initCloudflareIpRanges(db: D1Database): Promise<void> {
  *
  * @param db - D1Database instance.
  * @param force - Force sync regardless of last update timestamp.
+ * @param intervalSec - Minimum seconds between syncs when not forced (default 86400 = 1 day).
  * @returns Object indicating sync status and count.
  */
 export async function syncCloudflareIpRanges(
   db: D1Database,
-  force: boolean = false
+  force: boolean = false,
+  intervalSec: number = 86400
 ): Promise<{ success: boolean; updated: boolean; count: number }> {
   const settingsModel = new SystemSettingsModel(db);
   const now = Math.floor(Date.now() / 1000);
@@ -134,7 +136,7 @@ export async function syncCloudflareIpRanges(
     const lastUpdatedStr = await settingsModel.get("cf_proxy_cidrs_updated_at");
     if (lastUpdatedStr) {
       const lastUpdated = parseInt(lastUpdatedStr, 10);
-      if (!isNaN(lastUpdated) && now - lastUpdated < 86400) {
+      if (!isNaN(lastUpdated) && now - lastUpdated < intervalSec) {
         return { success: true, updated: false, count: getActiveCfProxyCidrs().length };
       }
     }

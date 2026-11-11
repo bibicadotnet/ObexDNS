@@ -1,6 +1,7 @@
 import { Env } from "../../types";
 import { BloomFilter } from "../bloom";
-import { fetchListContent } from "../listFetcher";
+import { fetchListContent, getListFetchTuning } from "../listFetcher";
+import { envNumber } from "../envNumber";
 import { ListModel } from "../../models/list";
 import { ListBloomModel } from "../../models/listBloom";
 import { SystemListModel } from "../../models/systemList";
@@ -45,9 +46,9 @@ export async function syncSingleList(
       if (sysId) {
         const sysModel = new SystemListModel(env.DB);
         let sysList = await sysModel.getSystemListById(sysId);
-        // Tránh tải trùng lặp khi force=true: nếu system list vừa được đồng bộ trong 60s qua thì bỏ qua tải lại.
+        // Tránh tải trùng lặp khi force=true: nếu system list vừa được đồng bộ trong SYNC_FORCE_COOLDOWN_SEC (mặc định 60s) qua thì bỏ qua tải lại.
         // Tuy nhiên, nếu system list chưa từng được đồng bộ (neverSynced), bắt buộc phải tải ngay để profile có tác dụng lọc.
-        const isFresh = Boolean(sysList?.last_synced_at && (now - sysList.last_synced_at < 60));
+        const isFresh = Boolean(sysList?.last_synced_at && (now - sysList.last_synced_at < envNumber(env.SYNC_FORCE_COOLDOWN_SEC, 60)));
         const neverSynced = !sysList?.last_synced_at;
         if ((force && !isFresh) || neverSynced) {
           await syncSingleSystemList(sysId, env, force || neverSynced);
@@ -66,7 +67,7 @@ export async function syncSingleList(
       }
     }
   }
-  const timeoutMs = Number(env.SYNC_TIMEOUT_MS) || 90000;
+  const timeoutMs = Number(env.SYNC_TIMEOUT_MS) || 30000;
   const maxListDomains = Number(env.MAX_LIST_DOMAINS) || 500000;
   const maxDomains = Number(env.MAX_SYNC_DOMAINS) || 1000000;
   const maxListBytes = Number(env.MAX_LIST_BYTES) || DEFAULT_MAX_LIST_BYTES;
@@ -147,7 +148,10 @@ export async function syncSingleList(
         }
       }
     },
-    useCacheHeaders ? { etag: list.etag, lastModified: list.last_modified } : {}
+    {
+      ...(useCacheHeaders ? { etag: list.etag, lastModified: list.last_modified } : {}),
+      ...getListFetchTuning(env)
+    }
   );
 
   // 协商缓存命中：上游规则未发生变动，直接沿用原有布隆与规则，跳过数据库覆写与后续合并计算

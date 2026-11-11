@@ -7,6 +7,7 @@ import {
 import { importJwtSecret, signJWT } from "../../lib/jwt";
 import { ActivityLogModel } from "../../models/activityLog";
 import { cacheUtils } from "../../utils/cache";
+import { getAuthLimits, PENALTY_LIMIT } from "./authLimits";
 
 /**
  * Handle session token refresh requests
@@ -17,7 +18,7 @@ export async function handleRefreshRequest(request: Request, env: Env): Promise<
   const userAgent = request.headers.get("User-Agent");
   const activityLog = new ActivityLogModel(env.DB);
 
-  if (await cacheUtils.isRateLimited(cache, `refresh_fail:${clientIp}`, 20, 60)) {
+  if (await cacheUtils.isRateLimited(cache, `refresh_fail:${clientIp}`, getAuthLimits(env).refreshMax, getAuthLimits(env).refreshWindowSec)) {
     return new Response("Too many attempts", { status: 429 });
   }
 
@@ -34,7 +35,7 @@ export async function handleRefreshRequest(request: Request, env: Env): Promise<
       const sessionHash = parsed ? await generateSessionHash(parsed.sid, user.id) : null;
       await activityLog.record(user.id, 'logout', clientIp, userAgent, { reason: reason || 'unknown' }, sessionHash);
     }
-    await cacheUtils.isRateLimited(cache, `refresh_fail:${clientIp}`, 100, 60);
+    await cacheUtils.isRateLimited(cache, `refresh_fail:${clientIp}`, PENALTY_LIMIT, getAuthLimits(env).refreshWindowSec);
     return new Response(JSON.stringify({ error: "Invalid refresh token", reason: reason || "unknown" }), { 
       status: 401,
       headers: {

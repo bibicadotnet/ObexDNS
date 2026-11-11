@@ -144,6 +144,12 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # Throttle interval for updating profile "last active" status (in seconds) / 活跃状态写入节流时间间隔 (秒)
 # THROTTLE_ACTIVE_SEC=3600
 
+# How long a client IP is remembered as "actively using this server's DNS" (in seconds, default 60)
+# Thời gian ghi nhớ một IP client là "đang dùng DNS của máy chủ này" (giây, mặc định 60).
+# Used by the dashboard's connection check / Debug API to detect which profile a device is using.
+# Dùng cho chức năng kiểm tra kết nối / Debug API trên web để nhận biết thiết bị đang dùng profile nào.
+# ACTIVE_DNS_CACHE_TTL=60
+
 # ------------------------------------------------------------------------------
 # Blocklist Sync & Bloom Filter Settings (Optional) / 规则同步与布隆过滤器配置 (选填)
 # ------------------------------------------------------------------------------
@@ -165,15 +171,79 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # In-memory retention time for profile config (in milliseconds) / 内存中缓存配置文件设置的有效时长 (毫秒)
 # CONFIG_MEM_TTL=300000
 
-# Timeout threshold when downloading upstream blocklists (in milliseconds) / 下载外部规则列表超时阈值 (毫秒)
-# SYNC_TIMEOUT_MS=30000
+# Maximum number of regex rules kept from lists (extra rules are ignored)
+# Số quy tắc regex tối đa được giữ lại từ các danh sách (quy tắc vượt quá sẽ bị bỏ qua).
+# MAX_REGEX_RULES=1000
 
-# Minimum interval between automated blocklist profile syncs (in seconds) / 自动同步外部规则列表最小间隔 (秒)
+# ------------------------------------------------------------------------------
+# Scheduled Tasks & List Sync (Cron) / Tác vụ định kỳ & đồng bộ danh sách (Cron)
+# ------------------------------------------------------------------------------
+# The scheduler ticks every minute. The values below decide WHEN a list is actually refreshed.
+# Bộ lập lịch chạy mỗi phút một lần. Các giá trị bên dưới quyết định KHI NÀO một danh sách thật sự được cập nhật.
+# NOTE: the "Sync All Lists" / "Sync this list" buttons in the web dashboard run immediately and ignore these intervals.
+# LƯU Ý: nút "Sync All Lists" / "Sync this list" trên giao diện web chạy ngay lập tức, không phụ thuộc các chu kỳ này.
+
+# Automatic refresh interval for System Lists - the built-in shared lists (in seconds, default 21600 = 6 hours)
+# Chu kỳ tự động cập nhật System List - các danh sách dùng chung có sẵn của hệ thống (giây, mặc định 21600 = 6 giờ).
+# Unchanged lists are skipped via ETag / HTTP 304, so a short interval costs very little.
+# Danh sách không thay đổi sẽ được bỏ qua nhờ ETag / HTTP 304, nên đặt chu kỳ ngắn cũng tốn rất ít tài nguyên.
+# SYNC_SYSTEM_INTERVAL_SEC=21600
+
+# Automatic refresh interval for user-added lists of each profile (in seconds, default 86400 = 24 hours)
+# Chu kỳ tự động cập nhật các danh sách do người dùng tự thêm trong mỗi profile (giây, mặc định 86400 = 24 giờ).
 # SYNC_PROFILE_INTERVAL_SEC=86400
 
-# Minimum interval between automated system shared filter lists syncs (in seconds, default 21600 = 6 hours)
-# 系统共享规则列表自动同步最小间隔 (秒，默认 21600 = 6 小时)
-# SYNC_SYSTEM_INTERVAL_SEC=21600
+# How long to wait before checking the database again when no profile is due for a sync (in seconds, default 1800 = 30 minutes)
+# Thời gian chờ trước khi kiểm tra lại database khi không có profile nào đến hạn đồng bộ (giây, mặc định 1800 = 30 phút).
+# Larger value = fewer idle database reads, but newly due profiles may start syncing a bit later.
+# Giá trị lớn hơn = ít truy vấn database lúc rảnh hơn, nhưng profile vừa đến hạn có thể bắt đầu đồng bộ trễ hơn một chút.
+# SYNC_IDLE_INTERVAL_SEC=1800
+
+# Number of profiles processed per scheduler tick, each syncing one list (default 1)
+# Số profile được xử lý trong mỗi lần chạy định kỳ, mỗi profile đồng bộ một danh sách (mặc định 1).
+# Raise it only if you have many profiles and a powerful server; higher values use more CPU per tick.
+# Chỉ nên tăng khi có nhiều profile và máy chủ mạnh; giá trị cao hơn sẽ tốn nhiều CPU hơn cho mỗi lượt chạy.
+# SYNC_BATCH_SIZE=1
+
+# Skip re-downloading a System List that was synced less than this many seconds ago when a sync is forced (default 60)
+# Bỏ qua việc tải lại System List vừa được đồng bộ cách đây chưa tới số giây này khi đồng bộ cưỡng bức (mặc định 60).
+# Only applies to API calls with ?force=true. Set 0 to always re-download.
+# Chỉ áp dụng cho lệnh gọi API có ?force=true. Đặt 0 để luôn tải lại.
+# SYNC_FORCE_COOLDOWN_SEC=60
+
+# Timeout threshold when downloading upstream blocklists (in milliseconds, default 30000)
+# Thời gian chờ tối đa khi tải danh sách chặn từ nguồn bên ngoài (mili giây, mặc định 30000).
+# SYNC_TIMEOUT_MS=30000
+
+# Number of extra attempts when a list download fails with a transient error (default 2, 0 = never retry)
+# Số lần thử lại khi tải danh sách bị lỗi tạm thời (mặc định 2, đặt 0 = không thử lại).
+# LIST_FETCH_MAX_RETRIES=2
+
+# Base delay before the first retry in milliseconds, doubled on each further retry (default 1000)
+# Độ trễ cơ bản trước lần thử lại đầu tiên, tính bằng mili giây, nhân đôi sau mỗi lần thử lại tiếp theo (mặc định 1000).
+# LIST_FETCH_RETRY_DELAY_MS=1000
+
+# Maximum HTTP redirects followed when downloading a list (default 5)
+# Số lần chuyển hướng HTTP tối đa được theo dõi khi tải danh sách (mặc định 5).
+# LIST_FETCH_MAX_REDIRECTS=5
+
+# While parsing a large list, pause after every N domains so the server stays responsive (default 5000)
+# Khi xử lý danh sách lớn, tạm nghỉ sau mỗi N tên miền để máy chủ vẫn phản hồi mượt (mặc định 5000).
+# SYNC_YIELD_BATCH_SIZE=5000
+
+# Length of that pause in milliseconds (default 10)
+# Độ dài mỗi lần tạm nghỉ nói trên, tính bằng mili giây (mặc định 10).
+# Lower values sync faster but use CPU in bursts; higher values spread the load out.
+# Giá trị thấp đồng bộ nhanh hơn nhưng dùng CPU dồn dập; giá trị cao giúp dàn trải tải đều hơn.
+# SYNC_YIELD_SLEEP_MS=10
+
+# How often the cleanup task runs: deletes expired logs, expired sessions and inactive users (in seconds, default 3600 = 1 hour, minimum 60)
+# Tần suất chạy tác vụ dọn dẹp: xóa log hết hạn, phiên đăng nhập hết hạn và người dùng không hoạt động (giây, mặc định 3600 = 1 giờ, tối thiểu 60).
+# CLEANUP_INTERVAL_SEC=3600
+
+# How often to refresh the official Cloudflare IP ranges and ECH configuration (in seconds, default 86400 = 1 day, minimum 60)
+# Tần suất làm mới dải IP chính thức của Cloudflare và cấu hình ECH (giây, mặc định 86400 = 1 ngày, tối thiểu 60).
+# CF_IP_SYNC_INTERVAL_SEC=86400
 
 # ------------------------------------------------------------------------------
 # Quotas, Retention & Inactivity Policy (Optional) / 系统配额、日志保留与闲置清理策略 (选填)
@@ -184,19 +254,32 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # Maximum number of access points allowed per profile / 单配置允许创建的最大接入点数
 # MAX_ACCESS_POINTS_PER_PROFILE=100
 
-# Hard cap on log retention days for admin user (overrides per-profile user setting) / 管理员日志最长保留天数上限
+# Maximum number of user-added (custom) lists allowed per profile (default 5)
+# Số danh sách do người dùng tự thêm (custom list) tối đa trong mỗi profile (mặc định 5).
+# MAX_CUSTOM_LISTS_PER_PROFILE=5
+
+# Global hard cap on log retention days for ALL profiles (default 30). No user setting can exceed it, and the cleanup task deletes logs older than it.
+# Mức trần toàn hệ thống cho số ngày lưu log của MỌI profile (mặc định 30). Không cài đặt nào của người dùng được vượt quá mức này, và tác vụ dọn dẹp sẽ xóa log cũ hơn mức này.
 # MAX_LOG_RETENTION_DAYS=30
 
-# Default log retention days for admin user / 管理员日志默认保留天数
+# Hard cap on log retention days for admin accounts (default: same as MAX_LOG_RETENTION_DAYS; cannot exceed it)
+# Mức trần số ngày lưu log cho tài khoản admin (mặc định: bằng MAX_LOG_RETENTION_DAYS; không được vượt quá nó).
+# ADMIN_USER_MAX_LOG_RETENTION_DAYS=30
+
+# Default log retention days for new profiles of admin accounts (default 7)
+# Số ngày lưu log mặc định cho profile mới của tài khoản admin (mặc định 7).
 # DEFAULT_LOG_RETENTION_DAYS=7
 
-# Hard cap on log retention days for normal users / 普通用户日志最长保留天数上限
+# Hard cap on log retention days for normal users (default 7)
+# Mức trần số ngày lưu log cho người dùng thường (mặc định 7).
 # NORMAL_USER_MAX_LOG_RETENTION_DAYS=7
 
-# Default log retention days for normal users / 普通用户日志默认保留天数
+# Default log retention days for new profiles of normal users (default 1)
+# Số ngày lưu log mặc định cho profile mới của người dùng thường (mặc định 1).
 # NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS=1
 
-# Hard cap on log row count per profile / 单配置日志最大存储行数上限 (防撑满磁盘)
+# Hard cap on stored log rows per profile, to keep the disk from filling up (default 500000)
+# Số dòng log tối đa được lưu cho mỗi profile, để tránh đầy ổ đĩa (mặc định 500000).
 # MAX_LOGS_PER_PROFILE=500000
 
 # Number of days of DNS inactivity before normal user profiles & logs are cleared (0 to disable, default: 30)
@@ -207,14 +290,83 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # 连续无登录达到此天数时自动删除未活跃普通用户账户 (填 0 为禁用, 默认: 90)
 # INACTIVITY_USER_DAYS=90
 
-# Maximum log rows deleted per cron cleanup run across all profiles / 每轮定时清理最大删除日志行数
+# Maximum number of expired log rows deleted per cleanup run, shared across ALL profiles (default 1000)
+# Số dòng log hết hạn tối đa được xóa trong mỗi lượt dọn dẹp, chia chung cho TẤT CẢ profile (mặc định 1000).
+# Each profile gets an equal share (= this value / number of profiles, at least 1), so with 30 profiles each one loses at most ~33 rows per run.
+# Mỗi profile được chia phần bằng nhau (= giá trị này / số profile, tối thiểu 1), ví dụ 30 profile thì mỗi profile bị xóa tối đa ~33 dòng mỗi lượt.
+# How often a run happens is set by CLEANUP_INTERVAL_SEC. If old logs pile up, raise this value or shorten that interval.
+# Tần suất mỗi lượt chạy do CLEANUP_INTERVAL_SEC quy định. Nếu log cũ tồn đọng nhiều, hãy tăng giá trị này hoặc rút ngắn chu kỳ đó.
 # LOG_CLEANUP_BATCH_LIMIT=1000
 
-# Daily budget for log row deletions across all profiles / 每日清理最大删除日志配额预算 (默认: 20000)
+# Maximum number of expired log rows deleted per day across all profiles (default 20000, 0 = no daily limit)
+# Số dòng log hết hạn tối đa được xóa mỗi ngày trên tất cả profile (mặc định 20000, đặt 0 = không giới hạn theo ngày).
+# Once reached, raw log deletion is skipped until the next UTC day. This protects the database's daily write quota (e.g. Cloudflare D1).
+# Khi chạm mức này, việc xóa log thô sẽ tạm dừng đến hết ngày UTC. Giúp bảo vệ hạn mức ghi mỗi ngày của database (ví dụ Cloudflare D1).
+# The log line shows it as "today: X/Y". With 0, only LOG_CLEANUP_BATCH_LIMIT limits each run.
+# Dòng log hiển thị dạng "today: X/Y". Khi đặt 0, chỉ còn LOG_CLEANUP_BATCH_LIMIT giới hạn mỗi lượt.
 # LOG_CLEANUP_DAILY_BUDGET=20000
 
-# Minimum query count threshold for domain hourly rollup aggregation / 域名小时聚合最小请求次数阈值
+# Minimum age in seconds before an unused encryption key (kem_key) with no logs referencing it can be deleted (default 86400 = 24 hours)
+# Tuổi tối thiểu (giây) trước khi một khóa mã hóa (kem_key) không còn log nào tham chiếu được phép xóa (mặc định 86400 = 24 giờ).
+# LOG_ORPHAN_KEY_MIN_AGE_SEC=86400
+
+# Maximum number of unused kem_keys deleted per cleanup run (default 100)
+# Số kem_key không còn được dùng tối đa bị xóa trong mỗi lượt dọn dẹp (mặc định 100).
+# LOG_ORPHAN_KEY_BATCH_LIMIT=100
+
+# NOT USED by the current code: the server never reads this value, so changing it has no effect (kept for compatibility).
+# HIỆN CHƯA ĐƯỢC DÙNG trong code: máy chủ không đọc giá trị này nên thay đổi sẽ không có tác dụng (giữ lại để tương thích).
 # DOMAIN_ROLLUP_MIN_COUNT=2
+
+# ------------------------------------------------------------------------------
+# Authentication Rate Limits (Optional) / Giới hạn tần suất xác thực (không bắt buộc)
+# ------------------------------------------------------------------------------
+# Protects against brute-force attacks. Limits are counted per client IP.
+# Chống tấn công dò mật khẩu (brute-force). Giới hạn được tính theo từng IP client.
+
+# Failed login attempts allowed per IP within the window before it is blocked (default 10)
+# Số lần đăng nhập sai tối đa của mỗi IP trong khoảng thời gian bên dưới trước khi bị chặn (mặc định 10).
+# LOGIN_MAX_ATTEMPTS=10
+
+# Login block window in seconds (default 900 = 15 minutes)
+# Khoảng thời gian chặn đăng nhập tính bằng giây (mặc định 900 = 15 phút).
+# LOGIN_LOCK_WINDOW_SEC=900
+
+# Sign-ups allowed per IP within the window (default 10)
+# Số lượt đăng ký tài khoản tối đa của mỗi IP trong khoảng thời gian bên dưới (mặc định 10).
+# SIGNUP_MAX_PER_WINDOW=10
+
+# Sign-up window in seconds (default 60)
+# Khoảng thời gian tính giới hạn đăng ký, tính bằng giây (mặc định 60).
+# SIGNUP_WINDOW_SEC=60
+
+# Forgot-password attempts allowed per IP within the window (default 10)
+# Số lần thử khôi phục mật khẩu tối đa của mỗi IP trong khoảng thời gian bên dưới (mặc định 10).
+# FORGOT_PASSWORD_MAX_ATTEMPTS=10
+
+# Forgot-password window in seconds (default 600 = 10 minutes)
+# Khoảng thời gian tính giới hạn khôi phục mật khẩu, tính bằng giây (mặc định 600 = 10 phút).
+# FORGOT_PASSWORD_WINDOW_SEC=600
+
+# Failed session-refresh attempts allowed per IP within the window (default 20)
+# Số lần làm mới phiên đăng nhập thất bại tối đa của mỗi IP trong khoảng thời gian bên dưới (mặc định 20).
+# REFRESH_MAX_FAILURES=20
+
+# Session-refresh failure window in seconds (default 60)
+# Khoảng thời gian tính giới hạn làm mới phiên thất bại, tính bằng giây (mặc định 60).
+# REFRESH_WINDOW_SEC=60
+
+# Wrong unlock-PIN attempts allowed before the session is destroyed and the user is logged out (default 3)
+# Số lần nhập sai mã PIN mở khóa tối đa trước khi phiên bị hủy và người dùng bị đăng xuất (mặc định 3).
+# PIN_MAX_ATTEMPTS=3
+
+# How long wrong-PIN attempts are remembered in seconds (default 900 = 15 minutes)
+# Thời gian ghi nhớ các lần nhập sai PIN, tính bằng giây (mặc định 900 = 15 phút).
+# PIN_LOCK_WINDOW_SEC=900
+
+# How long the browser waits for a Passkey / WebAuthn prompt in milliseconds (default 60000 = 60 seconds, minimum 1000)
+# Thời gian trình duyệt chờ người dùng thao tác Passkey / WebAuthn, tính bằng mili giây (mặc định 60000 = 60 giây, tối thiểu 1000).
+# WEBAUTHN_TIMEOUT_MS=60000
 
 # ------------------------------------------------------------------------------
 # Preset Upstream Services & External Filters (Optional) / 预设上游服务与外部过滤规则 (选填)

@@ -7,6 +7,7 @@ import { ActivityLogModel } from "../../models/activityLog";
 import { SessionModel } from "../../models/session";
 import { cacheUtils } from "../../utils/cache";
 import { invalidateAuthUserCache } from "../../lib/middleware";
+import { getAuthLimits, PENALTY_LIMIT } from "./authLimits";
 
 /**
  * Verifies client PIN hash against stored legacy base64 PIN hash using pre-challenge methods.
@@ -183,8 +184,8 @@ export async function handleSessionLockRequest(request: Request, env: Env): Prom
 
       if (!isPinValid) {
         const nextFailedCount = failedAttempts + 1;
-        if (nextFailedCount >= 3) {
-          // 超过 3 次失败，销毁 Session 强制登出
+        if (nextFailedCount >= getAuthLimits(env).pinMaxAttempts) {
+          // 超过 PIN_MAX_ATTEMPTS (默认 3) 次失败，销毁 Session 强制登出
           await sessionModel.deleteSession(session.id);
           await cacheUtils.delete(cache, cacheKey);
           await activityLog.record(payload.userId, 'pin_verify_fail', clientIp, userAgent, { reason: 'too_many_attempts' }, sessionHash);
@@ -193,12 +194,12 @@ export async function handleSessionLockRequest(request: Request, env: Env): Prom
             headers: { "Content-Type": "application/json" }
           });
         }
-        await cacheUtils.set(cache, cacheKey, { count: nextFailedCount }, 900); // 15分钟锁定追踪
+        await cacheUtils.set(cache, cacheKey, { count: nextFailedCount }, getAuthLimits(env).pinWindowSec); // 锁定追踪窗口 (默认 15 分钟)
         await activityLog.record(payload.userId, 'pin_verify_fail', clientIp, userAgent, { reason: 'incorrect_pin', attempt: nextFailedCount }, sessionHash);
         return new Response(JSON.stringify({
           success: false,
           error: "incorrect_pin",
-          attemptsRemaining: 3 - nextFailedCount
+          attemptsRemaining: getAuthLimits(env).pinMaxAttempts - nextFailedCount
         }), {
           status: 400,
           headers: { "Content-Type": "application/json" }
