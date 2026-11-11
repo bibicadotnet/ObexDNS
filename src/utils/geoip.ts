@@ -12,29 +12,85 @@ export interface GeoIP {
   timezone?: string;
 }
 
-// In-memory cache fallback (expires after 14 days)
+// In-memory cache (expires after 14 days).
 const memoryCache = new Map<string, { data: GeoIP; expiresAt: number }>();
 const MEMORY_CACHE_TTL = 14 * 24 * 60 * 60 * 1000; // 14 days
+const MEMORY_CACHE_MAX = 100000;
 
-export async function fetchGeoIP(ip: string): Promise<GeoIP | null> {
-  if (!isPublicInternetIP(ip)) {
+// Negative cache: remember total lookup failures briefly so a rate-limited / down provider
+// is not hammered by every query that touches the same IP.
+const negativeCache = new Map<string, number>();
+const NEGATIVE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const NEGATIVE_CACHE_MAX = 5000;
+
+// In-flight de-duplication: concurrent lookups of the same IP share one network round-trip.
+const inflight = new Map<string, Promise<GeoIP | null>>();
+
+/** Per-provider network timeout so a hung provider can never stall background work. */
+const PROVIDER_TIMEOUT_MS = 3000;
+
+/**
+ * Normalizes an IP for lookup/caching: strips IPv6 brackets and unwraps IPv4-mapped IPv6
+ * (::ffff:1.2.3.4) so equivalent addresses share one cache entry and URLs stay valid.
+ */
+function normalizeIp(ip: string): string {
+  let clean = ip.trim();
+  if (clean.startsWith("[") && clean.endsWith("]")) {
+    clean = clean.slice(1, -1);
+  }
+  const mapped = clean.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i);
+  if (mapped) clean = mapped[1];
+  return clean.toLowerCase();
+}
+
+function setBounded<V>(map: Map<string, V>, key: string, value: V, max: number): void {
+  if (map.has(key)) {
+    map.delete(key);
+  } else if (map.size >= max) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
+}
+
+/**
+ * Looks up GeoIP data for a public IP. Never throws; returns null if unavailable.
+ * Lookup order: memory cache -> Cache API -> ip-api.com -> ipwho.is.
+ */
+export async function fetchGeoIP(rawIp: string): Promise<GeoIP | null> {
+  if (!isPublicInternetIP(rawIp)) {
     return null;
   }
 
+  const ip = normalizeIp(rawIp);
   const cacheKey = `geoip:${ip}`;
-  const now = Date.now();
 
-  // Try In-memory Cache first (fastest, works in all environments)
   const memCached = memoryCache.get(cacheKey);
   if (memCached) {
-    if (now < memCached.expiresAt) {
+    if (Date.now() < memCached.expiresAt) {
       return memCached.data;
-    } else {
-      memoryCache.delete(cacheKey); // Expired
     }
+    memoryCache.delete(cacheKey); // Expired
   }
 
-  // Try Cloudflare Cache API (if available and enabled on custom domains)
+  const negUntil = negativeCache.get(cacheKey);
+  if (negUntil !== undefined) {
+    if (Date.now() < negUntil) return null;
+    negativeCache.delete(cacheKey);
+  }
+
+  const pending = inflight.get(cacheKey);
+  if (pending) return pending;
+
+  const promise = lookupGeoIP(ip, cacheKey).finally(() => {
+    inflight.delete(cacheKey);
+  });
+  inflight.set(cacheKey, promise);
+  return promise;
+}
+
+async function lookupGeoIP(ip: string, cacheKey: string): Promise<GeoIP | null> {
+  // Cloudflare Cache API (if available and enabled on custom domains)
   let cache: any = null;
   if (typeof caches !== "undefined" && (caches as any).default) {
     cache = (caches as any).default;
@@ -44,24 +100,17 @@ export async function fetchGeoIP(ip: string): Promise<GeoIP | null> {
     try {
       const cached = await cacheUtils.get<GeoIP>(cache, cacheKey);
       if (cached) {
-        // Cache in memory for subsequent super-fast lookups
-        memoryCache.set(cacheKey, { data: cached, expiresAt: now + MEMORY_CACHE_TTL });
+        setBounded(memoryCache, cacheKey, { data: cached, expiresAt: Date.now() + MEMORY_CACHE_TTL }, MEMORY_CACHE_MAX);
         return cached;
       }
     } catch (err) {
-      console.warn("Cloudflare Cache API read error, falling back to memory/network:", err);
+      console.warn("Cloudflare Cache API read error, falling back to network:", err);
     }
   }
 
   const storeInCache = async (geo: GeoIP) => {
-    if (memoryCache.size >= 100000) {
-      const firstKey = memoryCache.keys().next().value;
-      if (firstKey !== undefined) {
-        memoryCache.delete(firstKey);
-      }
-    }
-    memoryCache.set(cacheKey, { data: geo, expiresAt: now + MEMORY_CACHE_TTL });
-
+    // Expiry is measured from when the lookup finished, not from when it started.
+    setBounded(memoryCache, cacheKey, { data: geo, expiresAt: Date.now() + MEMORY_CACHE_TTL }, MEMORY_CACHE_MAX);
     if (cache) {
       try {
         await cacheUtils.set(cache, cacheKey, geo, 86400 * 14);
@@ -74,8 +123,9 @@ export async function fetchGeoIP(ip: string): Promise<GeoIP | null> {
   // 1. Primary provider: ip-api.com
   try {
     const response = await fetch(
-      `http://ip-api.com/json/${ip}?fields=status,country,countryCode,regionName,city,isp,org,as,timezone`,
+      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,regionName,city,isp,org,as,timezone`,
       {
+        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
         cf: {
           cacheTtlByStatus: {
             "200-299": 86400 * 14, // 14 days
@@ -88,7 +138,7 @@ export async function fetchGeoIP(ip: string): Promise<GeoIP | null> {
     );
     if (response.ok) {
       const data = (await response.json()) as any;
-      if (data.status === "success") {
+      if (data.status === "success" && data.countryCode) {
         const geo: GeoIP = {
           country: data.country,
           country_code: data.countryCode,
@@ -109,10 +159,12 @@ export async function fetchGeoIP(ip: string): Promise<GeoIP | null> {
 
   // 2. Secondary fallback provider: ipwho.is (HTTPS, no auth required)
   try {
-    const response2 = await fetch(`https://ipwho.is/${ip}`);
+    const response2 = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, {
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
     if (response2.ok) {
       const data2 = (await response2.json()) as any;
-      if (data2.success) {
+      if (data2.success && data2.country_code) {
         const geo: GeoIP = {
           country: data2.country,
           country_code: data2.country_code,
@@ -133,6 +185,7 @@ export async function fetchGeoIP(ip: string): Promise<GeoIP | null> {
     console.error("GeoIP Fetch Error:", e2);
   }
 
+  setBounded(negativeCache, cacheKey, Date.now() + NEGATIVE_CACHE_TTL, NEGATIVE_CACHE_MAX);
   return null;
 }
 

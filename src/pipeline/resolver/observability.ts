@@ -1,12 +1,13 @@
 import { Context, DNSQuery, ProfileSettings, ResolutionResult } from "../../types";
 import { fetchGeoIP, resolveClientGeoCountry } from "../../utils/geoip";
 import { dnsCache } from "../cache";
-import { enqueueLog } from "../logBatcher";
+import { enqueueLog, shouldLogQuery } from "../logBatcher";
 import { UpstreamHttpError, ParsedDNSAnswerRecord } from "./types";
 
 /**
- * Asynchronously enriches successful DNS resolution logs with GeoIP,
- * flushes the log entry into the log batcher, and caches the result in memory.
+ * Caches the result in memory immediately (synchronously), then - only if the log will
+ * actually be persisted - enriches it with GeoIP in the background and enqueues it.
+ * Latency is captured before any GeoIP work so it reflects the real resolution time.
  *
  * @param request - Inbound HTTP Request.
  * @param query - The incoming DNS query.
@@ -33,37 +34,47 @@ export function recordSuccessAndCache(
   rawUpstreamUrl: string,
   ecs?: string
 ): void {
+  // 1. Cache first, synchronously. Nothing log-related (GeoIP, batching) may delay it,
+  //    otherwise identical queries arriving meanwhile miss the cache and hit upstream again.
+  if (answer.length > 0) {
+    dnsCache.set(`${context.profileId}:${query.name}:${query.type}`, {
+      answer,
+      ttl: minTTL,
+      action,
+      reason: effectiveReason,
+      expiresAt: Date.now() + minTTL * 1000
+    });
+  }
+
+  // 2. Skip everything below (including GeoIP lookups) when the log would be discarded.
+  if (!shouldLogQuery(settings, action)) {
+    return;
+  }
+
+  // 3. Freeze latency and timestamp now: GeoIP time must not leak into the logged latency.
+  const nowMs = Date.now();
+  const latency = nowMs - context.startTime;
+  const timestamp = Math.floor(nowMs / 1000);
   const clientIp = request.headers.get("CF-Connecting-IP") || "127.0.0.1";
 
   context.ctx.waitUntil(
     (async () => {
       try {
-        const clientCountryPromise = resolveClientGeoCountry(request, clientIp);
         const firstIp = parsedAnswers.find(
           (a) => a.type === "A" || a.type === "AAAA"
         )?.data;
-        let destGeoJson = "";
-        let destCountryCode: string | null = null;
-        let destCountry: string | null = null;
-        let destIsp: string | null = null;
 
-        if (firstIp) {
-          const geo = await fetchGeoIP(firstIp);
-          if (geo) {
-            destGeoJson = JSON.stringify(geo);
-            destCountryCode = geo.country_code ? geo.country_code.toUpperCase() : null;
-            destCountry = geo.country || null;
-            destIsp = geo.isp || null;
-          }
-        }
+        // Resolve client and destination GeoIP concurrently; never let GeoIP failure drop the log.
+        const [clientCountry, destGeo] = await Promise.all([
+          resolveClientGeoCountry(request, clientIp).catch(() => "UNKNOWN"),
+          firstIp ? fetchGeoIP(firstIp).catch(() => null) : Promise.resolve(null)
+        ]);
 
-        const clientCountry = await clientCountryPromise;
-        const latency = Date.now() - context.startTime;
         enqueueLog(
           {
             profile_id: context.profileId,
             access_point_id: context.accessPointId,
-            timestamp: Math.floor(Date.now() / 1000),
+            timestamp,
             client_ip: clientIp,
             geo_country: clientCountry,
             domain: query.name,
@@ -71,10 +82,10 @@ export function recordSuccessAndCache(
             action,
             reason: effectiveReason,
             answer: parsedAnswers.map((a) => a.data).join(", "),
-            dest_geoip: destGeoJson,
-            dest_country_code: destCountryCode,
-            dest_country: destCountry,
-            dest_isp: destIsp,
+            dest_geoip: destGeo ? JSON.stringify(destGeo) : "",
+            dest_country_code: destGeo?.country_code ? destGeo.country_code.toUpperCase() : null,
+            dest_country: destGeo?.country || null,
+            dest_isp: destGeo?.isp || null,
             upstream: rawUpstreamUrl,
             latency,
             ecs
@@ -83,18 +94,8 @@ export function recordSuccessAndCache(
           context.env,
           context.ctx
         );
-
-        if (answer.length > 0) {
-          dnsCache.set(`${context.profileId}:${query.name}:${query.type}`, {
-            answer,
-            ttl: minTTL,
-            action,
-            reason: effectiveReason,
-            expiresAt: Date.now() + minTTL * 1000
-          });
-        }
       } catch {
-        // Ignore non-critical background caching errors
+        // Ignore non-critical background logging errors
       }
     })()
   );
@@ -158,17 +159,20 @@ export function recordFailure(
       : `Upstream Error: ${errorDetail}`;
 
   const clientIp = request.headers.get("CF-Connecting-IP") || "127.0.0.1";
+  const failNowMs = Date.now();
+  const failLatency = failNowMs - context.startTime;
 
   // Asynchronously persist failure log for upstream troubleshooting
-  context.ctx.waitUntil(
+  // (skip entirely, including client GeoIP, when the log would be discarded)
+  if (shouldLogQuery(settings, "FAIL")) context.ctx.waitUntil(
     (async () => {
       try {
-        const clientCountry = await resolveClientGeoCountry(request, clientIp);
+        const clientCountry = await resolveClientGeoCountry(request, clientIp).catch(() => "UNKNOWN");
         enqueueLog(
           {
             profile_id: context.profileId,
             access_point_id: context.accessPointId,
-            timestamp: Math.floor(Date.now() / 1000),
+            timestamp: Math.floor(failNowMs / 1000),
             client_ip: clientIp,
             geo_country: clientCountry,
             domain: query.name,
@@ -181,7 +185,7 @@ export function recordFailure(
             dest_country: null,
             dest_isp: null,
             upstream: rawUpstreamUrl,
-            latency: Date.now() - context.startTime,
+            latency: failLatency,
             ecs
           },
           settings,

@@ -7,7 +7,7 @@ import {
   DNSRecord
 } from "../../utils/dns";
 import { resolveClientGeoCountry } from "../../utils/geoip";
-import { enqueueLog } from "../logBatcher";
+import { enqueueLog, shouldLogQuery } from "../logBatcher";
 
 /**
  * Resolver function type used for resolving CNAME targets during redirection.
@@ -136,17 +136,19 @@ export async function handleBlockOrRedirect(
     }
   }
 
-  const latency = Date.now() - context.startTime;
+  const nowMs = Date.now();
+  const latency = nowMs - context.startTime;
 
-  context.ctx.waitUntil(
+  // Skip GeoIP entirely when the log would be discarded (retention 0, circuit breaker, ...)
+  if (shouldLogQuery(settings, action)) context.ctx.waitUntil(
     (async () => {
       try {
-        const clientCountry = await resolveClientGeoCountry(request, clientIp);
+        const clientCountry = await resolveClientGeoCountry(request, clientIp).catch(() => "UNKNOWN");
         enqueueLog(
           {
             profile_id: context.profileId,
             access_point_id: context.accessPointId,
-            timestamp: Math.floor(Date.now() / 1000),
+            timestamp: Math.floor(nowMs / 1000),
             client_ip: clientIp,
             geo_country: clientCountry,
             domain: query.name,

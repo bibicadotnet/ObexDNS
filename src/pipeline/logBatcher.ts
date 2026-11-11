@@ -325,6 +325,33 @@ function scheduleDeferredFlush(env: Env, ctx?: ExecutionContext): void {
 }
 
 /**
+ * Decides whether a query would actually be persisted by enqueueLog.
+ * Callers MUST check this before doing any log-only enrichment (e.g. GeoIP),
+ * so no network lookups are spent on logs that are going to be discarded.
+ */
+export function shouldLogQuery(
+  settings: ProfileSettings | undefined,
+  action: string | undefined
+): boolean {
+  // 1. Zero-retention policy: logging fully disabled
+  if (settings && Number(settings.log_retention_days) === 0) {
+    return false;
+  }
+
+  // 2. Skip PASS queries when skip_log_on_pass is enabled
+  if (settings?.skip_log_on_pass && (action || "PASS").toUpperCase() === "PASS") {
+    return false;
+  }
+
+  // 3. Fast memory circuit-breaker check (D1 write quota exceeded)
+  if (memoryCircuitBreakerUntil > Date.now()) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Enqueues a DNS resolution log for 15-second micro-batching and quota protection.
  *
  * @param log ResolutionLog object to insert
@@ -338,31 +365,19 @@ export function enqueueLog(
   env: Env,
   ctx: ExecutionContext
 ): void {
-  // 1. Zero-retention policy check: if log_retention_days is 0, completely skip logging
-  if (settings && Number(settings.log_retention_days) === 0) {
+  if (!shouldLogQuery(settings, log.action)) {
     return;
   }
 
-  // 2. Skip logging for PASS queries when skip_log_on_pass is enabled
-  const action = (log.action || "PASS").toUpperCase();
-  if (settings?.skip_log_on_pass && action === "PASS") {
-    return;
-  }
-
-  // 3. Fast memory circuit-breaker check
-  if (memoryCircuitBreakerUntil > Date.now()) {
-    return;
-  }
-
-  // 4. Ensure unique id is assigned before queueing raw log
+  // Ensure unique id is assigned before queueing raw log
   if (!log.id) {
     log.id = generateLogId();
   }
 
-  // 5. Enqueue the raw log entry
+  // Enqueue the raw log entry
   logBatchQueue.push(log);
 
-  // 6. Determine if an immediate flush is required or a deferred flush should be scheduled
+  // Determine if an immediate flush is required or a deferred flush should be scheduled
   const now = Date.now();
   if (
     logBatchQueue.length >= MAX_BATCH_SIZE ||

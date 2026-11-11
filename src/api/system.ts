@@ -2,7 +2,7 @@ import { Env } from '../types';
 import { cacheUtils } from '../utils/cache';
 import { getPresetEchFrontingDomains } from '../utils/ech/constants';
 import { fetchGeoIP } from '../utils/geoip';
-import { isPublicInternetIP } from '../utils/validator';
+import { isPublicInternetIP, isIPv4, isIPv6 } from '../utils/validator';
 import {
   DEFAULT_SUBSTITUTE_DOMAIN,
   getPresetUpstreams,
@@ -178,22 +178,23 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
     const connectingIp = request.headers.get("CF-Connecting-IP");
     const targetIp = (rawIp || connectingIp || "").trim();
 
-    // Check if explicitly requesting local/private IP
-    if (
-      targetIp === '127.0.0.1' ||
-      targetIp === 'localhost' ||
-      targetIp === '::1' ||
-      targetIp.startsWith('192.168.') ||
-      targetIp.startsWith('10.') ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(targetIp)
-    ) {
-      return new Response(JSON.stringify({
-        success: true,
-        ip: targetIp,
-        city: 'Local',
-        country: 'Private Network',
-        flag: { emoji: '🛜' }
-      }), { headers: { 'Content-Type': 'application/json' } });
+    // Anything that is not a public IP must never be forwarded to the third-party provider.
+    if (targetIp) {
+      const isIpLiteral = isIPv4(targetIp) || isIPv6(targetIp.replace(/^\[|\]$/g, ''));
+      if (targetIp.toLowerCase() === 'localhost' || (isIpLiteral && !isPublicInternetIP(targetIp))) {
+        return new Response(JSON.stringify({
+          success: true,
+          ip: targetIp,
+          city: 'Local',
+          country: 'Private Network',
+          flag: { emoji: '🛜' }
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      if (!isIpLiteral) {
+        return new Response(JSON.stringify({ success: false, ip: targetIp }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
 
     try {
