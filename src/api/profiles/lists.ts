@@ -247,9 +247,11 @@ export async function handleProfileListsRequest(
       if (systemListsManager.isSystemUrl(list.url)) {
         const sysId = systemListsManager.getIdByUrl(list.url);
         if (sysId) {
+          // Cache pipeline của các profile liên quan đã được xóa bên trong syncSingleSystemList
+          // khi nội dung thật sự thay đổi; 304 Not Modified thì giữ nguyên cache nóng.
           ctx.waitUntil(
             syncSingleSystemList(sysId, env, force)
-              .then(() => pipeline.clearCache(profileId, false, env))
+              .catch((e) => console.error(`[Lists] System list sync failed for #${sysId}:`, e))
           );
         }
       } else {
@@ -343,7 +345,7 @@ export async function handleProfileListsRequest(
     if (!systemListsManager.isSystemUrl(listUrl) && currentCustomCount >= MAX_CUSTOM_LISTS) {
       return new Response(`Exceeded maximum limit of ${MAX_CUSTOM_LISTS} custom filter lists per profile.`, { status: 400 });
     }
-    
+
     const insertResult = await listModel.addList(profileId, listUrl);
     const listId = insertResult.id;
     // 仅针对新添加的单条列表执行同步与规则重构合并，避免拉取和重刷所有列表

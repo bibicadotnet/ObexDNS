@@ -58,7 +58,7 @@ export class BloomFilter {
     h = Math.imul(h ^ 124, 2246822519);
     return h >>> 0;
   })();
-  
+
   // 预分配 TextEncoder 以避免重复创建开销 (Isolate 全局)
   private static readonly encoder = new TextEncoder();
 
@@ -84,12 +84,12 @@ export class BloomFilter {
   static create(expectedItems: number, errorRate: number = 0.0001): BloomFilter {
     const n = Math.max(expectedItems, 100);
     const p = errorRate;
-    
+
     // 公式: m = -(n * ln(p)) / (ln(2)^2)
     const m = Math.ceil(-(n * Math.log(p)) / (Math.log(2) ** 2));
     // 公式: k = (m / n) * ln(2)
     const k = Math.round((m / n) * Math.log(2));
-    
+
     return new BloomFilter(m, k);
   }
 
@@ -107,7 +107,7 @@ export class BloomFilter {
       h2 = Math.imul(h2 ^ c, BloomFilter.HASH_PRIME_2);
     }
     h1 = h1 >>> 0;
-    
+
     // 用 MurmurHash3 fmix32 混淆算法根据 h1 快速派生 h2，减少一半的字符遍历和乘法开销
     let h2_mixed = h2 ^ (h2 >>> 16);
     h2_mixed = Math.imul(h2_mixed, BloomFilter.HASH_PRIME_2);
@@ -180,7 +180,7 @@ export class BloomFilter {
       h2 = Math.imul(h2 ^ c, BloomFilter.HASH_PRIME_2);
     }
     h1 = h1 >>> 0;
-    
+
     // 同理，在 O(1) 复杂度内派生 h2
     let h2_mixed = h2 ^ (h2 >>> 16);
     h2_mixed = Math.imul(h2_mixed, BloomFilter.HASH_PRIME_2);
@@ -297,7 +297,9 @@ export class BloomFilter {
     let isCompressed = false;
 
     try {
-      const compressed = deflateSync(rawBytes);
+      // level 1: CPU giảm ~50% so với mặc định (level 6), kích thước chỉ tăng ~6%.
+      // Định dạng không đổi, inflateSync đọc được mọi mức nén.
+      const compressed = deflateSync(rawBytes, { level: 1 });
       // 仅当压缩确实减小了体积时才启用压缩标志（防范极端高密度随机位反向膨胀）
       if (compressed.length < rawBytes.length) {
         payload = compressed;
