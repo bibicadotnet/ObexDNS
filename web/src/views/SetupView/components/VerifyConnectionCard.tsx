@@ -8,7 +8,7 @@ import { useDeploymentMode } from "../../../hooks/useDeploymentMode";
 
 export interface VerifyConnectionCardProps {
   isVerifying: boolean;
-  verifyResult: { success: boolean; profileMatch: boolean } | null;
+  verifyResult: { success: boolean; profileMatch: boolean; method?: "probe" | "ip"; transport?: "doh" | "dot" | "udp" } | null;
   handleVerify: () => void;
   isMobile: boolean;
   clientInfo: ClientInfo | null;
@@ -83,7 +83,12 @@ export const VerifyConnectionCard: React.FC<VerifyConnectionCardProps> = ({
                     ? verifyResult.profileMatch
                       ? t("setup.profileMatch")
                       : t("setup.profileMismatch")
-                    : t("setup.verifyHint")}
+                    : verifyResult
+                      ? t("setup.verifyNotDetected")
+                      : t("setup.verifyHint")}
+                  {verifyResult?.success && verifyResult.method === "ip" && (
+                    <div className="text-xs opacity-70 mt-1">{t("setup.verifyIpFallback")}</div>
+                  )}
                 </div>
               </div>
             </div>

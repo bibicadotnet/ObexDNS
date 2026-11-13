@@ -9,6 +9,7 @@ import { Buffer } from 'node:buffer';
 import { Env, Context, ExecutionContext } from '../types';
 import { parseDNSQueryFromRaw } from '../utils/dns';
 import { pipeline } from '../pipeline';
+import { recordActiveConnection } from '../utils/activeDns';
 import { resolveProfileByKey, resolveDefaultProfile } from '../api/doh';
 import { resolveUpstreamEndpoint, fetchFromUpstream } from '../pipeline/resolver/transport';
 import { DEFAULT_FAIL_OPEN_UPSTREAM } from '../constants/presets';
@@ -258,6 +259,7 @@ export class DotDnsServer {
       });
 
       const result = await pipeline.process(request, query, context);
+      void recordActiveConnection(env, remoteIp, profile.id, query.name, 'dot');
       if (!result || !result.answer || result.answer.length === 0) return;
 
       if (!socket.destroyed && socket.writable) {

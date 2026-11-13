@@ -215,6 +215,8 @@
     "notConnected": "Not Connected",
     "profileMatch": "Filtering through this profile.",
     "profileMismatch": "Using DNS Worker, but Profile ID mismatch.",
+    "verifyNotDetected": "No DNS query from this browser reached this server. Check the configuration below, then verify again.",
+    "verifyIpFallback": "Could not run the exact check on this address; showing the last profile seen from your IP (less precise).",
     "verifyHint": "Click to verify after configuration.",
     "refreshStatus": "Refresh Status",
     "egressIp": "Egress IP Address",

@@ -215,6 +215,8 @@
     "notConnected": "Nicht verbunden",
     "profileMatch": "Die Filterung ist für dieses Profil aktiv.",
     "profileMismatch": "Sie verwenden DNS Worker, aber die Profil-ID stimmt nicht überein.",
+    "verifyNotDetected": "Keine DNS-Anfrage dieses Browsers hat diesen Server erreicht. Prüfen Sie die Konfiguration unten und verifizieren Sie erneut.",
+    "verifyIpFallback": "Die genaue Prüfung ist unter dieser Adresse nicht möglich; angezeigt wird das zuletzt von Ihrer IP gesehene Profil (weniger genau).",
     "verifyHint": "Klicken Sie nach Abschluss der folgenden Konfiguration auf die Schaltfläche, um die Verbindung zu überprüfen.",
     "refreshStatus": "Status aktualisieren",
     "egressIp": "Ausgehende IP-Adresse",

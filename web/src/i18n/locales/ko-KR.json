@@ -215,6 +215,8 @@
     "notConnected": "미연결",
     "profileMatch": "이 설정으로 필터링되고 있습니다.",
     "profileMismatch": "DNS Worker를 사용 중이지만 설정 ID가 일치하지 않습니다.",
+    "verifyNotDetected": "이 브라우저의 DNS 쿼리가 이 서버에 도달하지 않았습니다. 아래 설정을 확인한 후 다시 확인하세요.",
+    "verifyIpFallback": "이 주소에서는 정확한 확인을 할 수 없어, 현재 IP에서 마지막으로 확인된 프로필을 표시합니다(정확도 낮음).",
     "verifyHint": "아래 설정을 완료한 후 버튼을 클릭하여 확인하세요.",
     "refreshStatus": "상태 새로고침",
     "egressIp": "송신 IP 주소",

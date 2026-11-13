@@ -16,6 +16,49 @@ export async function getClientInfo(): Promise<ClientInfo> {
   return res.json();
 }
 
+export interface DnsProbeResult {
+  found: boolean;
+  profileId?: string;
+  transport?: "doh" | "dot" | "udp";
+}
+
+/**
+ * Verifies the device's real DNS path: looks up a unique random hostname (obexv-<nonce>.<host>)
+ * with the browser's own resolver, then asks the server which profile received that exact query.
+ * Returns null when a probe is not possible (IP / localhost hosts).
+ */
+export async function probeDnsPath(timeoutMs = 4000): Promise<DnsProbeResult | null> {
+  const host = window.location.hostname;
+  if (!host.includes(".") || host.includes(":") || /^[\d.]+$/.test(host) || host.endsWith(".localhost")) {
+    return null;
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  const nonce = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+  // Only the DNS lookup matters; the request itself is expected to fail or be ignored.
+  fetch(`https://obexv-${nonce}.${host}/`, {
+    mode: "no-cors",
+    cache: "no-store",
+    credentials: "omit",
+    signal: AbortSignal.timeout(timeoutMs),
+  }).catch(() => {});
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 300));
+    try {
+      const res = await fetch(`/api/verify-probe?nonce=${nonce}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = (await res.json()) as DnsProbeResult;
+        if (data.found) return data;
+      }
+    } catch {
+      // keep polling
+    }
+  }
+  return { found: false };
+}
+
 export async function getSubstituteInfo(): Promise<SubstituteInfo> {
   const res = await fetch("/api/substitute");
   if (!res.ok) throw new Error("Failed to fetch substitute info");

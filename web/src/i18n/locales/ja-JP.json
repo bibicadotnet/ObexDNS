@@ -215,6 +215,8 @@
     "notConnected": "未接続",
     "profileMatch": "この設定でフィルタリングされています。",
     "profileMismatch": "DNS Worker に接続されていますが、設定IDが一致しません。",
+    "verifyNotDetected": "このブラウザからの DNS クエリはこのサーバーに届いていません。下の設定を確認してから、もう一度検証してください。",
+    "verifyIpFallback": "このアドレスでは正確な確認ができないため、お使いの IP から最後に確認されたプロファイルを表示しています(精度は低め)。",
     "verifyHint": "以下の設定を完了後、ボタンをクリックして接続を検証してください。",
     "refreshStatus": "ステータスを更新",
     "egressIp": "送信元 IP アドレス",

@@ -8,6 +8,7 @@ import { Buffer } from 'node:buffer';
 import { Env, Context, ExecutionContext } from '../types';
 import { parseDNSQueryFromRaw } from '../utils/dns';
 import { pipeline } from '../pipeline';
+import { recordActiveConnection } from '../utils/activeDns';
 import { resolveDefaultProfile, resolveProfileByKey } from '../api/doh';
 import { resolveUpstreamEndpoint, fetchFromUpstream } from '../pipeline/resolver/transport';
 import { DEFAULT_FAIL_OPEN_UPSTREAM } from '../constants/presets';
@@ -124,6 +125,7 @@ export class UdpDnsServer {
       });
 
       const result = await pipeline.process(request, query, context);
+      void recordActiveConnection(env, rinfo.address, profile.id, query.name, 'udp');
       if (!result || !result.answer || result.answer.length === 0) {
         return;
       }

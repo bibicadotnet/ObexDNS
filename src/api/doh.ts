@@ -4,6 +4,7 @@ import { pipeline } from '../pipeline';
 import { ProfileModel, ProfileWithBloom } from '../models/profile';
 import { UserModel } from '../models/user';
 import { cacheUtils } from '../utils/cache';
+import { recordActiveConnection } from '../utils/activeDns';
 import {
   profileKeyMemoryMap,
   defaultProfileMemoryCache,
@@ -239,11 +240,8 @@ export async function handleDoHRequest(
       try {
         const clientIp = request.headers.get("CF-Connecting-IP") || "127.0.0.1";
         
-        // Record active connection (used by Debug API)
-        const activeDnsTtl = Number(env.ACTIVE_DNS_CACHE_TTL) || 60;
-        if (cache) {
-          await cacheUtils.set(cache, `active_dns:${clientIp}`, profileId, activeDnsTtl);
-        }
+        // Record active connection (Setup page verification + Debug API)
+        await recordActiveConnection(env, clientIp, profileId, query.name, 'doh');
 
         // Update profile activity timestamp (throttled hourly)
         const nowSec = Math.floor(Date.now() / 1000);

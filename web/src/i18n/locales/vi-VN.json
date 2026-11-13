@@ -215,6 +215,8 @@
     "notConnected": "Hoặc chưa kết nối",
     "profileMatch": "Bạn đang lọc thông qua cấu hình này.",
     "profileMismatch": "Bạn đang sử dụng DNS Worker, nhưng ID cấu hình không khớp.",
+    "verifyNotDetected": "Chưa có truy vấn DNS nào từ trình duyệt này đến máy chủ. Kiểm tra lại cấu hình bên dưới rồi xác minh lại.",
+    "verifyIpFallback": "Không thể kiểm tra chính xác trên địa chỉ này; đang hiển thị profile gần nhất thấy từ IP của bạn (kém chính xác hơn).",
     "verifyHint": "Sau khi hoàn thành cấu hình bên dưới, nhấp vào nút để xác minh.",
     "refreshStatus": "Làm mới trạng thái",
     "egressIp": "Địa chỉ IP thoát (Egress IP)",

@@ -14,6 +14,7 @@ import { AccessPointDrawer } from "./components/AccessPointDrawer";
 import type { AccessPoint } from "../../types/auth";
 import {
   getClientInfo,
+  probeDnsPath,
   getTraceInfo,
   getSubstituteInfo,
   getProfileAccessPoints,
@@ -77,7 +78,12 @@ export const SetupView: React.FC<SetupViewProps> = ({ profileId, profileKey, pro
   const [traceInfo, setTraceInfo] = useState<{ colo: string; raw: string } | null>(null);
   const [edgeLocation, setEdgeLocation] = useState<string | null>(null);
   const [domainIps, setDomainIps] = useState<{ ipv4: string[]; ipv6: string[] }>({ ipv4: [], ipv6: [] });
-  const [verifyResult, setVerifyResult] = useState<{ success: boolean; profileMatch: boolean } | null>(null);
+  const [verifyResult, setVerifyResult] = useState<{
+    success: boolean;
+    profileMatch: boolean;
+    method?: "probe" | "ip";
+    transport?: "doh" | "dot" | "udp";
+  } | null>(null);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -168,10 +174,29 @@ export const SetupView: React.FC<SetupViewProps> = ({ profileId, profileKey, pro
         })
         .catch((e) => console.warn("Failed resolving substitute domain DNS IPs:", e));
 
-      setVerifyResult({
-        success: !!clientData.connectedProfileId,
-        profileMatch: clientData.connectedProfileId === profileId,
-      });
+      // Exact check last, so the info cards above are already on screen while it runs.
+      const probe = await probeDnsPath().catch(() => null);
+      if (probe === null) {
+        // Probe impossible (IP / localhost host): fall back to the last profile seen from this IP.
+        // Less reliable (NAT, IPv4/IPv6 mismatch), so the card labels it as such.
+        setVerifyResult({
+          success: !!clientData.connectedProfileId,
+          profileMatch: clientData.connectedProfileId === profileId,
+          method: "ip",
+        });
+      } else if (probe.found && probe.profileId) {
+        // Exact proof: this browser's own lookup was answered by this server under this profile.
+        setVerifyResult({
+          success: true,
+          profileMatch: probe.profileId === profileId,
+          method: "probe",
+          transport: probe.transport,
+        });
+      } else {
+        // Probe ran and nothing arrived: not connected. Never fall back to IP here, another
+        // device behind the same NAT would turn this into a false "connected".
+        setVerifyResult({ success: false, profileMatch: false, method: "probe" });
+      }
     } catch (e) {
       console.error("Verification failed", e);
     } finally {

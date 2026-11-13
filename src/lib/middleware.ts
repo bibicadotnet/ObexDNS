@@ -6,7 +6,10 @@ import { SessionModel } from '../models/session';
 /**
  * Applies standard security headers and Content-Security-Policy (CSP) with a nonce.
  */
-export function applySecurityHeaders(response: Response, nonce: string): Response {
+export function applySecurityHeaders(response: Response, nonce: string, hostname?: string): Response {
+  // Setup page verification looks up a random "obexv-<nonce>.<host>" name; CSP must allow that request
+  const isIpHost = !hostname || /^[\d.]+$/.test(hostname) || hostname.includes(':') || !hostname.includes('.');
+  const probeSrc = isIpHost ? '' : ` https://*.${hostname}`;
   const newHeaders = new Headers(response.headers);
   newHeaders.set('X-Content-Type-Options', 'nosniff');
   newHeaders.set('X-Frame-Options', 'DENY');
@@ -18,7 +21,7 @@ export function applySecurityHeaders(response: Response, nonce: string): Respons
   if (!newHeaders.has('Content-Security-Policy')) {
     newHeaders.set(
       'Content-Security-Policy',
-      `default-src 'self'; script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com https://static.cloudflareinsights.com 'wasm-unsafe-eval'; worker-src 'self' blob:; script-src-attr 'unsafe-inline'; frame-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://icons.duckduckgo.com; connect-src 'self' https://challenges.cloudflare.com https://cloudflare-dns.com https://1.1.1.1;`
+      `default-src 'self'; script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com https://static.cloudflareinsights.com 'wasm-unsafe-eval'; worker-src 'self' blob:; script-src-attr 'unsafe-inline'; frame-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://icons.duckduckgo.com; connect-src 'self'${probeSrc} https://challenges.cloudflare.com https://cloudflare-dns.com https://1.1.1.1;`
     );
   }
 

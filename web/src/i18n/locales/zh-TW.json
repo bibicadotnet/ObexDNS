@@ -215,6 +215,8 @@
     "notConnected": "或未連接",
     "profileMatch": "您正透過此配置進行過濾。",
     "profileMismatch": "您正使用 DNS Worker，但配置 ID 不匹配。",
+    "verifyNotDetected": "此瀏覽器的 DNS 查詢未抵達本伺服器。請檢查下方設定後重新驗證。",
+    "verifyIpFallback": "此位址無法進行精確檢測;目前顯示的是您的 IP 最近一次使用的設定檔(精度較低)。",
     "verifyHint": "完成下方配置後，點擊按鈕驗證。",
     "refreshStatus": "重新整理狀態",
     "egressIp": "出口 IP 地址",

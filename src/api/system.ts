@@ -1,5 +1,6 @@
 import { Env } from '../types';
 import { cacheUtils } from '../utils/cache';
+import { PROBE_NONCE_RE, getActiveProfileId, getVerifyProbe } from '../utils/activeDns';
 import { getPresetEchFrontingDomains } from '../utils/ech/constants';
 import { fetchGeoIP } from '../utils/geoip';
 import { isPublicInternetIP, isIPv4, isIPv6 } from '../utils/validator';
@@ -18,7 +19,7 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
 
   if (url.pathname === '/api/clientinfo') {
     const clientIp = request.headers.get("CF-Connecting-IP") || "127.0.0.1";
-    const connectedProfileId = await cacheUtils.get<string>(cache, `active_dns:${clientIp}`);
+    const connectedProfileId = await getActiveProfileId(clientIp);
     const cf = (request as any).cf;
 
     let country = cf?.country || request.headers.get("CF-IPCountry") || "";
@@ -82,6 +83,19 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
       isServerfull,
       mode: isServerfull ? 'serverfull' : 'cloudflare'
     }), { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // Verification probe: which profile answered the unique "obexv-<nonce>" lookup made by the Setup page
+  if (url.pathname === '/api/verify-probe') {
+    const nonce = (url.searchParams.get('nonce') || '').toLowerCase();
+    if (!PROBE_NONCE_RE.test(nonce)) {
+      return new Response(JSON.stringify({ found: false }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+    const rec = await getVerifyProbe(nonce);
+    return new Response(
+      JSON.stringify(rec ? { found: true, profileId: rec.profileId, transport: rec.transport } : { found: false }),
+      { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }
+    );
   }
 
   if (url.pathname === '/api/substitute') {

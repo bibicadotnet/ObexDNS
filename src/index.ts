@@ -112,6 +112,7 @@ export default {
           '/api/auth/logout',
           '/api/auth/unlock-session',
           '/api/clientinfo',
+          '/api/verify-probe',
           '/api/substitute',
           '/api/resolve',
           '/api/geoip'
@@ -150,6 +151,7 @@ export default {
         }
         if (
           url.pathname === '/api/clientinfo' ||
+          url.pathname === '/api/verify-probe' ||
           url.pathname === '/api/substitute' ||
           url.pathname === '/api/resolve' ||
           url.pathname === '/api/geoip' ||
@@ -302,7 +304,7 @@ export default {
       });
     }
 
-    return applySecurityHeaders(response, nonce);
+    return applySecurityHeaders(response, nonce, new URL(request.url).hostname);
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
