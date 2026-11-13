@@ -162,6 +162,9 @@ export function generateMobileConfig(
     PayloadIdentifier: `com.dnsworker.profile.${key}`,
     PayloadName: displayName,
     PayloadRemovalDisallowed: false,
+    // macOS 26 (Tahoe) refuses to install DNS profiles without an explicit scope
+    // ("The VPN service could not be created"). Ignored by iOS/iPadOS/tvOS.
+    PayloadScope: 'System',
     PayloadType: 'Configuration',
     PayloadUUID: profileUUID,
     PayloadVersion: 1,
