@@ -186,16 +186,22 @@ export function getSystemFilterEntries(env?: {
   DEFAULT_PROFILE_FILTER_URLS?: string;
   PRESET_EXTERNAL_FILTERS?: string;
 }): { url: string; label?: string }[] {
-  const seen = new Set<string>();
+  const byUrl = new Map<string, { url: string; label?: string }>();
   const entries: { url: string; label?: string }[] = [];
 
   const add = (url: string, label?: string) => {
     const trimmed = url.trim();
     if (!trimmed || !isSafeUrl(trimmed)) return;
     const lower = trimmed.toLowerCase();
-    if (!seen.has(lower)) {
-      seen.add(lower);
-      entries.push({ url: trimmed, label: label || undefined });
+    const existing = byUrl.get(lower);
+    if (!existing) {
+      const entry = { url: trimmed, label: label || undefined };
+      byUrl.set(lower, entry);
+      entries.push(entry);
+    } else if (!existing.label && label) {
+      // The same URL can arrive first without a name (e.g. from DEFAULT_PROFILE_FILTER_URLS)
+      // and later with one (from PRESET_EXTERNAL_FILTERS): keep the label instead of dropping it.
+      existing.label = label;
     }
   };
 
