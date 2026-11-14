@@ -13,7 +13,7 @@ export interface AddRuleCardProps {
     v_txt: string;
     v_cname: string;
   };
-  setNewRule: (rule: any) => void;
+  setNewRule: React.Dispatch<React.SetStateAction<AddRuleCardProps["newRule"]>>;
   addRule: () => void;
   loading?: boolean;
 }

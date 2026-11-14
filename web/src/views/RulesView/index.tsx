@@ -161,15 +161,17 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
         message: t("rules.addSuccess", "Rule added successfully"),
         intent: Intent.SUCCESS,
       });
-      setNewRule({
-        type: "BLOCK",
+      // Keep the chosen action so several rules of the same type can be added in a row;
+      // only the per-rule fields are cleared.
+      setNewRule((prev) => ({
+        type: prev.type,
         pattern: "",
         include_subdomains: false,
         v_a: "",
         v_aaaa: "",
         v_txt: "",
         v_cname: "",
-      });
+      }));
       await fetchRules();
     } catch (e: any) {
       toasterRef?.current?.show({

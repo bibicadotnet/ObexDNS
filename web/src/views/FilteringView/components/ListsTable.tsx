@@ -19,6 +19,8 @@ interface ColumnConfig {
   header: React.ReactNode;
   headerClassName?: string;
   cellClassName?: string;
+  /** Interactive cells swallow row clicks across their whole area (padding included). */
+  stopRowClick?: boolean;
   render: (list: FilterList) => React.ReactNode;
 }
 
@@ -52,6 +54,7 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
     {
       key: "status",
       header: t("filtering.tableStatus"),
+      stopRowClick: true,
       render: (list: FilterList): React.ReactNode => {
         const enabled = !!list.enabled;
         const hasError = !!list.sync_error;
@@ -67,8 +70,7 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
         }
 
         return (
-          // Stop propagation so flipping the switch does not also open the details dialog.
-          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2">
             <Switch
               className="mb-0!"
               checked={enabled}
@@ -105,7 +107,13 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
           {lists.map((list) => (
             <tr key={list.id} onClick={() => onSelect(list)} className="cursor-pointer">
               {columns.map((col) => (
-                <td key={col.key} className={col.cellClassName}>
+                <td
+                  key={col.key}
+                  className={col.cellClassName}
+                  // Stop at the <td> (not an inner div) so the cell padding and the empty
+                  // space around the switch don't open the details dialog either.
+                  onClick={col.stopRowClick ? (e) => e.stopPropagation() : undefined}
+                >
                   {col.render(list)}
                 </td>
               ))}
