@@ -2,10 +2,11 @@ import React from "react";
 import { Card, Elevation, HTMLSelect, InputGroup, Button, Intent, FormGroup } from "@blueprintjs/core";
 import { Plus, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { Rule } from "../types";
 
 export interface AddRuleCardProps {
   newRule: {
-    type: string;
+    type: Rule["type"];
     pattern: string;
     include_subdomains?: boolean;
     v_a: string;
@@ -32,7 +33,7 @@ export const AddRuleCard: React.FC<AddRuleCardProps> = ({ newRule, setNewRule, a
                 fill
                 large
                 value={newRule.type}
-                onChange={(e) => setNewRule({ ...newRule, type: e.target.value })}
+                onChange={(e) => setNewRule({ ...newRule, type: e.target.value as Rule["type"] })}
                 options={[
                   { label: t("rules.typeBlock"), value: "BLOCK" },
                   { label: t("rules.typeAllow"), value: "ALLOW" },
