@@ -210,9 +210,13 @@ export async function handleDoHRequest(
   let queryRaw: Uint8Array | null = null;
 
   try {
-    let profile = await resolveProfileByKey(profileKey, env, ctx);
+    // Empty key = the plain /dns-query URL; a non-empty key that does not exist falls back the same way.
+    // Both use the default profile silently and never write query logs: only profiles that a user
+    // reached by their own key are logged (scanners / typos would otherwise flood console and logs).
+    let profile = profileKey ? await resolveProfileByKey(profileKey, env, ctx) : null;
+    let noLog = false;
     if (!profile) {
-      console.warn(`[DoH] Profile not found for key ${profileKey}. Falling back to default profile.`);
+      noLog = true;
       profile = await resolveDefaultProfile(env, ctx);
     }
     if (!profile) {
@@ -231,7 +235,8 @@ export async function handleDoHRequest(
       accessPointName: profile.access_point_name,
       startTime: Date.now(), 
       env, 
-      ctx 
+      ctx,
+      noLog
     };
     const result = await pipeline.process(request, query, context);
 

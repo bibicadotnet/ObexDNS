@@ -47,7 +47,7 @@ export function recordSuccessAndCache(
   }
 
   // 2. Skip everything below (including GeoIP lookups) when the log would be discarded.
-  if (!shouldLogQuery(settings, action)) {
+  if (context.noLog || !shouldLogQuery(settings, action)) {
     return;
   }
 
@@ -164,7 +164,7 @@ export function recordFailure(
 
   // Asynchronously persist failure log for upstream troubleshooting
   // (skip entirely, including client GeoIP, when the log would be discarded)
-  if (shouldLogQuery(settings, "FAIL")) context.ctx.waitUntil(
+  if (!context.noLog && shouldLogQuery(settings, "FAIL")) context.ctx.waitUntil(
     (async () => {
       try {
         const clientCountry = await resolveClientGeoCountry(request, clientIp).catch(() => "UNKNOWN");

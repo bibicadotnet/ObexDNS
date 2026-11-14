@@ -140,7 +140,7 @@ export async function handleBlockOrRedirect(
   const latency = nowMs - context.startTime;
 
   // Skip GeoIP entirely when the log would be discarded (retention 0, circuit breaker, ...)
-  if (shouldLogQuery(settings, action)) context.ctx.waitUntil(
+  if (!context.noLog && shouldLogQuery(settings, action)) context.ctx.waitUntil(
     (async () => {
       try {
         const clientCountry = await resolveClientGeoCountry(request, clientIp).catch(() => "UNKNOWN");

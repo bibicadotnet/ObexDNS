@@ -265,6 +265,8 @@ export interface Context {
   startTime: number;
   env: Env;
   ctx: ExecutionContext;
+  /** When true, no query log is written (used for unknown-profile-key fallback traffic). */
+  noLog?: boolean;
 }
 
 export interface AccessPoint {

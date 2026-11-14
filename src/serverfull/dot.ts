@@ -222,16 +222,13 @@ export class DotDnsServer {
       } as any;
 
       // Profile selection:
-      // In strict wildcard SNI routing mode, query must provide an SNI profile key (<profileKey>.<domain>).
-      // Accessing default profile without a wildcard profile key is completely disabled.
-      if (!sniKey) {
-        socket.destroy();
-        return;
-      }
-
-      let profile = await resolveProfileByKey(sniKey, env, ctx);
+      //  - SNI <profileKey>.<domain>   -> that profile (logged per its own settings)
+      //  - SNI <domain> (no key)       -> default profile (SERVERFULL_DEFAULT_PROFILE_KEY), never logged
+      //  - SNI key that does not exist -> default profile, never logged (scanners / typos)
+      let profile = sniKey ? await resolveProfileByKey(sniKey, env, ctx) : null;
+      let noLog = false;
       if (!profile) {
-        // Fallback to fail-open default profile if database is unavailable or key not found
+        noLog = true;
         profile = await resolveDefaultProfile(env, ctx);
       }
       if (!profile) {
@@ -246,7 +243,8 @@ export class DotDnsServer {
         accessPointName: profile.access_point_name,
         startTime: Date.now(),
         env,
-        ctx
+        ctx,
+        noLog
       };
 
       const host = remoteIp.includes(':') ? `[${remoteIp}]` : remoteIp;
