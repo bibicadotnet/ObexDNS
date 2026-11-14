@@ -146,7 +146,7 @@ Configure these variables in `.env` (Serverfull) or `wrangler.toml` (Cloudflare 
 ### `MAX_REGEX_RULES`
 - **Supported in**: Serverless & Serverfull
 - **Default**: `1000`
-- **Description**: Maximum number of merged AdGuard regular expression and complex wildcard rules permitted per profile. Excess patterns are safely discarded with warning logs to preserve sub-millisecond DNS lookup performance.
+- **Description**: Maximum number of AdGuard regular expression and complex wildcard rules kept from a single list (URL). It is not a per-profile limit. Excess patterns in that list are discarded and the list is marked with a truncation warning in sync status.
 
 ### `PRESET_EXTERNAL_FILTERS`
 - **Supported in**: Serverless & Serverfull

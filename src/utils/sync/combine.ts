@@ -72,7 +72,6 @@ export async function combineAndPromote(
       rewrites: {},
       patterns: []
     };
-    const maxRegexRules = Number(env?.MAX_REGEX_RULES) || 1000;
     const seenExceptions = new Set<string>();
 
     for (const list of customLists) {
@@ -102,10 +101,10 @@ export async function combineAndPromote(
               Object.assign(mergedAdguard.rewrites, listRules.rewrites);
             }
             if (Array.isArray(listRules.patterns)) {
+              // MAX_REGEX_RULES chỉ giới hạn theo từng URL (đã áp dụng lúc sync từng list),
+              // không cắt lần nữa ở cấp profile để tránh bỏ rule im lặng.
               for (const pat of listRules.patterns) {
-                if (mergedAdguard.patterns.length < maxRegexRules) {
-                  mergedAdguard.patterns.push(pat);
-                }
+                mergedAdguard.patterns.push(pat);
               }
             }
           }

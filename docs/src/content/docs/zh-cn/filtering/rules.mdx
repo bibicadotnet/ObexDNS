@@ -146,7 +146,7 @@ flowchart TD
 ### `MAX_REGEX_RULES`
 - **支持模式**：Serverless & Serverfull
 - **默认值**：`1000`
-- **说明**：单个 Profile 允许合并的最大 AdGuard 正则表达式和复杂通配符规则上限。超额规则将被安全丢弃并记录警告日志，严防复杂正则拖慢 DNS 整体查询性能。
+- **说明**：单个列表（URL）允许保留的最大 AdGuard 正则表达式和复杂通配符规则上限，并非按 Profile 计算。该列表中超额的规则将被丢弃，并在同步状态中标注截断警告。
 
 ### `PRESET_EXTERNAL_FILTERS`
 - **支持模式**：Serverless & Serverfull

@@ -127,14 +127,18 @@ async function runIssueVerificationTests() {
       }
     };
     const mockListBloomModel: any = {
-      upsertListBloom: async () => true
+      getListBloomHeader: async () => null,
+      upsertListBloom: async () => true,
+      deleteListBloom: async () => true
     };
     const mockEnv: Env = {
       MAX_LIST_BYTES: 500, // force truncation
       DB: {
         prepare: () => ({
           bind: () => ({
-            run: async () => ({ success: true })
+            run: async () => ({ success: true }),
+            first: async () => null,
+            all: async () => ({ results: [] })
           })
         })
       } as any,
@@ -144,7 +148,8 @@ async function runIssueVerificationTests() {
     const syncRes = await syncSingleList("prof_trunc_test", { id: 42, url: mockListUrl }, mockEnv, mockListModel, mockListBloomModel, Math.floor(Date.now() / 1000));
     const syncWarning = syncRes.syncError;
     assert.ok(syncWarning !== null, "syncError should not be null on truncation");
-    assert.ok(syncWarning?.includes("truncated"), "syncError should mention truncation");
+    // Warning is a machine-readable code carrying the effective env limit; the UI localizes it
+    assert.strictEqual(syncWarning, "limit:bytes=500", "syncError should carry the bytes limit code");
     assert.strictEqual(savedSyncStatus?.syncError, syncWarning, "sync_error should be saved in database");
     console.log("   ✓ syncSingleList safely recorded truncation warning without silent pass.");
 

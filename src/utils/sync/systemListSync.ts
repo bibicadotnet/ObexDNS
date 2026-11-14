@@ -10,6 +10,7 @@ import { SystemListModel } from "../../models/systemList";
 import { ListModel } from "../../models/list";
 import { BloomFilter } from "../bloom";
 import { fetchListContent, getListFetchTuning } from "../listFetcher";
+import { encodeLimitWarnings, keepLimitWarning, ListLimitKind } from "./syncWarnings";
 import { AdGuardRuleKind, AdGuardPayload, ParsedAdGuardRule } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
 import { pipelineCache } from "../../pipeline/cache";
@@ -55,6 +56,9 @@ export async function syncSingleSystemList(
 
   let count = 0;
   let domainsSinceYield = 0;
+  // Limits (MAX_LIST_DOMAINS / MAX_REGEX_RULES) that dropped rules; surfaced to the UI as warnings
+  let domainLimitHit = false;
+  let regexLimitHit = false;
 
   // Check if existing Bloom is current v2 format, or if non-bloom rules (whitelist/rewrite) exist locally
   const existingBloomHead = await model.getSystemListBloomHeader(systemListId);
@@ -99,6 +103,8 @@ export async function syncSingleSystemList(
               raw: rule.raw
             });
             count++;
+          } else {
+            regexLimitHit = true;
           }
         }
 
@@ -107,6 +113,8 @@ export async function syncSingleSystemList(
           domainsSinceYield = 0;
           return new Promise<void>((resolve) => setTimeout(resolve, yieldSleepMs));
         }
+      } else {
+        domainLimitHit = true;
       }
     },
     {
@@ -118,22 +126,31 @@ export async function syncSingleSystemList(
   // 304 Not Modified
   if (notModified) {
     console.log(`[SystemListSync] System list #${systemListId} (${systemList.url}) 304 Not Modified.`);
+    // Content unchanged => still truncated as before: keep the limit:* warning. A stale real error is cleared,
+    // on system_lists too, otherwise the next profile sync would copy it back from there.
+    const keptWarning = keepLimitWarning(systemList.sync_error);
     await model.updateMetadata(systemListId, {
       last_synced_at: now,
       etag: etag ?? systemList.etag,
-      last_modified: lastModified ?? systemList.last_modified
+      last_modified: lastModified ?? systemList.last_modified,
+      sync_error: keptWarning
     });
 
     // Update all matching profile list rows so user dashboard displays fresh sync timestamp
-    await syncProfileListRows(env.DB, systemList.url, now, null);
-    return { syncError: null, notModified: true };
+    await syncProfileListRows(env.DB, systemList.url, now, keptWarning);
+    return { syncError: keptWarning, notModified: true };
   }
 
   let syncError: string | null = fetchError;
   if (!fetchError) {
-    if (truncated) {
-      syncError = `List truncated at ${(maxListBytes / 1024 / 1024).toFixed(0)} MB: Maximum list size reached.`;
-      console.warn(`[SystemListSync] System list #${systemListId} truncated with ${count} rules.`);
+    // Machine-readable warning code carrying the limits actually in effect (from env); the UI localizes it
+    const limitHits: Partial<Record<ListLimitKind, number>> = {};
+    if (truncated) limitHits.bytes = maxListBytes;
+    if (domainLimitHit) limitHits.domains = maxListDomains;
+    if (regexLimitHit) limitHits.regex = maxRegexRules;
+    syncError = encodeLimitWarnings(limitHits);
+    if (syncError) {
+      console.warn(`[SystemListSync] System list #${systemListId} truncated with ${count} rules. Warning: ${syncError}`);
     }
 
     // Save Bloom and AdGuard rules (skip saving empty Bloom for whitelist/rewrites to save DB & RAM)

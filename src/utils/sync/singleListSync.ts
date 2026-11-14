@@ -1,6 +1,7 @@
 import { Env } from "../../types";
 import { BloomFilter } from "../bloom";
 import { fetchListContent, getListFetchTuning } from "../listFetcher";
+import { encodeLimitWarnings, keepLimitWarning, ListLimitKind } from "./syncWarnings";
 import { envNumber } from "../envNumber";
 import { ListModel } from "../../models/list";
 import { ListBloomModel } from "../../models/listBloom";
@@ -31,7 +32,7 @@ export interface SingleListSyncResult {
  */
 export async function syncSingleList(
   profileId: string,
-  list: { id: number; url: string; etag?: string | null; last_modified?: string | null },
+  list: { id: number; url: string; etag?: string | null; last_modified?: string | null; sync_error?: string | null },
   env: Env,
   listModel: ListModel,
   listBloomModel: ListBloomModel,
@@ -89,6 +90,9 @@ export async function syncSingleList(
 
   let count = 0;
   let domainsSinceYield = 0;
+  // Limits (MAX_LIST_DOMAINS / MAX_REGEX_RULES) that dropped rules; surfaced to the UI as warnings
+  let domainLimitHit = false;
+  let regexLimitHit = false;
 
   // 检查已有布隆过滤器或扩展规则；若没有本地数据或 Bloom 并非最新版 (v2)，则忽略 ETag 强制完整下载
   // 只读 20 字节头与 EXISTS 探针，不再整块读出 ~2.4MB Bloom / JSON.parse 整个规则载荷
@@ -136,6 +140,8 @@ export async function syncSingleList(
               raw: rule.raw
             });
             count++;
+          } else {
+            regexLimitHit = true;
           }
         }
 
@@ -146,6 +152,8 @@ export async function syncSingleList(
           domainsSinceYield = 0;
           return new Promise<void>((resolve) => setTimeout(resolve, yieldSleepMs));
         }
+      } else {
+        domainLimitHit = true;
       }
     },
     {
@@ -157,18 +165,23 @@ export async function syncSingleList(
   // 协商缓存命中：上游规则未发生变动，直接沿用原有布隆与规则，跳过数据库覆写与后续合并计算
   if (notModified) {
     console.log(`[Sync] Profile ${profileId}: list #${list.id} 304 Not Modified (using cached rules).`);
-    await listModel.updateListSyncStatus(list.id, now, null, null, etag, lastModified);
-    return { syncError: null, notModified: true };
+    // Nội dung không đổi => list vẫn bị cắt như lần trước, giữ lại cảnh báo limit:* (lỗi thật thì xoá như cũ)
+    const keptWarning = keepLimitWarning(list.sync_error);
+    await listModel.updateListSyncStatus(list.id, now, null, keptWarning, etag, lastModified);
+    return { syncError: keptWarning, notModified: true };
   }
 
   let syncError: string | null = fetchError;
 
   if (!fetchError) {
-    if (truncated) {
-      syncError = `List truncated at ${(maxListBytes / 1024 / 1024).toFixed(0)} MB: Maximum list size reached. Excess rules were omitted.`;
-      console.warn(
-        `[Sync] Profile ${profileId}: list #${list.id} truncated at ${(maxListBytes / 1024 / 1024).toFixed(0)} MB with ${count} rules. Warning: ${syncError}`
-      );
+    // 超出任一上限时记录机器可读的警告码 (含 env 实际生效的上限值)，由前端负责本地化展示
+    const limitHits: Partial<Record<ListLimitKind, number>> = {};
+    if (truncated) limitHits.bytes = maxListBytes;
+    if (domainLimitHit) limitHits.domains = maxListDomains;
+    if (regexLimitHit) limitHits.regex = maxRegexRules;
+    syncError = encodeLimitWarnings(limitHits);
+    if (syncError) {
+      console.warn(`[Sync] Profile ${profileId}: list #${list.id} truncated with ${count} rules. Warning: ${syncError}`);
     }
     // 写入列表级布隆过滤器和扩展规则到数据库 (若列表无域名拦截规则则跳过 Bloom 存储)
     const saveOps: Promise<any>[] = [];
@@ -181,7 +194,7 @@ export async function syncSingleList(
       saveOps.push(new AdguardRulesModel(env.DB).upsertListRules(list.id, adguardPayload, now));
     }
     await Promise.all(saveOps);
-    if (!truncated) {
+    if (!syncError) {
       console.log(
         `[Sync] Profile ${profileId}: successfully updated list #${list.id} with ${count} rules.`
       );
@@ -195,6 +208,6 @@ export async function syncSingleList(
   }
 
   // 无论成功还是失败，都更新 last_synced_at、etag、last_modified 并记录 syncError
-  await listModel.updateListSyncStatus(list.id, now, null, syncError, etag, lastModified, syncError ? null : title);
+  await listModel.updateListSyncStatus(list.id, now, null, syncError, etag, lastModified, fetchError ? null : title);
   return { syncError, notModified: false };
 }

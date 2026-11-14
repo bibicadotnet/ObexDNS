@@ -6,6 +6,7 @@ import { formatDateTime } from "../../../utils/date";
 import { checkDomainAgainstList, type ListCheckResult } from "../../../services";
 import type { FilterList } from "../types";
 import { getListDisplay } from "../utils";
+import { parseSyncStatus, limitWarningText } from "../syncStatus";
 
 export interface ListDetailsDialogProps {
   profileId: string;
@@ -124,6 +125,8 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
     }
   };
 
+  const syncStatus = parseSyncStatus(selectedList?.sync_error);
+
   return (
     <Dialog
       isOpen={selectedList !== null}
@@ -132,9 +135,17 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
       icon="info-sign"
     >
       <div className="p-6 space-y-4">
-        {selectedList?.sync_error && (
+        {syncStatus.error && (
           <Callout intent={Intent.WARNING} title={t("filtering.syncError")} icon="warning-sign">
-            {selectedList.sync_error}
+            {syncStatus.error}
+          </Callout>
+        )}
+
+        {syncStatus.warnings.length > 0 && (
+          <Callout intent={Intent.WARNING} title={t("filtering.limitWarnTitle")} icon="warning-sign">
+            {syncStatus.warnings.map((w) => (
+              <div key={w.kind}>{limitWarningText(t, w)}</div>
+            ))}
           </Callout>
         )}
 

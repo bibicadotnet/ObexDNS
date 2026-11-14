@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { formatDateTime } from "../../../utils/date";
 import type { FilterList } from "../types";
 import { getListDisplay } from "../utils";
+import { parseSyncStatus, limitWarningText } from "../syncStatus";
 
 export interface ListsTableProps {
   lists: FilterList[];
@@ -57,7 +58,8 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
       stopRowClick: true,
       render: (list: FilterList): React.ReactNode => {
         const enabled = !!list.enabled;
-        const hasError = !!list.sync_error;
+        const syncStatus = parseSyncStatus(list.sync_error);
+        const hasError = !!syncStatus.error;
         const hasSynced = !!list.last_synced_at;
 
         // Sync health only matters while the list is on: a disabled list contributes
@@ -79,9 +81,19 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
               onChange={(e) => onToggleEnabled(list.id, (e.target as HTMLInputElement).checked)}
             />
             {problem && (
-              <Tooltip content={list.sync_error || problem.text} placement="top">
+              <Tooltip content={syncStatus.error || problem.text} placement="top">
                 <Tag intent={problem.intent} minimal>
                   {problem.text}
+                </Tag>
+              </Tooltip>
+            )}
+            {enabled && syncStatus.warnings.length > 0 && (
+              <Tooltip
+                content={syncStatus.warnings.map((w) => limitWarningText(t, w)).join(" ")}
+                placement="top"
+              >
+                <Tag intent={Intent.WARNING} minimal>
+                  {t("filtering.statusTruncated", "Truncated")}
                 </Tag>
               </Tooltip>
             )}
