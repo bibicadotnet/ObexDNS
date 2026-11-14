@@ -48,6 +48,14 @@ class SystemListsManager {
   }
 
   /**
+   * Resolves the display name (admin label or title parsed from the list header) of a system list URL.
+   */
+  getNameByUrl(url: string): string | null {
+    const id = this.getIdByUrl(url);
+    return id === undefined ? null : this.items.get(id)?.name || null;
+  }
+
+  /**
    * Invalidates in-memory system list cache, forcing a refresh on next access.
    */
   invalidate(): void {

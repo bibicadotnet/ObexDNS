@@ -495,6 +495,7 @@
     "noListsTitle": "尚未添加列表",
     "noListsDesc": "您还没有订阅任何外部拦截列表。",
     "tableUrl": "列表 URL",
+    "tableName": "列表",
     "tableLastSync": "上次同步",
     "tableStatus": "状态",
     "tableOps": "操作",

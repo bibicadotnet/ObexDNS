@@ -158,7 +158,14 @@ export async function handleProfileListsRequest(
     }
 
     const results = await listModel.getLists(profileId);
-    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+    // Resolve a human-readable name per list: system lists carry an admin label / parsed
+    // title in system_lists.name, custom lists keep the title parsed from their own header.
+    await systemListsManager.ensureLoaded(env.DB, false, env);
+    const named = results.map((l) => ({
+      ...l,
+      title: systemListsManager.getNameByUrl(l.url) || l.title || null
+    }));
+    return new Response(JSON.stringify(named), { headers: { 'Content-Type': 'application/json' } });
   }
 
   if (request.method === 'PATCH') {
@@ -185,10 +192,13 @@ export async function handleProfileListsRequest(
       return new Response("Failed to update list", { status: 500 });
     }
 
+    // Load first: isSystemUrl reads the in-memory map, which is empty in a fresh process.
+    await systemListsManager.ensureLoaded(env.DB, false, env);
+    const isSystemList = systemListsManager.isSystemUrl(list.url);
+
     // If enabling a system list that was never synced before, trigger immediate system sync
     if (body.enabled) {
-      await systemListsManager.ensureLoaded(env.DB, false, env);
-      if (systemListsManager.isSystemUrl(list.url)) {
+      if (isSystemList) {
         const sysId = systemListsManager.getIdByUrl(list.url);
         if (sysId) {
           const sysModel = new SystemListModel(env.DB);
@@ -202,6 +212,19 @@ export async function handleProfileListsRequest(
           }
         }
       }
+    }
+
+    // System lists are not part of the merged profile bloom (they use the shared global
+    // bloom), so rebuilding it would reproduce the same result. Only the profile's
+    // enabledSystemListIds changes, and that is recomputed once the cache is cleared.
+    if (isSystemList) {
+      ctx.waitUntil(
+        pipeline.clearCache(profileId, true, env)
+          .catch((e) => console.error(`[Lists] cache clear failed for ${profileId}:`, e))
+      );
+      return new Response(JSON.stringify({ id: listId, enabled: body.enabled }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // Rebuild the merged profile bloom from the per-list blooms already stored.

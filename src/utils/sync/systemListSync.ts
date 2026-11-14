@@ -63,7 +63,7 @@ export async function syncSingleSystemList(
   const isBloomCurrent = existingBloomHead ? BloomFilter.isCurrentVersion(existingBloomHead) : hasLocalData;
   const useCacheHeaders = !force && isBloomCurrent && Boolean(systemList.etag || systemList.last_modified);
 
-  const { error: fetchError, truncated, notModified, etag, lastModified } = await fetchListContent(
+  const { error: fetchError, truncated, notModified, etag, lastModified, title } = await fetchListContent(
     systemList.url,
     maxListBytes,
     timeoutMs,
@@ -154,6 +154,7 @@ export async function syncSingleSystemList(
       sync_error: syncError,
       rule_count: count
     });
+    if (title) await model.setNameIfEmpty(systemListId, title);
 
     // Update matching profile list rows
     await syncProfileListRows(env.DB, systemList.url, now, syncError);

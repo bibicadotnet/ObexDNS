@@ -18,6 +18,8 @@ export interface FetchListResult {
   etag?: string | null;
   /** 上游返回的最新 Last-Modified */
   lastModified?: string | null;
+  /** List display name taken from a `! Title:` / `# Title:` header comment, if present */
+  title?: string | null;
 }
 
 /** 列表拉取的协商缓存选项 */
@@ -46,6 +48,26 @@ export function getListFetchTuning(env: {
     retryDelayMs: envNumber(env.LIST_FETCH_RETRY_DELAY_MS, BASE_RETRY_DELAY_MS, { min: 100 }),
     maxRedirects: envNumber(env.LIST_FETCH_MAX_REDIRECTS, MAX_REDIRECTS, { max: 20 }),
   };
+}
+
+const LIST_TITLE_RE = /^\s*[!#]\s*title\s*:\s*(.+?)\s*$/i;
+/** How many leading lines are scanned for a title header (metadata always sits at the top). */
+const TITLE_SCAN_LINES = 100;
+const MAX_TITLE_LENGTH = 100;
+
+/**
+ * Extracts the display name from an AdGuard / hosts style metadata comment
+ * such as `! Title: HaGeZi's Pro DNS Blocklist` or `# Title: StevenBlack/hosts`.
+ */
+export function extractListTitle(line: string): string | null {
+  if (line.length === 0 || line.length > 300) return null;
+  const first = line.charCodeAt(0);
+  // Fast reject: only comment lines ('!' / '#' / leading whitespace) can carry a title
+  if (first !== 33 && first !== 35 && first !== 32 && first !== 9) return null;
+  const m = LIST_TITLE_RE.exec(line);
+  if (!m) return null;
+  const title = m[1].replace(/\s+/g, " ").trim();
+  return title ? title.slice(0, MAX_TITLE_LENGTH) : null;
 }
 
 /** 回调函数：支持同步返回 void（绝大多数场景），仅在出让 CPU 时返回 Promise */
@@ -251,6 +273,8 @@ export async function fetchListContent(
       let count = 0;
       let totalBytes = 0;
       let truncated = false;
+      let title: string | null = null;
+      let titleLinesLeft = TITLE_SCAN_LINES;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -278,6 +302,11 @@ export async function fetchListContent(
             }
             const line = buffer.slice(lineStart, lineEnd);
             lineStart = newlineIdx + 1;
+
+            if (title === null && titleLinesLeft > 0) {
+              titleLinesLeft--;
+              title = extractListTitle(line);
+            }
 
             const rule = parseAdGuardLine(line);
             if (rule && rule.kind !== AdGuardRuleKind.COMMENT && rule.kind !== AdGuardRuleKind.UNSUPPORTED) {
@@ -325,6 +354,7 @@ export async function fetchListContent(
         notModified: false,
         etag: respEtag,
         lastModified: respLastModified,
+        title,
       };
     } catch (e: any) {
       lastError = e.message || String(e);

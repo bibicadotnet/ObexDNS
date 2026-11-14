@@ -12,4 +12,6 @@ export interface FilterList {
   last_synced_at?: number;
   enabled: boolean;
   sync_error?: string | null;
+  /** Display name: admin label for preset lists, otherwise the `! Title:` parsed from the list header. */
+  title?: string | null;
 }

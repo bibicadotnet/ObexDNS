@@ -491,6 +491,7 @@
     "noListsTitle": "リスト未追加",
     "noListsDesc": "購読している外部ブロックリストはありません。",
     "tableUrl": "リスト URL",
+    "tableName": "リスト",
     "tableLastSync": "最終同期",
     "tableStatus": "ステータス",
     "tableOps": "操作",

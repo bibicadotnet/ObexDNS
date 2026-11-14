@@ -491,6 +491,7 @@
     "noListsTitle": "Keine Listen hinzugefügt",
     "noListsDesc": "Sie haben noch keine externen Blockierlisten abonniert.",
     "tableUrl": "Listen-URL",
+    "tableName": "Liste",
     "tableLastSync": "Letzte Synchronisierung",
     "tableStatus": "Status",
     "tableOps": "Aktion",

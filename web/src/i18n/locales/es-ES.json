@@ -491,6 +491,7 @@
     "noListsTitle": "No se han añadido listas",
     "noListsDesc": "Aún no te has suscrito a ninguna lista de bloqueo externa.",
     "tableUrl": "URL de la lista",
+    "tableName": "Lista",
     "tableLastSync": "Última sincronización",
     "tableStatus": "Estado",
     "tableOps": "Operaciones",

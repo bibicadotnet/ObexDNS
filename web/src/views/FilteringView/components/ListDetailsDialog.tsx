@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { formatDateTime } from "../../../utils/date";
 import { checkDomainAgainstList, type ListCheckResult } from "../../../services";
 import type { FilterList } from "../types";
+import { getListDisplay } from "../utils";
 
 export interface ListDetailsDialogProps {
   profileId: string;
@@ -135,6 +136,10 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
           <Callout intent={Intent.WARNING} title={t("filtering.syncError")} icon="warning-sign">
             {selectedList.sync_error}
           </Callout>
+        )}
+
+        {selectedList && (
+          <div className="text-base font-bold break-words">{getListDisplay(selectedList).name}</div>
         )}
 
         <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 break-all font-mono text-sm">

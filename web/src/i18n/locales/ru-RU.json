@@ -491,6 +491,7 @@
     "noListsTitle": "Нет списков",
     "noListsDesc": "Вы еще не подписались ни на один список.",
     "tableUrl": "URL списка",
+    "tableName": "Список",
     "tableLastSync": "Последняя синхронизация",
     "tableStatus": "Статус",
     "tableOps": "Опции",

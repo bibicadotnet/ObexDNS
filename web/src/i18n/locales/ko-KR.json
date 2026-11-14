@@ -491,6 +491,7 @@
     "noListsTitle": "목록 추가되지 않음",
     "noListsDesc": "구독 중인 외부 차단 목록이 없습니다.",
     "tableUrl": "목록 URL",
+    "tableName": "목록",
     "tableLastSync": "최근 동기화",
     "tableStatus": "상태",
     "tableOps": "작업",

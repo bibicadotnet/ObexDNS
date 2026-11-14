@@ -99,7 +99,7 @@ export async function syncSingleList(
   const useCacheHeaders = !force && isBloomCurrent && Boolean(list.etag || list.last_modified);
 
   // 流式下载并按行解析规则，分流分类存储，携带协商缓存头
-  const { error: fetchError, truncated, notModified, etag, lastModified } = await fetchListContent(
+  const { error: fetchError, truncated, notModified, etag, lastModified, title } = await fetchListContent(
     list.url,
     maxListBytes,
     timeoutMs,
@@ -195,6 +195,6 @@ export async function syncSingleList(
   }
 
   // 无论成功还是失败，都更新 last_synced_at、etag、last_modified 并记录 syncError
-  await listModel.updateListSyncStatus(list.id, now, null, syncError, etag, lastModified);
+  await listModel.updateListSyncStatus(list.id, now, null, syncError, etag, lastModified, syncError ? null : title);
   return { syncError, notModified: false };
 }

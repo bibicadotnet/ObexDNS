@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button, Intent, Callout, ButtonGroup } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
@@ -23,15 +23,19 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
 
   const [selectedList, setSelectedList] = useState<FilterList | null>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
+  /** List ids with a toggle request in flight; their switch is locked in the table. */
+  const [pendingToggleIds, setPendingToggleIds] = useState<ReadonlySet<number>>(new Set());
+  const pendingToggles = useRef(0);
+
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await getProfileLists(profileId);
       setLists(data);
     } catch (e) {
       console.error("Failed to fetch filters", e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -184,14 +188,17 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
   };
 
   /**
-   * Enables or disables a list. The worker rebuilds the merged profile bloom
-   * from the lists still active, so filtering reflects the change without a
-   * re-download.
+   * Enables or disables a list. The row flips immediately (optimistic) and is rolled
+   * back if the request fails, so toggling from the table never blanks the whole view.
+   * The worker rebuilds the filter from the lists still active, with no re-download.
    */
   const setListEnabled = async (id: number, enabled: boolean) => {
+    setLists((prev) => prev.map((l) => (l.id === id ? { ...l, enabled } : l)));
+    setSelectedList((prev) => (prev && prev.id === id ? { ...prev, enabled } : prev));
+    setPendingToggleIds((prev) => new Set(prev).add(id));
+    pendingToggles.current++;
     try {
       await toggleProfileList(profileId, id, enabled);
-      setSelectedList((prev) => (prev && prev.id === id ? { ...prev, enabled } : prev));
       toasterRef?.current?.show({
         message: enabled
           ? t("filtering.listEnabledToast", "List enabled - rebuilding filter")
@@ -199,14 +206,25 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
         intent: Intent.PRIMARY,
         icon: enabled ? "tick" : "disable",
       });
-      await fetchData();
     } catch (e) {
       console.error(e);
+      setLists((prev) => prev.map((l) => (l.id === id ? { ...l, enabled: !enabled } : l)));
+      setSelectedList((prev) => (prev && prev.id === id ? { ...prev, enabled: !enabled } : prev));
       toasterRef?.current?.show({
         message: e instanceof Error ? e.message : String(e),
         intent: Intent.DANGER,
         icon: "error",
       });
+    } finally {
+      setPendingToggleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      pendingToggles.current--;
+      // Resync with the server only once every toggle has settled; refetching mid-burst
+      // would overwrite a later optimistic flip with stale server state.
+      if (pendingToggles.current === 0) await fetchData(true);
     }
   };
 
@@ -319,7 +337,12 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
         lists={lists}
       />
 
-      <ListsTable lists={lists} onSelect={setSelectedList} />
+      <ListsTable
+        lists={lists}
+        onSelect={setSelectedList}
+        onToggleEnabled={setListEnabled}
+        pendingIds={pendingToggleIds}
+      />
 
       <ListDetailsDialog
         profileId={profileId}

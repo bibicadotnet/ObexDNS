@@ -93,7 +93,8 @@ export class ListModel {
     enabled?: number | null,
     syncError: string | null = null,
     etag?: string | null,
-    lastModified?: string | null
+    lastModified?: string | null,
+    title?: string | null
   ): Promise<boolean> {
     const fields: string[] = ["last_synced_at = ?", "sync_error = ?"];
     const params: any[] = [now, syncError];
@@ -109,6 +110,11 @@ export class ListModel {
     if (lastModified !== undefined) {
       fields.push("last_modified = ?");
       params.push(lastModified);
+    }
+    // undefined/null keep the stored title: a download without a header must not wipe a known name
+    if (title) {
+      fields.push("title = ?");
+      params.push(title);
     }
 
     params.push(id);

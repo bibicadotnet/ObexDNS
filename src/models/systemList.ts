@@ -38,7 +38,7 @@ export class SystemListModel {
   async addSystemList(url: string, name?: string): Promise<{ success: boolean; id?: number }> {
     const trimmed = url.trim();
     const result = await this.db
-      .prepare("INSERT INTO system_lists (url, name) VALUES (?, ?) ON CONFLICT(url) DO UPDATE SET name = excluded.name")
+      .prepare("INSERT INTO system_lists (url, name) VALUES (?, ?) ON CONFLICT(url) DO UPDATE SET name = COALESCE(excluded.name, system_lists.name)")
       .bind(trimmed, name || null)
       .run();
     const lastRowId = result.meta?.last_row_id;
@@ -47,6 +47,14 @@ export class SystemListModel {
     }
     const inserted = await this.getSystemListByUrl(trimmed);
     return { success: result.success, id: inserted?.id };
+  }
+
+  /** Sets the display name only when none is stored, so an admin-configured label always wins. */
+  async setNameIfEmpty(id: number, name: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE system_lists SET name = ? WHERE id = ? AND (name IS NULL OR name = '')")
+      .bind(name, id)
+      .run();
   }
 
   async updateMetadata(

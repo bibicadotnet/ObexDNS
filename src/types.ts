@@ -169,6 +169,8 @@ export interface List {
   sync_error?: string | null;
   etag?: string | null;
   last_modified?: string | null;
+  /** Display title parsed from the list's `! Title:` header (custom lists) */
+  title?: string | null;
 }
 
 export interface SystemList {
