@@ -35,9 +35,15 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
       cellClassName: "max-w-md",
       render: (list: FilterList): React.ReactNode => {
         const { name, host } = getListDisplay(list);
+        const description = list.description?.trim();
         return (
           <div className="min-w-0" title={list.url}>
             <div className="text-sm font-medium truncate">{name}</div>
+            {description && (
+              <div className="text-xs opacity-70 truncate" title={description}>
+                {description}
+              </div>
+            )}
             {host && <div className="text-xs opacity-50 truncate">{host}</div>}
           </div>
         );

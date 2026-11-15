@@ -163,7 +163,8 @@ export async function handleProfileListsRequest(
     await systemListsManager.ensureLoaded(env.DB, false, env);
     const named = results.map((l) => ({
       ...l,
-      title: systemListsManager.getNameByUrl(l.url) || l.title || null
+      title: systemListsManager.getNameByUrl(l.url) || l.title || null,
+      description: systemListsManager.getDescriptionByUrl(l.url) || l.description || null
     }));
     return new Response(JSON.stringify(named), { headers: { 'Content-Type': 'application/json' } });
   }

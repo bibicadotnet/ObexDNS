@@ -153,6 +153,12 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
           <div className="text-base font-bold break-words">{getListDisplay(selectedList).name}</div>
         )}
 
+        {selectedList?.description?.trim() && (
+          <div className="text-sm opacity-70 break-words whitespace-pre-line">
+            {selectedList.description.trim()}
+          </div>
+        )}
+
         <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 break-all font-mono text-sm">
           {selectedList?.url}
         </div>

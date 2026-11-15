@@ -171,12 +171,16 @@ export interface List {
   last_modified?: string | null;
   /** Display title parsed from the list's `! Title:` header (custom lists) */
   title?: string | null;
+  /** Description parsed from the list's `! Description:` header; '' = scanned but none, null/undefined = not scanned yet */
+  description?: string | null;
 }
 
 export interface SystemList {
   id: number;
   url: string;
   name?: string | null;
+  /** Description parsed from the list header; '' = scanned but none, null/undefined = not scanned yet */
+  description?: string | null;
   etag?: string | null;
   last_modified?: string | null;
   last_synced_at?: number | null;

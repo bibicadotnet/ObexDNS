@@ -20,6 +20,8 @@ export interface FetchListResult {
   lastModified?: string | null;
   /** List display name taken from a `! Title:` / `# Title:` header comment, if present */
   title?: string | null;
+  /** List description taken from a `! Description:` / `# Description:` header comment, if present */
+  description?: string | null;
 }
 
 /** 列表拉取的协商缓存选项 */
@@ -54,6 +56,8 @@ const LIST_TITLE_RE = /^\s*[!#]\s*title\s*:\s*(.+?)\s*$/i;
 /** How many leading lines are scanned for a title header (metadata always sits at the top). */
 const TITLE_SCAN_LINES = 100;
 const MAX_TITLE_LENGTH = 100;
+const LIST_DESCRIPTION_RE = /^\s*[!#]\s*description\s*:\s*(.+?)\s*$/i;
+const MAX_DESCRIPTION_LENGTH = 300;
 
 /**
  * Extracts the display name from an AdGuard / hosts style metadata comment
@@ -68,6 +72,20 @@ export function extractListTitle(line: string): string | null {
   if (!m) return null;
   const title = m[1].replace(/\s+/g, " ").trim();
   return title ? title.slice(0, MAX_TITLE_LENGTH) : null;
+}
+
+/**
+ * Extracts the description from a metadata comment such as
+ * `! Description: Multi-purpose blocklist ...` or `# Description: ...`. Only the first line is used.
+ */
+export function extractListDescription(line: string): string | null {
+  if (line.length === 0 || line.length > 1000) return null;
+  const first = line.charCodeAt(0);
+  if (first !== 33 && first !== 35 && first !== 32 && first !== 9) return null;
+  const m = LIST_DESCRIPTION_RE.exec(line);
+  if (!m) return null;
+  const description = m[1].replace(/\s+/g, " ").trim();
+  return description ? description.slice(0, MAX_DESCRIPTION_LENGTH) : null;
 }
 
 /** 回调函数：支持同步返回 void（绝大多数场景），仅在出让 CPU 时返回 Promise */
@@ -274,6 +292,7 @@ export async function fetchListContent(
       let totalBytes = 0;
       let truncated = false;
       let title: string | null = null;
+      let description: string | null = null;
       let titleLinesLeft = TITLE_SCAN_LINES;
 
       while (true) {
@@ -303,9 +322,11 @@ export async function fetchListContent(
             const line = buffer.slice(lineStart, lineEnd);
             lineStart = newlineIdx + 1;
 
-            if (title === null && titleLinesLeft > 0) {
+            // Metadata headers sit at the top: scan the first lines once for both Title and Description
+            if (titleLinesLeft > 0 && (title === null || description === null)) {
               titleLinesLeft--;
-              title = extractListTitle(line);
+              if (title === null) title = extractListTitle(line);
+              if (description === null) description = extractListDescription(line);
             }
 
             const rule = parseAdGuardLine(line);
@@ -355,6 +376,7 @@ export async function fetchListContent(
         etag: respEtag,
         lastModified: respLastModified,
         title,
+        description,
       };
     } catch (e: any) {
       lastError = e.message || String(e);

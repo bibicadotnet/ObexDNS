@@ -94,7 +94,8 @@ export class ListModel {
     syncError: string | null = null,
     etag?: string | null,
     lastModified?: string | null,
-    title?: string | null
+    title?: string | null,
+    description?: string | null
   ): Promise<boolean> {
     const fields: string[] = ["last_synced_at = ?", "sync_error = ?"];
     const params: any[] = [now, syncError];
@@ -115,6 +116,11 @@ export class ListModel {
     if (title) {
       fields.push("title = ?");
       params.push(title);
+    }
+    // undefined keeps the stored value; '' records "scanned, no description" so the backfill runs only once
+    if (description !== undefined && description !== null) {
+      fields.push("description = ?");
+      params.push(description);
     }
 
     params.push(id);

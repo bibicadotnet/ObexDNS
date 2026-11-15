@@ -65,9 +65,10 @@ export async function syncSingleSystemList(
   const hasExistingRules = await model.hasSystemListAdguardRules(systemListId);
   const hasLocalData = Boolean(existingBloomHead || hasExistingRules);
   const isBloomCurrent = existingBloomHead ? BloomFilter.isCurrentVersion(existingBloomHead) : hasLocalData;
-  const useCacheHeaders = !force && isBloomCurrent && Boolean(systemList.etag || systemList.last_modified);
+  // description == null: row predates the Description column -> skip 304 negotiation once so it gets backfilled
+  const useCacheHeaders = !force && isBloomCurrent && Boolean(systemList.etag || systemList.last_modified) && systemList.description != null;
 
-  const { error: fetchError, truncated, notModified, etag, lastModified, title } = await fetchListContent(
+  const { error: fetchError, truncated, notModified, etag, lastModified, title, description } = await fetchListContent(
     systemList.url,
     maxListBytes,
     timeoutMs,
@@ -169,7 +170,8 @@ export async function syncSingleSystemList(
       last_modified: lastModified || null,
       last_synced_at: now,
       sync_error: syncError,
-      rule_count: count
+      rule_count: count,
+      description: description ?? ''
     });
     if (title) await model.setNameIfEmpty(systemListId, title);
 

@@ -105,10 +105,11 @@ export async function syncSingleList(
   const storedParams = existingBloomHead ? BloomFilter.readHeaderParams(existingBloomHead) : null;
   const paramsMatch = !storedParams || (storedParams.size === wantParams.size && storedParams.hashes === wantParams.hashes);
   const isBloomCurrent = existingBloomHead ? (BloomFilter.isCurrentVersion(existingBloomHead) && paramsMatch) : hasLocalData;
-  const useCacheHeaders = !force && isBloomCurrent && Boolean(list.etag || list.last_modified);
+  // description == null: row predates the Description column -> skip 304 negotiation once so it gets backfilled
+  const useCacheHeaders = !force && isBloomCurrent && Boolean(list.etag || list.last_modified) && list.description != null;
 
   // 流式下载并按行解析规则，分流分类存储，携带协商缓存头
-  const { error: fetchError, truncated, notModified, etag, lastModified, title } = await fetchListContent(
+  const { error: fetchError, truncated, notModified, etag, lastModified, title, description } = await fetchListContent(
     list.url,
     maxListBytes,
     timeoutMs,
@@ -213,6 +214,10 @@ export async function syncSingleList(
   }
 
   // 无论成功还是失败，都更新 last_synced_at、etag、last_modified 并记录 syncError
-  await listModel.updateListSyncStatus(list.id, now, null, syncError, etag, lastModified, fetchError ? null : title);
+  await listModel.updateListSyncStatus(
+    list.id, now, null, syncError, etag, lastModified,
+    fetchError ? null : title,
+    fetchError ? undefined : (description ?? '')
+  );
   return { syncError, notModified: false };
 }

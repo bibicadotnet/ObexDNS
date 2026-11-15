@@ -14,4 +14,6 @@ export interface FilterList {
   sync_error?: string | null;
   /** Display name: admin label for preset lists, otherwise the `! Title:` parsed from the list header. */
   title?: string | null;
+  /** Short explanation of the list, parsed from its `! Description:` header (empty/absent when the list has none). */
+  description?: string | null;
 }

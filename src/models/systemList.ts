@@ -65,6 +65,7 @@ export class SystemListModel {
       last_synced_at?: number | null;
       sync_error?: string | null;
       rule_count?: number;
+      description?: string | null;
     }
   ): Promise<boolean> {
     const sets: string[] = [];
@@ -89,6 +90,11 @@ export class SystemListModel {
     if (fields.rule_count !== undefined) {
       sets.push("rule_count = ?");
       values.push(fields.rule_count);
+    }
+
+    if (fields.description !== undefined) {
+      sets.push("description = ?");
+      values.push(fields.description);
     }
 
     if (sets.length === 0) return true;

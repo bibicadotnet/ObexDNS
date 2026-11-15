@@ -13,6 +13,7 @@ export interface SystemListCacheItem {
   id: number;
   url: string;
   name: string | null;
+  description: string | null;
   bloom: BloomFilter | null;
   adguard: AdGuardProfileEngine | null;
   updatedAt: number;
@@ -53,6 +54,14 @@ class SystemListsManager {
   getNameByUrl(url: string): string | null {
     const id = this.getIdByUrl(url);
     return id === undefined ? null : this.items.get(id)?.name || null;
+  }
+
+  /**
+   * Resolves the description (parsed from the list header) of a system list URL.
+   */
+  getDescriptionByUrl(url: string): string | null {
+    const id = this.getIdByUrl(url);
+    return id === undefined ? null : this.items.get(id)?.description || null;
   }
 
   /**
@@ -132,7 +141,12 @@ class SystemListsManager {
           const contentStamp = await model.getContentStamp(list.id);
 
           if (existing && existing.updatedAt === contentStamp) {
-            newItems.set(list.id, existing.name === (list.name || null) ? existing : { ...existing, name: list.name || null });
+            const name = list.name || null;
+            const description = list.description || null;
+            newItems.set(
+              list.id,
+              existing.name === name && existing.description === description ? existing : { ...existing, name, description }
+            );
             continue;
           }
 
@@ -168,6 +182,7 @@ class SystemListsManager {
             id: list.id,
             url: list.url,
             name: list.name || null,
+            description: list.description || null,
             bloom,
             adguard,
             // -1: 加载失败的条目不会被复用，下一次 ensureLoaded 会重试
