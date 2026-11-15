@@ -321,7 +321,7 @@
     "typeAllow": "放行 (ALLOW)",
     "typeRedirect": "重新導向 (REDIRECT)",
     "pattern": "域名模式 (Pattern)",
-    "patternPlaceholder": "example.com 或 *.test.com",
+    "patternPlaceholder": "example.com、||example.com^、*.test.com 或 /regex/",
     "addRule": "添加規則",
     "redirectSettings": "重新導向記錄設定",
     "aRecord": "A 記錄 (IPv4)",
@@ -363,7 +363,7 @@
     "includeSubdomains": "同時匹配子網域",
     "includeSubdomainsDesc": "例如 example.com 同時匹配 *.example.com；預設關閉，僅精確匹配",
     "subdomainsBadge": "+子網域",
-    "wildcardDisclaimer": "若要比對子網域，需使用萬用字元 *.example.com ，example.com 不會比對子網域。"
+    "wildcardDisclaimer": "支援 Adblock 風格語法：example.com（精確比對）、||example.com^ 或 *.example.com（網域及所有子網域）、任意位置的 * 萬用字元（如 ||ads*.example.com^）以及 /正規表示式/（如 /^ad[0-9]+\\.example\\.com$/）。"
   },
   "analytics": {
     "customRange": "自訂時間範圍",

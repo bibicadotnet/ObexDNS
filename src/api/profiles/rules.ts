@@ -1,6 +1,7 @@
 import { Env, User, ExecutionContext, Rule } from "../../types";
 import { RuleModel } from "../../models/rule";
 import { pipeline } from "../../pipeline";
+import { DNSFilter } from "../../lib/filtering";
 
 /**
  * Handle custom rules requests to /api/profiles/:id/rules
@@ -32,9 +33,11 @@ export async function handleProfileRulesRequest(
 
       for (const r of rawList) {
         if (!r || typeof r.pattern !== 'string') continue;
-        const pattern = r.pattern.trim().toLowerCase();
-        if (!pattern || seen.has(pattern)) continue;
-        seen.add(pattern);
+        const pattern = DNSFilter.normalizePattern(r.pattern);
+        if (!pattern || DNSFilter.validatePattern(pattern)) continue;
+        const key = pattern.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
 
         const type = String(r.type || 'BLOCK').toUpperCase();
         if (type !== 'ALLOW' && type !== 'BLOCK' && type !== 'REDIRECT') continue;
@@ -60,7 +63,7 @@ export async function handleProfileRulesRequest(
 
       const existingRules = await ruleModel.getRules(profileId);
       const existingPatterns = new Set(existingRules.map(r => r.pattern.trim().toLowerCase()));
-      const rulesToInsert = validRules.filter(r => !existingPatterns.has(r.pattern!));
+      const rulesToInsert = validRules.filter(r => !existingPatterns.has(r.pattern!.toLowerCase()));
 
       let insertedCount = 0;
       if (rulesToInsert.length > 0) {
@@ -79,6 +82,10 @@ export async function handleProfileRulesRequest(
     if (!pattern) {
       return new Response("Domain pattern cannot be empty", { status: 400 });
     }
+    const patternError = DNSFilter.validatePattern(pattern);
+    if (patternError) {
+      return new Response(patternError, { status: 400 });
+    }
     const existing = await ruleModel.getRuleByPattern(profileId, pattern);
     if (existing) {
       return new Response("Rule for this domain already exists", { status: 400 });
@@ -94,6 +101,10 @@ export async function handleProfileRulesRequest(
     const pattern = rule.pattern ? rule.pattern.trim() : "";
     if (!pattern) {
       return new Response("Domain pattern cannot be empty", { status: 400 });
+    }
+    const patternError = DNSFilter.validatePattern(pattern);
+    if (patternError) {
+      return new Response(patternError, { status: 400 });
     }
     const existing = await ruleModel.getRuleByPatternExcludeId(profileId, pattern, rule.id);
     if (existing) {

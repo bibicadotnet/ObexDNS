@@ -321,7 +321,7 @@
     "typeAllow": "Autoriser (ALLOW)",
     "typeRedirect": "Rediriger (REDIRECT)",
     "pattern": "Modèle de domaine (Pattern)",
-    "patternPlaceholder": "example.com ou *.test.com",
+    "patternPlaceholder": "example.com, ||example.com^, *.test.com ou /regex/",
     "addRule": "Ajouter la règle",
     "redirectSettings": "Paramètres de redirection",
     "aRecord": "Enregistrement A (IPv4)",
@@ -363,7 +363,7 @@
     "includeSubdomains": "Inclure les sous-domaines",
     "includeSubdomainsDesc": "Ex. : example.com correspondra aussi à *.example.com ; désactivé par défaut (correspondance exacte uniquement)",
     "subdomainsBadge": "+Sous-domaines",
-    "wildcardDisclaimer": "Pour faire correspondre les sous-domaines, utilisez le caractère générique *.example.com ; example.com ne correspondra pas aux sous-domaines."
+    "wildcardDisclaimer": "La syntaxe de type Adblock est prise en charge : example.com (correspondance exacte), ||example.com^ ou *.example.com (domaine et tous les sous-domaines), caractères génériques * à n'importe quelle position (p. ex. ||ads*.example.com^) et /regex/ (p. ex. /^ad[0-9]+\\.example\\.com$/)."
   },
   "analytics": {
     "customRange": "Période personnalisée",

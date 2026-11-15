@@ -1,5 +1,6 @@
 import { D1Database } from "@cloudflare/workers-types";
 import { Rule } from "../types";
+import { DNSFilter } from "../lib/filtering";
 
 export class RuleModel {
   constructor(private db: D1Database) {}
@@ -12,7 +13,7 @@ export class RuleModel {
   }
 
   async addRule(profileId: string, rule: Partial<Rule>): Promise<boolean> {
-    const normalizedPattern = rule.pattern ? rule.pattern.trim().toLowerCase() : "";
+    const normalizedPattern = DNSFilter.normalizePattern(rule.pattern);
     const createdAt = rule.created_at ?? Math.floor(Date.now() / 1000);
     const includeSubdomains = rule.include_subdomains ? 1 : 0;
     const result = await this.db.prepare(
@@ -35,7 +36,7 @@ export class RuleModel {
     if (!rules || rules.length === 0) return 0;
     const now = Math.floor(Date.now() / 1000);
     const statements = rules.map(rule => {
-      const normalizedPattern = rule.pattern ? rule.pattern.trim().toLowerCase() : "";
+      const normalizedPattern = DNSFilter.normalizePattern(rule.pattern);
       const createdAt = rule.created_at ?? now;
       const includeSubdomains = rule.include_subdomains ? 1 : 0;
       return this.db.prepare(
@@ -65,7 +66,7 @@ export class RuleModel {
   }
 
   async updateRule(id: number, profileId: string, rule: Partial<Rule>): Promise<boolean> {
-    const normalizedPattern = rule.pattern ? rule.pattern.trim().toLowerCase() : "";
+    const normalizedPattern = DNSFilter.normalizePattern(rule.pattern);
     const includeSubdomains = rule.include_subdomains ? 1 : 0;
     const result = await this.db.prepare(
       "UPDATE rules SET type = ?, pattern = ?, v_a = ?, v_aaaa = ?, v_txt = ?, v_cname = ?, include_subdomains = ? WHERE id = ? AND profile_id = ?"

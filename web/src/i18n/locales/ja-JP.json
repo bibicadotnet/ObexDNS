@@ -321,7 +321,7 @@
     "typeAllow": "許可 (ALLOW)",
     "typeRedirect": "リダイレクト (REDIRECT)",
     "pattern": "ドメインパターン (Pattern)",
-    "patternPlaceholder": "example.com 或 *.test.com",
+    "patternPlaceholder": "example.com、||example.com^、*.test.com または /regex/",
     "addRule": "ルールを追加",
     "redirectSettings": "リダイレクトレコード設定",
     "aRecord": "A レコード (IPv4)",
@@ -363,7 +363,7 @@
     "includeSubdomains": "サブドメインも含める",
     "includeSubdomainsDesc": "例: example.com の場合に *.example.com も一致します（デフォルトはオフ、完全一致のみ）",
     "subdomainsBadge": "+サブドメイン",
-    "wildcardDisclaimer": "サブドメインを一致させるには、ワイルドカード *.example.com を使用してください。example.com はサブドメインに一致しません。"
+    "wildcardDisclaimer": "Adblock 形式の構文に対応しています：example.com（完全一致）、||example.com^ または *.example.com（ドメインとすべてのサブドメイン）、任意の位置のワイルドカード *（例：||ads*.example.com^）、/regex/（例：/^ad[0-9]+\\.example\\.com$/）。"
   },
   "analytics": {
     "customRange": "カスタム期間",

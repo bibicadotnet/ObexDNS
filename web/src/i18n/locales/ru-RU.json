@@ -321,7 +321,7 @@
     "typeAllow": "Разрешить (ALLOW)",
     "typeRedirect": "Перенаправить (REDIRECT)",
     "pattern": "Шаблон домена",
-    "patternPlaceholder": "example.com или *.test.com",
+    "patternPlaceholder": "example.com, ||example.com^, *.test.com или /regex/",
     "addRule": "Добавить правило",
     "redirectSettings": "Настройки перенаправления",
     "aRecord": "A запись (IPv4)",
@@ -363,7 +363,7 @@
     "includeSubdomains": "Включать поддомены",
     "includeSubdomainsDesc": "Напр., example.com также совпадает с *.example.com; по умолчанию выключено (только точное совпадение)",
     "subdomainsBadge": "+Поддомены",
-    "wildcardDisclaimer": "Для соответствия поддоменам используйте подстановочный знак *.example.com; example.com не будет соответствовать поддоменам."
+    "wildcardDisclaimer": "Поддерживается синтаксис в стиле Adblock: example.com (точное совпадение), ||example.com^ или *.example.com (домен и все поддомены), подстановочный знак * в любом месте (например, ||ads*.example.com^) и /regex/ (например, /^ad[0-9]+\\.example\\.com$/)."
   },
   "analytics": {
     "customRange": "Произвольный период",

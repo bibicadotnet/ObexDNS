@@ -331,7 +331,7 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
         <p>
           {t(
             "rules.wildcardDisclaimer",
-            "若要匹配子域名，需使用通配符 *.example.com ，example.com 不会匹配子域名。"
+            "Adblock-style syntax is supported: example.com (exact), ||example.com^ or *.example.com (with subdomains), * wildcards and /regex/."
           )}
         </p>
       </Callout>

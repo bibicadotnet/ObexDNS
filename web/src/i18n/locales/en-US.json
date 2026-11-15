@@ -321,7 +321,7 @@
     "typeAllow": "ALLOW",
     "typeRedirect": "REDIRECT",
     "pattern": "Domain Pattern",
-    "patternPlaceholder": "example.com or *.test.com",
+    "patternPlaceholder": "example.com, ||example.com^, *.test.com or /regex/",
     "addRule": "Add Rule",
     "redirectSettings": "Redirect Settings",
     "aRecord": "A Record (IPv4)",
@@ -363,7 +363,7 @@
     "includeSubdomains": "Match subdomains",
     "includeSubdomainsDesc": "E.g., example.com also matches *.example.com; off by default (exact match only)",
     "subdomainsBadge": "+Subdomains",
-    "wildcardDisclaimer": "To match subdomains, use the wildcard *.example.com; example.com will not match subdomains."
+    "wildcardDisclaimer": "Adblock-style syntax is supported: example.com (exact match), ||example.com^ or *.example.com (domain and all subdomains), * wildcards anywhere (e.g. ||ads*.example.com^) and /regex/ (e.g. /^ad[0-9]+\\.example\\.com$/)."
   },
   "analytics": {
     "customRange": "Custom Range",

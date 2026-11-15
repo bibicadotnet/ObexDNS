@@ -321,7 +321,7 @@
     "typeAllow": "Zulassen (ALLOW)",
     "typeRedirect": "Umleiten (REDIRECT)",
     "pattern": "Domain-Muster (Pattern)",
-    "patternPlaceholder": "example.com oder *.test.com",
+    "patternPlaceholder": "example.com, ||example.com^, *.test.com oder /regex/",
     "addRule": "Regel hinzufügen",
     "redirectSettings": "Umleitungseinstellungen",
     "aRecord": "A-Eintrag (IPv4)",
@@ -363,7 +363,7 @@
     "includeSubdomains": "Subdomains einschließen",
     "includeSubdomainsDesc": "Z.B. entspricht example.com auch *.example.com; standardmäßig deaktiviert (nur exakte Übereinstimmung)",
     "subdomainsBadge": "+Subdomains",
-    "wildcardDisclaimer": "Verwenden Sie zum Abgleichen von Subdomains den Platzhalter *.example.com; example.com gleicht keine Subdomains ab."
+    "wildcardDisclaimer": "Adblock-Syntax wird unterstützt: example.com (exakte Übereinstimmung), ||example.com^ oder *.example.com (Domain und alle Subdomains), *-Platzhalter an beliebiger Stelle (z. B. ||ads*.example.com^) und /regex/ (z. B. /^ad[0-9]+\\.example\\.com$/)."
   },
   "analytics": {
     "customRange": "Benutzerdefinierter Zeitraum",

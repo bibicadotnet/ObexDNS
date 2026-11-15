@@ -28,15 +28,13 @@ export const pipelineFilter = {
 
     // ── 阶段 1：本地自定义规则 (Local Rules) ──────────────────────────────────
     // 1.1 本地白名单
-    const whitelist = rules.filter(r => r.type === 'ALLOW');
-    if (DNSFilter.findMatch(query.name, whitelist)) {
+    if (DNSFilter.findByType(rules, 'ALLOW', query.name)) {
       track('local_rules');
       return pipelineResolver.resolve(request, query, context, settings, "PASS", "Whitelist");
     }
 
     // 1.2 本地重定向
-    const redirections = rules.filter(r => r.type === 'REDIRECT');
-    const redirectRule = DNSFilter.findMatch(query.name, redirections);
+    const redirectRule = DNSFilter.findByType(rules, 'REDIRECT', query.name);
     if (redirectRule) {
       let val: string | undefined;
       let respType = query.type;
@@ -67,8 +65,7 @@ export const pipelineFilter = {
     }
 
     // 1.3 本地黑名单
-    const blacklist = rules.filter(r => r.type === 'BLOCK');
-    const blockRule = DNSFilter.findMatch(query.name, blacklist);
+    const blockRule = DNSFilter.findByType(rules, 'BLOCK', query.name);
     if (blockRule) {
       track('local_rules');
       return pipelineResolver.block(request, query, context, settings, "BLOCK", `Blacklist: ${blockRule.pattern}`);
