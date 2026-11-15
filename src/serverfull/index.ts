@@ -23,6 +23,7 @@ import { checkNodeVersion, parseCli } from './cli';
 import { systemListsManager } from '../lib/filtering/systemListsManager';
 import { SystemListModel } from '../models/systemList';
 import { syncAllSystemLists } from '../utils/sync';
+import { migrateBloomParamsIfChanged } from '../utils/sync/bloomParams';
 
 export * from './cli';
 
@@ -153,6 +154,9 @@ async function bootstrap(): Promise<void> {
 
   // Pre-load System Shared Lists into Memory and auto-register configured URLs
   systemListsManager.ensureLoaded(env.DB, false, env).then(async () => {
+    // If MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE changed since the last start, reset sync state once so
+    // every list is rebuilt with the new Bloom size. Must run before the unsynced-system-list check below.
+    await migrateBloomParamsIfChanged(env);
     const sysModel = new SystemListModel(env.DB);
     const sysLists = await sysModel.getSystemLists();
     const needsSync = sysLists.some(l => !l.last_synced_at);

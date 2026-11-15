@@ -163,6 +163,7 @@ flowchart TD
 - **支援模式**：Serverless & Serverfull
 - **預設值**：`MAX_SYNC_DOMAINS=1000000`（總計 100 萬條上限），`MAX_LIST_DOMAINS=500000`（單列表 50 萬條上限），`MAX_LIST_BYTES=20971520`（單列表 20 MB 上限）。
 - **說明**：安全保護邊界，防止抓取過大規則源時發生無節制記憶體佔用與大流量耗盡。若外部列表超出 `MAX_LIST_BYTES`，系統將安全截斷至上限並於列表同步狀態明確標註警告，杜絕靜默丟失。
+- **修改布隆參數**：`MAX_SYNC_DOMAINS` 與 `BLOOM_FALSE_POSITIVE_RATE` 共同決定布隆過濾器大小。任一參數變更後，下次啟動時會自動偵測一次：立即重新下載系統列表，並在後續排程同步中逐個重建各 Profile 的列表（期間舊布隆過濾器繼續生效），無需手動操作。
 
 ### `BLOOM_MEM_TTL` & `SYNC_TIMEOUT_MS`
 - **預設值**：`BLOOM_MEM_TTL=600000`（記憶體快取 10 分鐘），`SYNC_TIMEOUT_MS=30000`（規則下載超時 30 秒）。

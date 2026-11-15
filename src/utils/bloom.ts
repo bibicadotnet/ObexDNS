@@ -82,6 +82,15 @@ export class BloomFilter {
    * @param errorRate 假阳性率 (p)，默认 10^-4 (0.0001)
    */
   static create(expectedItems: number, errorRate: number = 0.0001): BloomFilter {
+    const { size, hashes } = BloomFilter.computeParams(expectedItems, errorRate);
+    return new BloomFilter(size, hashes);
+  }
+
+  /**
+   * Bit count (m) and hash count (k) that create() uses for the given capacity and error rate.
+   * Single source of truth, also used to detect stored Blooms built with different settings.
+   */
+  static computeParams(expectedItems: number, errorRate: number = 0.0001): { size: number; hashes: number } {
     const n = Math.max(expectedItems, 100);
     const p = errorRate;
 
@@ -90,7 +99,19 @@ export class BloomFilter {
     // 公式: k = (m / n) * ln(2)
     const k = Math.round((m / n) * Math.log(2));
 
-    return new BloomFilter(m, k);
+    return { size: m, hashes: k };
+  }
+
+  /**
+   * Reads (m, k) from a BLMZ v2 header (first 20 bytes are enough). Returns null for anything else
+   * (missing, too short, legacy format), so callers never mistake an unknown format for a mismatch.
+   */
+  static readHeaderParams(buffer: ArrayBuffer | Uint8Array | null | undefined): { size: number; hashes: number } | null {
+    if (!BloomFilter.isCurrentVersion(buffer) || !buffer) return null;
+    const view = buffer instanceof Uint8Array
+      ? new DataView(buffer.buffer, buffer.byteOffset, BLMZ_HEADER_SIZE)
+      : new DataView(buffer, 0, BLMZ_HEADER_SIZE);
+    return { size: view.getUint32(8, true), hashes: view.getUint32(12, true) };
   }
 
   /**

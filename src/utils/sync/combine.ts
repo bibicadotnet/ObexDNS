@@ -75,16 +75,28 @@ export async function combineAndPromote(
     const seenExceptions = new Set<string>();
 
     for (const list of customLists) {
+      // 1. Bloom Filter 单列表合并 (独立 try：Bloom 合并失败不应连带丢弃该列表的例外/重写/正则规则)
       try {
-        // 1. Bloom Filter 单列表合并
         const buf = await listBloomModel.getListBloom(list.id);
         if (buf) {
           const filter = BloomFilter.fromUint8Array(new Uint8Array(buf));
           merged.merge(filter);
           hasMergedAny = true;
         }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("different sizes")) {
+          // The list still holds a Bloom built before MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE changed
+          // (e.g. its download failed during the rebuild). Only its domain Bloom is left out of this merge until
+          // it is re-synced; its exceptions, rewrites and patterns below are still merged.
+          console.warn(`[Sync] Profile ${profileId}: list #${list.id} Bloom skipped in merge (built with other size settings); it will be rebuilt on its next sync.`);
+        } else {
+          console.error(`[Sync] Failed to load/merge Bloom for list #${list.id}:`, err);
+        }
+      }
 
-        // 2. AdGuard 扩展规则合并
+      // 2. AdGuard 扩展规则合并
+      try {
         if (adguardRulesModel) {
           const listRules = await adguardRulesModel.getListRules(list.id);
           if (listRules) {

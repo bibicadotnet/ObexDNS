@@ -164,6 +164,7 @@ Configure these variables in `.env` (Serverfull) or `wrangler.toml` (Cloudflare 
 - **Supported in**: Serverless & Serverfull
 - **Defaults**: `MAX_SYNC_DOMAINS=1000000` (1 million total), `MAX_LIST_DOMAINS=500000` (500k per list), & `MAX_LIST_BYTES=20971520` (20 MB per list).
 - **Description**: Safety boundaries to prevent unbounded memory allocation and excessive network downloads during external filter fetching. If a list exceeds `MAX_LIST_BYTES`, it is safely parsed up to the limit and marked with a truncation warning in sync status.
+- **Changing the Bloom settings**: `MAX_SYNC_DOMAINS` and `BLOOM_FALSE_POSITIVE_RATE` together set the Bloom size. When either changes, the next server start detects it once, re-downloads system lists immediately and rebuilds profile lists one list per scheduled sync (existing Blooms keep filtering meanwhile). No manual action is required.
 
 ### `BLOOM_MEM_TTL` & `SYNC_TIMEOUT_MS`
 - **Defaults**: `BLOOM_MEM_TTL=600000` (10 minutes in-memory cache) & `SYNC_TIMEOUT_MS=30000` (30s download timeout).
