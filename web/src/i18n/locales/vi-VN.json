@@ -504,6 +504,8 @@
     "disabled": "Đồng bộ thất bại",
     "statusNormal": "Bình thường",
     "statusDisabled": "Đã tắt",
+    "defaultBadge": "Khuyên dùng",
+    "defaultBadgeHint": "Bộ lọc mặc định do quản trị viên khuyên dùng. Tự động áp dụng cho hồ sơ mới.",
     "statusOutdated": "Hết hạn",
     "statusMissing": "Thiếu",
     "statusTruncated": "Đã cắt bớt",

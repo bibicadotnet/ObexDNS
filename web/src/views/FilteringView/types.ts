@@ -16,4 +16,6 @@ export interface FilterList {
   title?: string | null;
   /** Short explanation of the list, parsed from its `! Description:` header (empty/absent when the list has none). */
   description?: string | null;
+  /** True for lists the admin configured as recommended defaults (DEFAULT_PROFILE_FILTER_URLS). */
+  is_default?: boolean;
 }

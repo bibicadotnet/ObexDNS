@@ -32,19 +32,35 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
     {
       key: "name",
       header: t("filtering.tableName", "List"),
-      cellClassName: "max-w-md",
+      // whitespace-normal: the table is nowrap, but the description must wrap onto several lines
+      cellClassName: "max-w-xl whitespace-normal",
       render: (list: FilterList): React.ReactNode => {
-        const { name, host } = getListDisplay(list);
+        // The source URL is intentionally not shown here: it lives in the details dialog.
+        const { name } = getListDisplay(list);
         const description = list.description?.trim();
         return (
-          <div className="min-w-0" title={list.url}>
-            <div className="text-sm font-medium truncate">{name}</div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="text-sm font-medium truncate">{name}</div>
+              {list.is_default && (
+                <Tooltip
+                  content={t(
+                    "filtering.defaultBadgeHint",
+                    "Default list recommended by the administrator. Applied automatically to new profiles."
+                  )}
+                  placement="top"
+                >
+                  <Tag intent={Intent.PRIMARY} icon="star" minimal className="shrink-0">
+                    {t("filtering.defaultBadge", "Recommended")}
+                  </Tag>
+                </Tooltip>
+              )}
+            </div>
             {description && (
-              <div className="text-xs opacity-70 truncate" title={description}>
+              <div className="text-xs opacity-70 line-clamp-3 break-words" title={description}>
                 {description}
               </div>
             )}
-            {host && <div className="text-xs opacity-50 truncate">{host}</div>}
           </div>
         );
       },
@@ -128,6 +144,8 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
                 <td
                   key={col.key}
                   className={col.cellClassName}
+                  // Accent bar on the left edge of recommended lists so they stand out while scanning the table
+                  style={col.key === "name" && list.is_default ? { boxShadow: "inset 3px 0 0 var(--bp6-intent-primary-color, #2d72d2)" } : undefined}
                   // Stop at the <td> (not an inner div) so the cell padding and the empty
                   // space around the switch don't open the details dialog either.
                   onClick={col.stopRowClick ? (e) => e.stopPropagation() : undefined}

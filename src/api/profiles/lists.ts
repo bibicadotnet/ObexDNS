@@ -17,6 +17,7 @@ import { BloomFilter } from "../../utils/bloom";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { AdGuardProfileEngine } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
+import { getDefaultProfileFilterUrls } from "../../constants/presets";
 
 /**
  * Handle filter lists requests to /api/profiles/:id/lists
@@ -161,10 +162,13 @@ export async function handleProfileListsRequest(
     // Resolve a human-readable name per list: system lists carry an admin label / parsed
     // title in system_lists.name, custom lists keep the title parsed from their own header.
     await systemListsManager.ensureLoaded(env.DB, false, env);
+    // Lists the admin configured via DEFAULT_PROFILE_FILTER_URLS are the recommended defaults: flag them for the UI.
+    const defaultUrls = new Set(getDefaultProfileFilterUrls(env).map((u) => u.trim().toLowerCase()));
     const named = results.map((l) => ({
       ...l,
       title: systemListsManager.getNameByUrl(l.url) || l.title || null,
-      description: systemListsManager.getDescriptionByUrl(l.url) || l.description || null
+      description: systemListsManager.getDescriptionByUrl(l.url) || l.description || null,
+      is_default: defaultUrls.has(l.url.trim().toLowerCase())
     }));
     return new Response(JSON.stringify(named), { headers: { 'Content-Type': 'application/json' } });
   }
