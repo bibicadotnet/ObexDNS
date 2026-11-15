@@ -80,6 +80,10 @@ export async function handleScheduled(
         console.warn("[Cron] Failed to persist cleanup timestamp:", err);
       }
 
+      // Local SQLite (Serverfull File mode) exposes reclaimSpace(); D1 and Turso do not.
+      const localDb = env.DB as unknown as { reclaimSpace?: () => Promise<unknown> };
+      const hasLocalMaintenance = typeof localDb?.reclaimSpace === "function";
+
       try {
         const userModel = new UserModel(env.DB, env);
         const profileInactivityDays = env.INACTIVITY_THRESHOLD_DAYS !== undefined && env.INACTIVITY_THRESHOLD_DAYS !== ''
@@ -106,10 +110,19 @@ export async function handleScheduled(
         const maxRetentionDays = envNumber(env.MAX_LOG_RETENTION_DAYS, 30);
         const cleanupBatchLimit = envNumber(env.LOG_CLEANUP_BATCH_LIMIT, 1000);
         const cleanupDailyBudget = envNumber(env.LOG_CLEANUP_DAILY_BUDGET, 20000);
-        await logModel.cleanupGlobal(maxRetentionDays, cleanupBatchLimit, cleanupDailyBudget, {
-          safetyWindowSec: envNumber(env.LOG_ORPHAN_KEY_MIN_AGE_SEC, 86400),
-          batchLimit: envNumber(env.LOG_ORPHAN_KEY_BATCH_LIMIT, 100, { min: 1 }),
-        });
+        await logModel.cleanupGlobal(
+          maxRetentionDays,
+          cleanupBatchLimit,
+          cleanupDailyBudget,
+          {
+            safetyWindowSec: envNumber(env.LOG_ORPHAN_KEY_MIN_AGE_SEC, 86400),
+            batchLimit: envNumber(env.LOG_ORPHAN_KEY_BATCH_LIMIT, 100, { min: 1 }),
+          },
+          // The per-profile row cap needs an indexed lookup per profile, which is free on local SQLite
+          // but billed as row reads on Cloudflare D1, so it is only enabled where the DB can also
+          // reclaim disk space (Serverfull File mode).
+          { maxLogsPerProfile: hasLocalMaintenance ? envNumber(env.MAX_LOGS_PER_PROFILE, 0) : 0 }
+        );
       } catch (e) {
         console.error("[Cron] Global log cleanup failed:", e);
       }
@@ -123,6 +136,14 @@ export async function handleScheduled(
         }
       } catch (e) {
         console.error("[Cron] Session cleanup failed:", e);
+      }
+
+      // Give disk space freed by the deletions above back to the filesystem, in short chunks that
+      // yield to the event loop. Runs in the background so list sync below is not delayed.
+      if (hasLocalMaintenance) {
+        ctx.waitUntil(
+          localDb.reclaimSpace!().catch((e: unknown) => console.warn("[Cron] Space reclaim failed:", e))
+        );
       }
 
       console.log("[Cron] Cleanup phase completed at", new Date().toISOString());

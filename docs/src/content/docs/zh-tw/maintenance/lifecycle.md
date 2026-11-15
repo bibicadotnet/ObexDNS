@@ -34,7 +34,7 @@ flowchart TD
         M1["1. 清理超出设定保留天数的历史日志"]
         M2["2. 检索并清理连续 30 天不活跃账号的历史日志"]
         M3["3. 作废并清理过期的 Web 登录 Session 与 Refresh 凭据"]
-        M4["4. 执行 SQLite WAL 检查点整理与 VACUUM 空间压缩"]
+        M4["4. 依 MAX_LOGS_PER_PROFILE 裁剪日誌，並將 SQLite 空閒頁歸還磁碟（Serverfull）"]
         M1 --> M2 --> M3 --> M4
     end
 ```
@@ -66,9 +66,9 @@ flowchart TD
 | **管理員預設保留** (`DEFAULT_LOG_RETENTION_DAYS`) | **7 天** | **180 天** | 物理磁碟擁有充裕儲存，預設提供更長審計週期。 |
 | **普通使用者最長保留** (`NORMAL_USER_MAX_LOG_RETENTION_DAYS`) | **7 天** | **30 天** | 限制多租戶場景下普通成員日誌對總容量的消耗。 |
 | **普通使用者預設保留** (`NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS`) | **1 天** | **7 天** | 最小化多使用者共享環境的初始資料沉澱。 |
-| **單配置最大日誌行數** (`MAX_LOGS_PER_PROFILE`) | **500,000 行** | **5,000,000 行** | 防止單接入點瞬時高頻解析導致資料庫熔斷崩潰。 |
-| **單次批次清理上限** (`LOG_CLEANUP_BATCH_LIMIT`) | `1000` 行/輪 | `1000` 行/輪 | 避免 Cron 定時清理單次耗時過長觸發執行超時。 |
-| **每日清理最大刪除配額** (`LOG_CLEANUP_DAILY_BUDGET`) | `20,000` 行/天 | `20,000` 行/天 | 預留 80% 寫入預算給正常業務，不耗盡 D1 免費額度。 |
+| **單配置最大日誌行數** (`MAX_LOGS_PER_PROFILE`) | `500,000 行`（D1 上不生效：統計行數會計入讀取配額） | **500,000 行** | 防止單接入點瞬時高頻解析導致資料庫熔斷崩潰。僅在 Serverfull 本機 SQLite 模式下生效。 |
+| **單次批次清理上限** (`LOG_CLEANUP_BATCH_LIMIT`) | `1000` 行/輪 | `20,000` 行/輪 | 避免 Cron 定時清理單次耗時過長觸發執行超時。 |
+| **每日清理最大刪除配額** (`LOG_CLEANUP_DAILY_BUDGET`) | `20,000` 行/天 | `0`（不限每日） | 預留 80% 寫入預算給正常業務，不耗盡 D1 免費額度；本機磁碟無寫入配額。 |
 | **賬號閒置廢棄閾值** (`INACTIVITY_THRESHOLD_DAYS`) | `180` 天 | `180` 天 | 判定長期廢棄休眠賬號的期限。 |
 | **閒置日誌自動清空** | **30 天** | **30 天** | 連續 30 天無解析流量即清空歷史日誌釋放資源。 |
 
@@ -93,17 +93,17 @@ flowchart TD
 - **說明**：針對受限普通使用者的日誌留存週期與配額。
 
 #### `MAX_LOGS_PER_PROFILE`
-- **支援模式**：Serverless 與 Serverfull
-- **預設值**：Serverless 為 `500000`（50 萬行），Serverfull 為 `5000000`（500 萬行）。
-- **說明**：單配置日誌儲存行數硬上限，充當流量突發時的斷路保護器。
+- **生效範圍**：僅 Serverfull 本機 SQLite（`DATABASE_SERVICE=File`）。Cloudflare D1 與 Turso 會忽略該值，因為統計行數會按讀取計費。
+- **預設值**：`500000`，填 `0` 為停用。
+- **說明**：單配置原始日誌行數硬上限。每次清理任務會刪除超出上限的最舊日誌（不受 `LOG_CLEANUP_BATCH_LIMIT` / `LOG_CLEANUP_DAILY_BUDGET` 限制，也不消耗每日額度）。上限為軟上限，最多超出一個清理週期內新增的日誌。
 
 ---
 
 ### 定時任務與會話生命週期變數
 
 #### `LOG_CLEANUP_BATCH_LIMIT` 與 `LOG_CLEANUP_DAILY_BUDGET`
-- **預設值**：單批次 `1000` 行，每日上限 `20000` 行
-- **說明**：精確調控定時維護任務的刪除吞吐量，確保平穩執行在底層資料庫事務配額安全線內。
+- **預設值**：Serverless 為單批次 `1000` 行、每日上限 `20000` 行；Serverfull 為 `20000` 行、`0`（不限每日），清理間隔 `CLEANUP_INTERVAL_SEC=600` 秒（Serverless 為 `3600`）
+- **說明**：精確調控定時維護任務的刪除吞吐量，確保平穩執行在底層資料庫事務配額安全線內。`LOG_CLEANUP_BATCH_LIMIT` 由所有配置共享；沒有過期日誌的配置未用完的額度，會讓給仍有積壓的配置。`LOG_CLEANUP_DAILY_BUDGET` 填 `0` 表示取消每日上限（此時每輪僅受批次上限與 `CLEANUP_INTERVAL_SEC` 限制）。
 
 #### `DEFAULT_SESSION_EXPIRATION_MINUTES` 與 `OPTIONAL_SESSION_EXPIRATION_DAYS`
 - **預設值**：預設登入態 `1440` 分鐘（24 小時），勾選“保持登入”為 `7` 天
@@ -113,6 +113,17 @@ flowchart TD
 - **預設值**：Access Token 為 `1` 分鐘，RTR 併發容錯視窗為 `15000` 毫秒（15 秒）
 - **說明**：零信任憑據輪換引數，有效杜絕憑據重用，同時兼顧瀏覽器多標籤頁平滑過渡。
 
-#### `AUTO_VACUUM` 與 `SQLITE_JOURNAL_MODE` *(僅 Serverfull)*
-- **預設值**：`WAL`（預寫日誌模式）
-- **說明**：本地 SQLite 引擎儲存引數，保障高併發讀寫效能與崩潰自愈韌性。
+#### `AUTO_VACUUM` *(僅 Serverfull File 模式)*
+- **預設值**：`INCREMENTAL`。填 `NONE` 則維持舊行為（刪除日誌不會讓檔案變小）。
+- **說明**：刪除日誌行本身不會讓 SQLite 檔案變小。啟用 `INCREMENTAL` 後，新資料庫以 `auto_vacuum=INCREMENTAL` 建立，每次清理任務（以及儀表板中的「刪除日誌」）都會分小批把空閒頁歸還磁碟，並在批次間讓出時間給 DNS 請求。日誌模式固定為 `WAL`，`-wal` 檔案在檢查點後會被限制在 64 MB 以內。
+
+**升級後的首次啟動（既有資料庫）**：會以一次完整 `VACUUM` 轉換資料庫：
+- **轉換期間 DNS 無法使用**，因為此時尚未開啟任何連接埠：SSD 上約每 150 MB 需 1 到 2 秒，機械硬碟上數 GB 的資料庫可能需要數分鐘。日誌會提示開始與結束。
+- **磁碟空間**：`VACUUM` 峰值佔用為有效資料的 3 倍，因此資料卷需要約 2.2 倍有效資料大小的空閒空間（外加 64 MB）。暫存副本寫在資料庫所在目錄，而不是 `/var/tmp`。空間不足時會跳過轉換並給出警告，資料庫保持不變。
+- **中途中斷是安全的，但永遠無法完成**：程序被殺後資料庫保持完整且未轉換，下次啟動會從頭再來。Docker 自帶的 `HEALTHCHECK` 只會把容器標記為 unhealthy（映像已設定 300 秒啟動寬限期），但會重啟 unhealthy 服務的編排器（Docker Swarm、`autoheal`）可能反覆殺掉它；Kubernetes 會忽略 `HEALTHCHECK`，請在那裡設定 `startupProbe` 或足夠長的啟動等待時間。
+- **改為離線轉換**（資料庫很大，或編排器會重啟服務）：停止服務，執行一次下面的指令，再啟動服務；下次啟動會識別為已轉換。設定 `AUTO_VACUUM=NONE` 可完全關閉此功能。
+
+```bash
+# With the service stopped. Needs free space on the data volume of about 2.2x the live database size.
+docker run --rm -v dns-worker-data:/var/lib/dns-worker --entrypoint bun <your-image> -e 'const {DatabaseSync}=require("node:sqlite"),path=require("node:path");const f=process.argv[1],d=new DatabaseSync(f);d.exec("PRAGMA temp_store_directory='"+path.dirname(f)+"'");d.exec("PRAGMA auto_vacuum=INCREMENTAL");d.exec("VACUUM");console.log("auto_vacuum =",d.prepare("PRAGMA auto_vacuum").get().auto_vacuum)' /var/lib/dns-worker/dns_worker.sqlite
+```

@@ -1,6 +1,21 @@
 import { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import { SystemSettingsModel } from "../systemSettings";
 import { KemKeyModel } from "../kemKey";
+import { yieldToEventLoop } from "../../utils/yieldToEventLoop";
+
+/** Extra delete rounds that hand unused per-profile quota to profiles that still have expired rows. */
+const MAX_REDISTRIBUTION_ROUNDS = 5;
+
+/** Rows removed per statement when trimming a profile down to its row cap. */
+const DEFAULT_CAP_CHUNK_SIZE = 20000;
+
+/** Rows affected by a D1-style result, or undefined when the driver did not report it. */
+function changesOf(res: { meta?: { changes?: number; rows_written?: number } } | undefined): number | undefined {
+  const meta = res?.meta;
+  if (meta?.changes !== undefined) return meta.changes;
+  if (meta?.rows_written !== undefined) return meta.rows_written;
+  return undefined;
+}
 
 /**
  * Model responsible for enforcing log retention policies and purging
@@ -34,22 +49,30 @@ export class LogRetentionModel {
    * @param dailyBudget - Maximum total log rows deleted across all profiles per day (default 20000).
    * @param orphanKeyOptions - Orphaned kem_keys cleanup tuning: minimum key age in seconds (default 86400)
    *   and max keys deleted per run (default 100).
+   * @param capOptions - Optional hard cap on stored rows per profile. When `maxLogsPerProfile` > 0, the oldest
+   *   rows beyond that count are deleted (in chunks of `chunkSize`, default 20000, yielding to the event loop
+   *   between chunks). This trimming is NOT limited by batchLimit / dailyBudget and does not consume the daily
+   *   budget. It costs one indexed lookup per profile, so callers should enable it only on backends where
+   *   reads are free (local SQLite), not on metered ones (Cloudflare D1).
+   * @returns Total number of raw log rows deleted by this run (retention + row cap).
    */
   async cleanupGlobal(
     maxRetentionDays = 30,
     batchLimit = 1000,
     dailyBudget = 20000,
-    orphanKeyOptions: { safetyWindowSec?: number; batchLimit?: number } = {}
-  ): Promise<void> {
+    orphanKeyOptions: { safetyWindowSec?: number; batchLimit?: number } = {},
+    capOptions: { maxLogsPerProfile?: number; chunkSize?: number } = {}
+  ): Promise<number> {
     const orphanSafetyWindowSec = orphanKeyOptions.safetyWindowSec ?? 86400;
     const orphanBatchLimit = orphanKeyOptions.batchLimit ?? 100;
+    let totalDeleted = 0;
     try {
       const { results: profiles } = await this.db.prepare(
         "SELECT id, settings FROM profiles"
       ).all<{ id: string; settings: string }>();
 
       if (!profiles || profiles.length === 0) {
-        return;
+        return 0;
       }
 
       // ── Daily Cleanup Budget Check ──────────────────────────────────────────
@@ -83,6 +106,7 @@ export class LogRetentionModel {
 
       const rollupStatements: D1PreparedStatement[] = [];
       const logDeleteStatements: D1PreparedStatement[] = [];
+      const logDeleteTargets: { id: string; threshold: number }[] = [];
 
       for (const profile of profiles) {
         // ── 1. Time-based retention calculation ─────────────────────────────────
@@ -115,13 +139,8 @@ export class LogRetentionModel {
 
         // Delete bounded number of rows per profile per hourly cron run if budget remains
         if (canDeleteLogs && effectiveBatchLimit > 0) {
-          logDeleteStatements.push(
-            this.db.prepare(`
-              DELETE FROM logs WHERE (profile_id, timestamp, id) IN (
-                SELECT profile_id, timestamp, id FROM logs WHERE profile_id = ? AND timestamp < ? LIMIT ?
-              )
-            `).bind(profile.id, threshold, perProfileLimit)
-          );
+          logDeleteStatements.push(this.buildExpiredLogsDelete(profile.id, threshold, perProfileLimit));
+          logDeleteTargets.push({ id: profile.id, threshold });
         }
       }
 
@@ -137,18 +156,33 @@ export class LogRetentionModel {
       // Execute log deletions in chunks and track affected rows
       let newlyDeletedLogs = 0;
       if (logDeleteStatements.length > 0) {
-        for (let i = 0; i < logDeleteStatements.length; i += CHUNK_SIZE) {
-          const chunk = logDeleteStatements.slice(i, i + CHUNK_SIZE);
-          const results = await this.db.batch(chunk);
-          if (Array.isArray(results)) {
-            for (const res of results) {
-              if (res?.meta?.changes !== undefined) {
-                newlyDeletedLogs += res.meta.changes;
-              } else if (res?.meta?.rows_written !== undefined) {
-                newlyDeletedLogs += res.meta.rows_written;
-              }
-            }
-          }
+        const sum = (values: (number | undefined)[]): number =>
+          values.reduce<number>((acc, v) => acc + (v ?? 0), 0);
+
+        const firstPass = await this.runDeleteStatements(logDeleteStatements);
+        newlyDeletedLogs += sum(firstPass);
+
+        // Hand quota that profiles without expired rows did not use to the profiles that used all of
+        // theirs (they still have a backlog). Without this, one busy profile is limited to
+        // batchLimit / profileCount rows per run even when every other profile is idle.
+        // Skipped when the driver does not report affected rows.
+        let saturated: number[] = [];
+        firstPass.forEach((changes, i) => {
+          if (changes !== undefined && changes >= perProfileLimit) saturated.push(i);
+        });
+        let leftover = effectiveBatchLimit - newlyDeletedLogs;
+        for (let round = 0; round < MAX_REDISTRIBUTION_ROUNDS; round++) {
+          if (leftover <= 0 || saturated.length === 0) break;
+          const share = Math.floor(leftover / saturated.length);
+          if (share < 1) break;
+          await yieldToEventLoop();
+          const roundChanges = await this.runDeleteStatements(
+            saturated.map((i) => this.buildExpiredLogsDelete(logDeleteTargets[i].id, logDeleteTargets[i].threshold, share))
+          );
+          const roundTotal = sum(roundChanges);
+          newlyDeletedLogs += roundTotal;
+          leftover -= roundTotal;
+          saturated = saturated.filter((_, k) => roundChanges[k] !== undefined && (roundChanges[k] as number) >= share);
         }
 
         // Persist daily cleanup counter to system_settings
@@ -164,6 +198,18 @@ export class LogRetentionModel {
           }
         }
       }
+
+      // ── Hard row cap per profile (enabled by the caller on local SQLite only) ─
+      let cappedDeleted = 0;
+      const maxLogsPerProfile = Math.floor(capOptions.maxLogsPerProfile ?? 0);
+      if (maxLogsPerProfile > 0) {
+        cappedDeleted = await this.enforceRowCap(
+          profiles.map((p) => p.id),
+          maxLogsPerProfile,
+          capOptions.chunkSize ?? DEFAULT_CAP_CHUNK_SIZE
+        );
+      }
+      totalDeleted = newlyDeletedLogs + cappedDeleted;
 
       // ── Orphan kem_keys cleanup (Zero Dependents) ───────────────────────────
       // Automatically purges kem_keys that have zero referencing logs in D1,
@@ -181,7 +227,7 @@ export class LogRetentionModel {
         // Fallback to checking newlyDeletedLogs only
       }
 
-      if (newlyDeletedLogs > 0 || isDailyOrphanCheckDue) {
+      if (totalDeleted > 0 || isDailyOrphanCheckDue) {
         try {
           const kemKeyModel = new KemKeyModel(this.db);
           const deletedOrphanKeys = await kemKeyModel.cleanupOrphans(orphanSafetyWindowSec, orphanBatchLimit);
@@ -199,10 +245,85 @@ export class LogRetentionModel {
       }
 
       console.log(
-        `[LogRetentionModel] cleanupGlobal: processed ${profiles.length} profile(s), maxRetentionDays=${maxRetentionDays}d, batchLimit=${batchLimit} (effective=${effectiveBatchLimit}, perProfile=${perProfileLimit}), dailyBudget=${dailyBudget} (today: ${deletedToday + newlyDeletedLogs}/${dailyBudget})`
+        `[LogRetentionModel] cleanupGlobal: processed ${profiles.length} profile(s), maxRetentionDays=${maxRetentionDays}d, batchLimit=${batchLimit} (effective=${effectiveBatchLimit}, perProfile=${perProfileLimit}), dailyBudget=${dailyBudget} (today: ${deletedToday + newlyDeletedLogs}/${dailyBudget})` +
+          (maxLogsPerProfile > 0 ? `, rowCap=${maxLogsPerProfile}/profile (trimmed ${cappedDeleted})` : "")
       );
     } catch (e: any) {
       console.error("[LogRetentionModel] cleanupGlobal failed:", e.message || e);
     }
+    return totalDeleted;
+  }
+
+  /** Builds the bounded DELETE for expired raw logs of one profile. */
+  private buildExpiredLogsDelete(profileId: string, threshold: number, limit: number): D1PreparedStatement {
+    return this.db.prepare(`
+              DELETE FROM logs WHERE (profile_id, timestamp, id) IN (
+                SELECT profile_id, timestamp, id FROM logs WHERE profile_id = ? AND timestamp < ? LIMIT ?
+              )
+            `).bind(profileId, threshold, limit);
+  }
+
+  /**
+   * Runs delete statements in batches of 50 and returns the rows affected by each statement
+   * (undefined where the driver does not report it).
+   */
+  private async runDeleteStatements(statements: D1PreparedStatement[]): Promise<(number | undefined)[]> {
+    const CHUNK_SIZE = 50;
+    const affected: (number | undefined)[] = [];
+    for (let i = 0; i < statements.length; i += CHUNK_SIZE) {
+      const chunk = statements.slice(i, i + CHUNK_SIZE);
+      const results = await this.db.batch(chunk);
+      for (let j = 0; j < chunk.length; j++) {
+        affected.push(Array.isArray(results) ? changesOf(results[j]) : undefined);
+      }
+    }
+    return affected;
+  }
+
+  /**
+   * Trims every profile down to at most `maxRows` raw log rows by deleting the oldest ones.
+   *
+   * One lookup per profile finds the (maxRows + 1)-th newest row; it returns nothing when the profile is
+   * within the cap, so the normal case costs a single indexed query. Rows at or before that key are
+   * deleted in chunks, yielding to the event loop between chunks and profiles so DNS stays responsive.
+   *
+   * @returns Number of rows deleted.
+   */
+  private async enforceRowCap(profileIds: string[], maxRows: number, chunkSize: number): Promise<number> {
+    const chunk = Math.max(1, Math.floor(chunkSize));
+    let total = 0;
+    for (const profileId of profileIds) {
+      try {
+        const cutoff = await this.db
+          .prepare("SELECT timestamp, id FROM logs WHERE profile_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1 OFFSET ?")
+          .bind(profileId, maxRows)
+          .first<{ timestamp: number; id: number }>();
+        if (cutoff) {
+          let deleted = 0;
+          for (;;) {
+            const [res] = await this.db.batch([
+              this.db
+                .prepare(
+                  "DELETE FROM logs WHERE (profile_id, timestamp, id) IN (SELECT profile_id, timestamp, id FROM logs WHERE profile_id = ? AND (timestamp, id) <= (?, ?) LIMIT ?)"
+                )
+                .bind(profileId, cutoff.timestamp, cutoff.id, chunk)
+            ]);
+            const n = changesOf(res) ?? 0;
+            if (n <= 0) break;
+            deleted += n;
+            if (n < chunk) break;
+            await yieldToEventLoop();
+          }
+          total += deleted;
+          if (deleted > 0) {
+            console.log(`[LogRetentionModel] Row cap: trimmed ${deleted} oldest log row(s) of profile ${profileId} (cap ${maxRows}).`);
+          }
+        }
+      } catch (err) {
+        console.warn(`[LogRetentionModel] Row cap enforcement failed for profile ${profileId}:`, err);
+      }
+      await yieldToEventLoop();
+    }
+    return total;
   }
 }

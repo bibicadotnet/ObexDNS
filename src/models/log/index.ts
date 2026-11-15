@@ -76,9 +76,10 @@ export class LogModel {
     maxRetentionDays = 30,
     batchLimit = 1000,
     dailyBudget = 20000,
-    orphanKeyOptions: { safetyWindowSec?: number; batchLimit?: number } = {}
-  ): Promise<void> {
-    return this.retention.cleanupGlobal(maxRetentionDays, batchLimit, dailyBudget, orphanKeyOptions);
+    orphanKeyOptions: { safetyWindowSec?: number; batchLimit?: number } = {},
+    capOptions: { maxLogsPerProfile?: number; chunkSize?: number } = {}
+  ): Promise<number> {
+    return this.retention.cleanupGlobal(maxRetentionDays, batchLimit, dailyBudget, orphanKeyOptions, capOptions);
   }
 
   async getLatestRollupHour(profileId: string): Promise<number | null> {

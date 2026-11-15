@@ -5,6 +5,7 @@ import { LogModel } from "../../models/log";
 import { PasskeyModel } from "../../models/passkey";
 import { USERNAME_REGEX } from "../../utils/validator";
 import { verifyUserReauth, ReauthPayload } from "./security/reauth";
+import { scheduleSpaceReclaim } from "../../utils/dbMaintenance";
 
 /**
  * Handle requests to /api/account/me, /api/account/logs, /api/account/delete
@@ -155,10 +156,8 @@ export async function handleMeRequest(
   // DELETE /api/account/logs
   if (action === 'logs' && request.method === 'DELETE') {
     await logModel.deleteByOwner(user.id);
-    const dbAny = env.DB as unknown as { vacuum?: () => void };
-    if (typeof dbAny?.vacuum === 'function') {
-      dbAny.vacuum();
-    }
+    // Give the freed pages back to the disk in the background (never blocks DNS or this response).
+    scheduleSpaceReclaim(env.DB, ctx);
     return new Response(JSON.stringify({ success: true }));
   }
 

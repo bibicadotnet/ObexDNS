@@ -70,8 +70,11 @@ EXPOSE 53/udp 853/tcp 80/tcp 443/tcp
 # - /etc/ssl/dns-worker: Mount point for TLS certificate and private key (fullchain.pem, privkey.pem)
 VOLUME ["/var/lib/dns-worker", "/etc/dns-worker", "/etc/ssl/dns-worker"]
 
-# Healthcheck to verify HTTP / HTTPS Web Dashboard responsiveness
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+# Healthcheck to verify HTTP / HTTPS Web Dashboard responsiveness.
+# The long start period covers the one-time auto_vacuum conversion of an existing database, during which no port
+# is open yet (about 1 second per 150 MB on an SSD, minutes for multi-GB databases on a hard disk). Probe failures
+# inside the start period do not count towards --retries, and the first success ends it early.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
   CMD curl -fsSLk http://127.0.0.1:${SERVERFULL_HTTP_PORT:-80}/ > /dev/null || exit 1
 
 # Master runtime entry point

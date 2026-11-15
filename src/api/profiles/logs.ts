@@ -2,6 +2,7 @@ import { Env, User, Profile, ProfileSettings, ExecutionContext } from "../../typ
 import { LogModel } from "../../models/log";
 import { cacheUtils } from "../../utils/cache";
 import { handleProfileLogsWs } from "./logsWs";
+import { scheduleSpaceReclaim } from "../../utils/dbMaintenance";
 
 /**
  * Handle logs and analytics requests to /api/profiles/:id/logs and /api/profiles/:id/analytics
@@ -27,10 +28,8 @@ export async function handleProfileLogsAndAnalyticsRequest(
     if (request.method === 'DELETE') {
       await logModel.deleteByProfile(profileId);
       await logModel.kemKeys.cleanupProfileOrphans(profileId, 0);
-      const dbAny = env.DB as unknown as { vacuum?: () => void };
-      if (typeof dbAny?.vacuum === 'function') {
-        dbAny.vacuum();
-      }
+      // Give the freed pages back to the disk in the background (never blocks DNS or this response).
+      scheduleSpaceReclaim(env.DB, ctx);
       return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json' }
       });

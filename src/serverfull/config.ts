@@ -231,6 +231,12 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     NORMAL_USER_MAX_LOG_RETENTION_DAYS: process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS || 7,
     NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS: process.env.NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS || 1,
     MAX_LOGS_PER_PROFILE: process.env.MAX_LOGS_PER_PROFILE || 500000,
+    // Local disk has no write quota, so cleanup runs often and in large batches (D1/Workers keep 3600s / 1000 / 20000).
+    CLEANUP_INTERVAL_SEC: process.env.CLEANUP_INTERVAL_SEC || 600,
+    LOG_CLEANUP_BATCH_LIMIT: process.env.LOG_CLEANUP_BATCH_LIMIT || 20000,
+    LOG_CLEANUP_DAILY_BUDGET: process.env.LOG_CLEANUP_DAILY_BUDGET !== undefined && process.env.LOG_CLEANUP_DAILY_BUDGET !== ''
+      ? process.env.LOG_CLEANUP_DAILY_BUDGET
+      : 0, // 0 = no daily deletion limit
     SERVERFULL_DEFAULT_PROFILE_KEY: defaultProfileKey,
     SERVERFULL_DB_PATH: dbPath,
     SERVERFULL_DOT_DOMAIN: dotDomain,
