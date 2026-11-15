@@ -7,8 +7,10 @@ import { isPublicInternetIP, isIPv4, isIPv6 } from '../utils/validator';
 import {
   DEFAULT_SUBSTITUTE_DOMAIN,
   getPresetUpstreams,
-  getPresetExternalFilters
+  getPresetExternalFilters,
+  getDefaultProfileFilterUrls
 } from '../constants/presets';
+import { systemListsManager } from '../lib/filtering/systemListsManager';
 
 /**
  * Handles system/utility routes like /api/clientinfo and /api/substitute
@@ -154,7 +156,20 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
 
   if (url.pathname === '/api/presets/filters') {
     const filters = getPresetExternalFilters(env);
-    return new Response(JSON.stringify(filters), { headers: { 'Content-Type': 'application/json' } });
+    // Enrich each preset with what the dropdown needs to explain it: the description parsed from the
+    // list header (system lists) and whether the admin flagged it as a recommended default.
+    try {
+      if (env.DB) await systemListsManager.ensureLoaded(env.DB, false, env);
+    } catch (e) {
+      console.warn('[Presets] Failed to load system lists for preset descriptions:', e);
+    }
+    const defaultUrls = new Set(getDefaultProfileFilterUrls(env).map((u) => u.trim().toLowerCase()));
+    const enriched = filters.map((f) => ({
+      ...f,
+      description: systemListsManager.getDescriptionByUrl(f.url) || null,
+      is_default: defaultUrls.has(f.url.trim().toLowerCase())
+    }));
+    return new Response(JSON.stringify(enriched), { headers: { 'Content-Type': 'application/json' } });
   }
 
   if (url.pathname === '/api/presets/ech-fronting-domains') {

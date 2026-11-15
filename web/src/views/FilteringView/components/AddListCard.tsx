@@ -1,5 +1,5 @@
 import React from "react";
-import { Card, Elevation, InputGroup, Button, PopoverNext, Intent, Menu, MenuItem } from "@blueprintjs/core";
+import { Card, Elevation, InputGroup, Button, PopoverNext, Intent, Menu, MenuItem, Tag, Tooltip } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { usePresetLists } from "../hooks";
 import type {  FilterList  } from "../types";
@@ -18,22 +18,45 @@ export const AddListCard: React.FC<AddListCardProps> = ({ newUrl, setNewUrl, onA
   const PRESET_LISTS = usePresetLists();
 
   const presetMenu = (
-    <Menu className="min-w-96">
-      {PRESET_LISTS.map((preset, i) => (
-        <MenuItem
-          key={i}
-          text={preset.label}
-          onClick={() => onAddList(preset.url)}
-          disabled={lists.some((l) => l.url === preset.url)}
-          labelElement={
-            <div className="flex flex-col items-end text-right">
-              <span className="text-[9px] opacity-85 max-w-xl truncate" title={preset.url}>
-                {preset.url}
-              </span>
-            </div>
-          }
-        />
-      ))}
+    <Menu className="w-[32rem] max-w-[90vw]">
+      {PRESET_LISTS.map((preset, i) => {
+        const description = preset.description?.trim();
+        const added = lists.some((l) => l.url === preset.url);
+        return (
+          <MenuItem
+            key={i}
+            multiline
+            onClick={() => onAddList(preset.url)}
+            disabled={added}
+            // The source URL is not shown here: it is visible in the list details once added.
+            title={preset.url}
+            style={preset.is_default ? { boxShadow: "inset 3px 0 0 var(--bp6-intent-primary-color, #2d72d2)" } : undefined}
+            text={
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium truncate">{preset.label}</span>
+                  {preset.is_default && (
+                    <Tooltip
+                      content={t(
+                        "filtering.defaultBadgeHint",
+                        "Default list recommended by the administrator. Applied automatically to new profiles."
+                      )}
+                      placement="top"
+                    >
+                      <Tag intent={Intent.PRIMARY} icon="star" minimal className="shrink-0">
+                        {t("filtering.defaultBadge", "Recommended")}
+                      </Tag>
+                    </Tooltip>
+                  )}
+                </div>
+                {description && (
+                  <div className="text-xs opacity-70 line-clamp-3 break-words whitespace-normal">{description}</div>
+                )}
+              </div>
+            }
+          />
+        );
+      })}
     </Menu>
   );
 
