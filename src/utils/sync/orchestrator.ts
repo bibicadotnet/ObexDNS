@@ -336,7 +336,8 @@ async function _executeSyncAllListsForProfile(
       return;
     }
 
-    // 依次串行同步所有列表，并在每个列表处理完成后相隔 1 秒，防范 CPU 激增与锁争用
+    // 依次串行同步所有列表（不并发）。仅在刚刚真正下载/解析过列表（非 304、非系统共享列表快速通道）后
+    // 相隔 1 秒，防范 CPU 激增与锁争用；命中 304 或系统列表时没有重负载，无需等待。
     let anyListModified = false;
     for (let i = 0; i < activeLists.length; i++) {
       const list = activeLists[i];
@@ -344,7 +345,7 @@ async function _executeSyncAllListsForProfile(
       if (!res.notModified) {
         anyListModified = true;
       }
-      if (i < activeLists.length - 1) {
+      if (!res.notModified && i < activeLists.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
