@@ -41,7 +41,7 @@ async function main() {
     ],
     updateListUpdatedAt: async () => true,
   };
-  const listBloomModel: any = { getListBloom: async () => null };
+  const listBloomModel: any = { getListBloom: async () => null, getListBloomHeader: async () => null };
   const profileBloomModel: any = { clearProfileBlooms: async () => true, upsertProfileBloom: async () => true };
   const profileModel: any = { updateListUpdatedAt: async () => true };
   const ctx: any = { waitUntil: (p: Promise<any>) => { p.catch(() => {}); } };

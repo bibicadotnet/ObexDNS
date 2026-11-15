@@ -41,6 +41,60 @@ export function _resetInFlightSyncsForTesting(): void {
 }
 
 /**
+ * True when a stored Bloom (list or profile) was built with other MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE
+ * values than the ones in effect now. Unknown/legacy formats are not reported as mismatches here: the regular
+ * "not current version" handling already covers them.
+ */
+function bloomParamsMismatch(head: Uint8Array | null, env: Env): boolean {
+  const p = BloomFilter.readHeaderParams(head);
+  if (!p) return false;
+  const want = BloomFilter.computeParams(
+    Number(env.MAX_SYNC_DOMAINS) || 1000000,
+    Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001
+  );
+  return p.size !== want.size || p.hashes !== want.hashes;
+}
+
+/**
+ * Bloom filters of different sizes cannot be OR-merged, so before a profile Bloom is rebuilt every enabled custom
+ * list whose stored Bloom has other size settings is downloaded again (full download, no ETag) with the current
+ * ones. Without this, one rebuilt list plus several old-size lists could never be combined correctly.
+ * Called from every path that is about to combine: cron (the picked list plus all the other stale ones in the same
+ * run), single-list sync, and add / delete / enable / disable (rebuildProfileBloom).
+ *
+ * @returns how many lists were rebuilt.
+ */
+async function rebuildMismatchedLists(
+  profileId: string,
+  env: Env,
+  listModel: ListModel,
+  listBloomModel: ListBloomModel,
+  opts: { excludeListId?: number; skipSyncedAfter?: number } = {}
+): Promise<number> {
+  if (env?.DB) await systemListsManager.ensureLoaded(env.DB, false, env);
+  const lists = (await listModel.getLists(profileId)).filter(
+    (l) => !!l.enabled && !systemListsManager.isSystemUrl(l.url)
+  );
+  let rebuilt = 0;
+  for (const list of lists) {
+    // The list the caller has just synced itself (a failed attempt must not be repeated right away).
+    if (opts.excludeListId !== undefined && list.id === opts.excludeListId) continue;
+    // Cron: a list already attempted in the current cycle (even if it failed) is not downloaded a second time.
+    if (opts.skipSyncedAfter !== undefined && (list.last_synced_at ?? 0) > opts.skipSyncedAfter) continue;
+    const head = await listBloomModel.getListBloomHeader(list.id);
+    if (!bloomParamsMismatch(head, env)) continue;
+    console.log(`[Sync] Profile ${profileId}: list #${list.id} Bloom has other size settings; downloading it again.`);
+    try {
+      await syncSingleList(profileId, list, env, listModel, listBloomModel, Math.floor(Date.now() / 1000), true);
+      rebuilt++;
+    } catch (e) {
+      console.error(`[Sync] Rebuild of list #${list.id} with the current size settings failed:`, e);
+    }
+  }
+  return rebuilt;
+}
+
+/**
  * 【Cron 专用】每次触发时处理**单个**最旧的订阅列表。
  */
 export async function syncNextListForProfile(
@@ -141,6 +195,14 @@ async function _executeSyncNextListForProfile(
     const list = pendingLists[0];
     await syncSingleList(profileId, list, env, listModel, listBloomModel, now);
 
+    // Other lists still holding a Bloom with other size settings (MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE changed)
+    // are rebuilt in this same run instead of one per tick, so the profile Bloom can be combined correctly right away.
+    // Lists already attempted in this cycle are not downloaded again.
+    const rebuiltOthers = await rebuildMismatchedLists(profileId, env, listModel, listBloomModel, {
+      excludeListId: list.id,
+      skipSyncedAfter: lastFullSync
+    });
+
     // ── 检查本周期是否全部完成 ────────────────────────────────────────────────
     const updatedLists = await listModel.getLists(profileId);
     const activeUpdatedLists = updatedLists.filter((l) => !!l.enabled);
@@ -170,6 +232,23 @@ async function _executeSyncNextListForProfile(
           `promoted combined active bloom.`
       );
     } else {
+      if (rebuiltOthers > 0) {
+        // Every list is on the current size now, so promote right away instead of waiting for the end of the cycle,
+        // but keep the cycle open (restore list_updated_at) so the remaining lists still get their regular refresh.
+        await combineAndPromote(
+          profileId,
+          listModel,
+          listBloomModel,
+          profileBloomModel,
+          profileModel,
+          ctx,
+          now,
+          Number(env.MAX_SYNC_DOMAINS) || 1000000,
+          Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001,
+          env
+        );
+        await profileModel.updateListUpdatedAt(profileId, lastFullSync);
+      }
       const remaining = activeUpdatedLists.filter(
         (l) => (l.last_synced_at ?? 0) <= lastFullSync
       ).length;
@@ -272,7 +351,7 @@ async function _executeSyncAllListsForProfile(
 
     // 检查 Profile 级已合并布隆过滤器是否为最新版本 (v2)
     const existingProfileBloom = await profileBloomModel.getProfileBloomHeader(profileId);
-    const isProfileBloomCurrent = BloomFilter.isCurrentVersion(existingProfileBloom);
+    const isProfileBloomCurrent = BloomFilter.isCurrentVersion(existingProfileBloom) && !bloomParamsMismatch(existingProfileBloom, env);
 
     // 若全部列表均命中 304 协商缓存且已合并布隆也是最新 v2 格式，直接跳过合并晋升阶段，零 CPU/DB 消耗
     if (!anyListModified && isProfileBloomCurrent) {
@@ -383,12 +462,18 @@ async function _executeSyncSingleListForProfile(
     // 1. 单独同步该列表 (自动检测 v2 版本或 force 强制重新拉取)
     const { notModified } = await syncSingleList(profileId, list, env, listModel, listBloomModel, now, force);
 
+    // 1b. Other enabled lists still holding a Bloom with other size settings are rebuilt now, so the merge below
+    //     can combine all of them instead of leaving some out.
+    const rebuiltOthers = list.enabled
+      ? await rebuildMismatchedLists(profileId, env, listModel, listBloomModel, { excludeListId: list.id })
+      : 0;
+
     // 2. 检查 Profile 级布隆过滤器是否为最新版本
     const existingProfileBloom = await profileBloomModel.getProfileBloomHeader(profileId);
-    const isProfileBloomCurrent = BloomFilter.isCurrentVersion(existingProfileBloom);
+    const isProfileBloomCurrent = BloomFilter.isCurrentVersion(existingProfileBloom) && !bloomParamsMismatch(existingProfileBloom, env);
 
     // 3. 若列表处于启用状态且内容发生变动（或 Profile 布隆非最新），触发 Profile 布隆过滤器与 AdGuard 规则的重构合并
-    if (list.enabled && (!notModified || !isProfileBloomCurrent)) {
+    if (list.enabled && (!notModified || !isProfileBloomCurrent || rebuiltOthers > 0)) {
       await profileModel.updateListUpdatedAt(profileId, now);
       await combineAndPromote(
         profileId,
@@ -413,7 +498,7 @@ async function _executeSyncSingleListForProfile(
 }
 
 /**
- * 快速重构并合并 Profile 的布隆过滤器（纯内存合并，不触发外部网络下载）。
+ * 快速重构并合并 Profile 的布隆过滤器（通常为纯内存合并；仅当仍有列表的 Bloom 参数与当前配置不一致时，才会先重新下载这些列表）。
  * 适用场景：删除规则列表、切换列表启用/禁用状态等仅改变参与合并的集合、而不改变列表本身内容的场景。
  */
 export async function rebuildProfileBloom(
@@ -498,6 +583,10 @@ async function _executeRebuildProfileBloom(
       console.error(`[Sync] fetch of list ${missing.id} during rebuild failed:`, e);
     }
   }
+
+  // Lists that still hold a Bloom with other size settings (see rebuildMismatchedLists) are rebuilt first,
+  // so adding, removing, enabling or disabling a list gives the exact result right away.
+  await rebuildMismatchedLists(profileId, env, listModel, listBloomModel);
 
   await combineAndPromote(
     profileId,

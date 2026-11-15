@@ -99,7 +99,12 @@ export async function syncSingleList(
   const existingBloomHead = await listBloomModel.getListBloomHeader(list.id);
   const hasExistingRules = env?.DB ? await new AdguardRulesModel(env.DB).hasListRules(list.id) : false;
   const hasLocalData = Boolean(existingBloomHead || hasExistingRules);
-  const isBloomCurrent = existingBloomHead ? BloomFilter.isCurrentVersion(existingBloomHead) : hasLocalData;
+  // A stored Bloom built with other MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE values cannot be OR-merged into the
+  // profile Bloom, and an upstream 304 would keep it that way forever -> treat it like a non-current Bloom (full download).
+  const wantParams = BloomFilter.computeParams(maxDomains, falsePositiveRate);
+  const storedParams = existingBloomHead ? BloomFilter.readHeaderParams(existingBloomHead) : null;
+  const paramsMatch = !storedParams || (storedParams.size === wantParams.size && storedParams.hashes === wantParams.hashes);
+  const isBloomCurrent = existingBloomHead ? (BloomFilter.isCurrentVersion(existingBloomHead) && paramsMatch) : hasLocalData;
   const useCacheHeaders = !force && isBloomCurrent && Boolean(list.etag || list.last_modified);
 
   // 流式下载并按行解析规则，分流分类存储，携带协商缓存头

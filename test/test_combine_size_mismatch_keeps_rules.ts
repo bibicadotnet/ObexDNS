@@ -19,7 +19,7 @@ async function main() {
     1: { exceptions: [{ domain: "allowed.example.com", includeSubdomains: true, raw: "@@||allowed.example.com^" }], rewrites: { "r.example.com": { type: "A", value: "1.2.3.4", includeSubdomains: false, raw: "r" } }, patterns: [{ pattern: "^a$", apexIndex: "a.com", raw: "/a/" }] },
     2: { exceptions: [], rewrites: {}, patterns: [{ pattern: "^b$", apexIndex: "b.com", raw: "/b/" }] },
   };
-  let savedRules: any = null; let savedBloom: Uint8Array | null = null;
+  let savedRules: any = null; let savedBloom: Uint8Array | null = null; let cleared = false;
   const db: any = { prepare: (sql: string) => ({ bind: (...a: any[]) => ({
     first: async () => sql.includes("FROM list_adguard_rules") ? { payload: JSON.stringify(rules[a[0]]) } : null,
     all: async () => ({ results: [] }),
@@ -27,8 +27,8 @@ async function main() {
   }) }) };
   const env = { DB: db } as unknown as Env;
   const listModel: any = { getLists: async () => [{ id: 1, url: "http://93.184.216.34/1.txt", enabled: 1 }, { id: 2, url: "http://93.184.216.34/2.txt", enabled: 1 }] };
-  const listBloomModel: any = { getListBloom: async (id: number) => blooms[id] };
-  const profileBloomModel: any = { clearProfileBlooms: async () => true, upsertProfileBloom: async (_p: string, buf: ArrayBuffer) => { savedBloom = new Uint8Array(buf); return true; } };
+  const listBloomModel: any = { getListBloom: async (id: number) => blooms[id], getListBloomHeader: async (id: number) => new Uint8Array(blooms[id]).slice(0, 20) };
+  const profileBloomModel: any = { clearProfileBlooms: async () => { cleared = true; return true; }, upsertProfileBloom: async (_p: string, buf: ArrayBuffer) => { savedBloom = new Uint8Array(buf); return true; } };
   const profileModel: any = { updateListUpdatedAt: async () => true };
   const ctx: any = { waitUntil: (p: Promise<any>) => { p.catch(() => {}); } };
 
@@ -38,10 +38,8 @@ async function main() {
   assert.strictEqual(savedRules.exceptions.length, 1, "whitelist exception of the size-mismatched list must survive");
   assert.ok(savedRules.rewrites["r.example.com"], "rewrite of the size-mismatched list must survive");
   assert.strictEqual(savedRules.patterns.length, 2, "patterns of both lists must be merged");
-  assert.ok(savedBloom, "profile Bloom must still be promoted from the lists that could be merged");
-  const merged = BloomFilter.fromUint8Array(savedBloom!);
-  assert.ok(merged.testPipePipe("fresh.example.com"), "compatible list is in the merged Bloom");
-  assert.ok(!merged.testPipePipe("stale.example.com"), "the size-mismatched Bloom is left out");
-  console.log("✓ size-mismatched list: only its Bloom is skipped; exceptions, rewrites and patterns are still merged");
+  assert.strictEqual(savedBloom, null, "profile Bloom must NOT be replaced from a partial merge (would drop the mismatched list's domains)");
+  assert.strictEqual(cleared, false, "profile Bloom must NOT be cleared either");
+  console.log("✓ size-mismatched list: profile Bloom is kept untouched; exceptions, rewrites and patterns are still merged");
 }
 main().then(() => process.exit(0)).catch((e) => { console.error("FAILED:", e.message || e); process.exit(1); });

@@ -230,7 +230,8 @@ export async function handleProfileListsRequest(
     // Rebuild the merged profile bloom from the per-list blooms already stored.
     // rebuildProfileBloom skips the incremental orchestrator deliberately: that
     // path would re-download every remaining list, and with 2+ active lists it
-    // would not recombine at all. clearCache is chained so it cannot run before
+    // would not recombine at all. Lists whose Bloom still has other size settings (after a MAX_SYNC_DOMAINS /
+    // BLOOM_FALSE_POSITIVE_RATE change) are downloaded again first. clearCache is chained so it cannot run before
     // the new bloom is promoted.
     ctx.waitUntil(
       rebuildProfileBloom(profileId, env, ctx)

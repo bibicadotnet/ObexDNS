@@ -138,6 +138,7 @@ async function runTests() {
     } as any;
 
     const mockListBloomModel = {
+      async getListBloomHeader() { return null; },
       async upsertListBloom(id: number, buf: ArrayBuffer, now: number) {
         bloomUpserted = true;
         assert.ok(buf.byteLength > 100, 'Bloom buffer should contain serialized data');

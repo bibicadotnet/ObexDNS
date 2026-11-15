@@ -67,6 +67,22 @@ export async function combineAndPromote(
     const merged = BloomFilter.create(maxDomains, falsePositiveRate);
     let hasMergedAny = false;
 
+    // A list Bloom built with other MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE values cannot be OR-merged.
+    // Merging only the compatible ones would silently drop the others' domains, so in that case the profile's
+    // current Bloom is left untouched (it keeps filtering) until every list has been rebuilt with the current size.
+    // singleListSync forces a full download for such lists, so the next sync cycle rebuilds them.
+    const want = BloomFilter.computeParams(maxDomains, falsePositiveRate);
+    const mismatchedListIds: number[] = [];
+    for (const list of customLists) {
+      const head = await listBloomModel.getListBloomHeader(list.id);
+      const p = BloomFilter.readHeaderParams(head);
+      if (p && (p.size !== want.size || p.hashes !== want.hashes)) mismatchedListIds.push(list.id);
+    }
+    const keepProfileBloom = mismatchedListIds.length > 0;
+    if (keepProfileBloom) {
+      console.warn(`[Sync] Profile ${profileId}: list(s) #${mismatchedListIds.join(", #")} still hold a Bloom built with other size settings; keeping the profile's current Bloom until they are rebuilt.`);
+    }
+
     const mergedAdguard: AdGuardPayload = {
       exceptions: [],
       rewrites: {},
@@ -77,7 +93,7 @@ export async function combineAndPromote(
     for (const list of customLists) {
       // 1. Bloom Filter 单列表合并 (独立 try：Bloom 合并失败不应连带丢弃该列表的例外/重写/正则规则)
       try {
-        const buf = await listBloomModel.getListBloom(list.id);
+        const buf = keepProfileBloom ? null : await listBloomModel.getListBloom(list.id);
         if (buf) {
           const filter = BloomFilter.fromUint8Array(new Uint8Array(buf));
           merged.merge(filter);
@@ -126,7 +142,9 @@ export async function combineAndPromote(
       }
     }
 
-    if (hasMergedAny) {
+    if (keepProfileBloom) {
+      // keep the existing profile Bloom as is
+    } else if (hasMergedAny) {
       const binary = merged.toUint8Array();
       await profileBloomModel.upsertProfileBloom(profileId, binary.buffer as ArrayBuffer, now);
     } else {
