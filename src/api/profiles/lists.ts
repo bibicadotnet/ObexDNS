@@ -18,7 +18,6 @@ import { AdGuardProfileEngine } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
 import { customListsManager } from "../../lib/filtering/customListsManager";
 import { getDefaultProfileFilterUrls } from "../../constants/presets";
-import { logMemoryUsage } from "../../utils/memory";
 
 /**
  * Handle filter lists requests to /api/profiles/:id/lists
@@ -239,13 +238,10 @@ export async function handleProfileListsRequest(
       }
     }
 
-    logMemoryUsage(`Toggle:Before listId=${listId} enabled=${body.enabled}`);
-
     // System lists and custom lists both run independently per-list.
     // Toggling only clears profile config cache to reload enabled list IDs; filters stay in RAM.
     ctx.waitUntil(
       pipeline.clearCache(profileId, false, env)
-        .then(() => logMemoryUsage(`Toggle:After listId=${listId} enabled=${body.enabled}`))
         .catch((e) => console.error(`[Lists] cache clear failed for ${profileId}:`, e))
     );
 
