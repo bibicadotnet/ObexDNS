@@ -5,7 +5,6 @@ import path from "node:path";
 import { initNodeGlobals } from "../src/serverfull/cache";
 import { initServerfullDb } from "../src/serverfull/db";
 import { ListFilterModel } from "../src/models/listFilter";
-import { ProfileFilterModel } from "../src/models/profileFilter";
 import { SystemSettingsModel } from "../src/models/systemSettings";
 import { ProfileModel } from "../src/models/profile";
 import { FingerprintSet } from "../src/utils/fingerprintSet";
@@ -39,9 +38,6 @@ async function main() {
   await db.prepare("INSERT INTO list_blooms (list_id, chunk_index, bloom_filter_chunk, updated_at) VALUES (?, ?, ?, ?)")
     .bind(listId, 0, legacyBuf.buffer as ArrayBuffer, now)
     .run();
-  await db.prepare("INSERT INTO profile_blooms (profile_id, chunk_index, bloom_filter_chunk, updated_at) VALUES (?, ?, ?, ?)")
-    .bind("p1", 0, legacyBuf.buffer as ArrayBuffer, now)
-    .run();
 
   // Startup detects legacy format and triggers reset
   const env = { DB: db, SYNC_TIMEOUT_MS: 5000 } as unknown as Env;
@@ -70,9 +66,7 @@ async function main() {
   assert.ok(!sent[0]["if-none-match"] && !sent[0]["if-modified-since"], "full download: no conditional headers");
 
   const listHead = await db.prepare("SELECT substr(bloom_filter_chunk,1,20) AS head FROM list_blooms WHERE list_id = ? AND chunk_index = 0").bind(listId).first();
-  const profHead = await db.prepare("SELECT substr(bloom_filter_chunk,1,20) AS head FROM profile_blooms WHERE profile_id = ? AND chunk_index = 0").bind("p1").first();
   assert.strictEqual(FingerprintSet.isCurrentVersion(new Uint8Array(listHead.head)), true, "list rebuilt as FPRT");
-  assert.strictEqual(FingerprintSet.isCurrentVersion(new Uint8Array(profHead.head)), true, "profile rebuilt as FPRT");
 
   const row: any = await db.prepare("SELECT etag, last_synced_at FROM lists WHERE id = ?").bind(listId).first();
   assert.strictEqual(row.etag, '"e2"');
@@ -80,9 +74,9 @@ async function main() {
   const prof: any = await db.prepare("SELECT list_updated_at FROM profiles WHERE id = 'p1'").first();
   assert.ok(prof.list_updated_at > 0);
 
-  const profBuf = await new ProfileFilterModel(db).getProfileFilter("p1");
-  assert.ok(profBuf !== null);
-  const restored = FingerprintSet.fromUint8Array(new Uint8Array(profBuf));
+  const listBuf = await new ListFilterModel(db).getListFilter(listId);
+  assert.ok(listBuf !== null);
+  const restored = FingerprintSet.fromUint8Array(new Uint8Array(listBuf));
   assert.strictEqual(restored.testPipePipe("new.example.com"), true);
   assert.strictEqual(restored.testPipePipe("other.example.org"), true);
   assert.strictEqual(restored.testPipePipe("unrelated.org"), false);

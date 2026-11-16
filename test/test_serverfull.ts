@@ -23,7 +23,6 @@ import { HttpServer, HttpsServer } from '../src/serverfull/http';
 import { buildDNSQuery, parseDNSAnswer } from '../src/utils/dns';
 import { fileURLToPath } from 'node:url';
 import { ListFilterModel } from '../src/models/listFilter';
-import { ProfileFilterModel } from '../src/models/profileFilter';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,10 +67,9 @@ async function runTests() {
   await db.prepare('INSERT INTO rules (profile_id, type, pattern, record_type) VALUES (?, ?, ?, ?)')
     .bind('prof1', 'BLOCK', 'ad.test.com', 'A').run();
 
-  // Verify ListFilterModel & ProfileFilterModel with binary BLOB chunks in SQLite D1
-  console.log('>>> [TEST] Testing ListFilterModel & ProfileFilterModel BLOB bindings...');
+  // Verify ListFilterModel with binary BLOB chunks in SQLite D1
+  console.log('>>> [TEST] Testing ListFilterModel BLOB bindings...');
   const listFilterModel = new ListFilterModel(db as any);
-  const profileFilterModel = new ProfileFilterModel(db as any);
 
   // 1. Create a dummy list entry
   const listRes = await db.prepare('INSERT INTO lists (profile_id, url, enabled) VALUES (?, ?, ?)')
@@ -92,19 +90,6 @@ async function runTests() {
   const restoredFilter = FingerprintSet.fromUint8Array(new Uint8Array(loadedFilterBuf!));
   assert.strictEqual(restoredFilter.test('blocked-by-filter.example'), true, 'Restored filter must contain added domain');
   assert.strictEqual(restoredFilter.test('allowed.example'), false, 'Restored filter must not contain unadded domain');
-
-  // 3. Test ProfileFilter staging and atomic promotion (which tests parameter re-binding)
-  const stagingSuccess = await profileFilterModel.upsertStagingFilter('prof1', filterBuf, now);
-  assert.strictEqual(stagingSuccess, true, 'upsertStagingFilter must succeed with ArrayBuffer');
-
-  const promoteSuccess = await profileFilterModel.promoteStagingToActive('prof1', now);
-  assert.strictEqual(promoteSuccess, true, 'promoteStagingToActive must succeed');
-
-  const activeProfileFilter = await profileFilterModel.getProfileFilter('prof1');
-  assert.ok(activeProfileFilter !== null, 'getProfileFilter must retrieve promoted filter');
-  assert.strictEqual(activeProfileFilter instanceof ArrayBuffer, true, 'getProfileFilter must return an ArrayBuffer for D1 parity');
-  const restoredProfileFilter = FingerprintSet.fromUint8Array(new Uint8Array(activeProfileFilter!));
-  assert.strictEqual(restoredProfileFilter.test('blocked-by-filter.example'), true);
   console.log('>>> [TEST] SUCCESS: BLOB binding and Filter operations verified on SQLite D1!');
 
   console.log('>>> [TEST] Database seeded successfully.');

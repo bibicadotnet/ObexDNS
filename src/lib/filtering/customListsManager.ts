@@ -31,6 +31,7 @@ class CustomListsManager {
   private cache: ByteCappedMap<number, CustomListEntry>;
   private inFlightLoads: Map<number, Promise<void>> = new Map();
   private generations: Map<number, number> = new Map();
+  private dbErrorBackoffs: Map<number, number> = new Map();
   private ttlMs: number = 300000; // 5 minutes default TTL
 
   constructor() {
@@ -79,11 +80,13 @@ class CustomListsManager {
 
   invalidate(listId: number): void {
     this.generations.set(listId, (this.generations.get(listId) || 0) + 1);
+    this.dbErrorBackoffs.delete(listId);
     this.cache.delete(listId);
   }
 
   clear(): void {
     this.generations.clear();
+    this.dbErrorBackoffs.clear();
     this.cache.clear();
   }
 
@@ -95,85 +98,101 @@ class CustomListsManager {
       return;
     }
 
+    const backoffUntil = this.dbErrorBackoffs.get(listId);
+    if (backoffUntil && Date.now() < backoffUntil) {
+      return;
+    }
+
     const inFlight = this.inFlightLoads.get(listId);
     if (inFlight) {
       return inFlight;
     }
 
-    const currentGen = (this.generations.get(listId) || 0) + 1;
-    this.generations.set(listId, currentGen);
-
     const loadPromise = (async () => {
       try {
-        const listFilterModel = new ListFilterModel(db);
-        const adguardRulesModel = new AdguardRulesModel(db);
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const currentGen = (this.generations.get(listId) || 0) + 1;
+          this.generations.set(listId, currentGen);
 
-        let filterBuf: ArrayBuffer | null = null;
-        let rulesPayload: AdGuardPayload | null = null;
-        let dbFailed = false;
+          const listFilterModel = new ListFilterModel(db);
+          const adguardRulesModel = new AdguardRulesModel(db);
 
-        try {
-          const [fRes, rRes] = await Promise.all([
-            listFilterModel.getListFilter(listId),
-            adguardRulesModel.getListRules(listId)
-          ]);
-          filterBuf = fRes;
-          rulesPayload = rRes;
-        } catch (dbErr: any) {
-          dbFailed = true;
-          console.warn(`[CustomListsManager] Failed to read database for list #${listId} (skipping cache):`, dbErr?.message || dbErr);
-        }
+          let filterBuf: ArrayBuffer | null = null;
+          let rulesPayload: AdGuardPayload | null = null;
+          let dbFailed = false;
 
-        // Check if load was invalidated while waiting for DB I/O
-        if (this.generations.get(listId) !== currentGen) {
-          return;
-        }
-
-        // Transient DB error: do NOT negative-cache, so next query retries
-        if (dbFailed) {
-          return;
-        }
-
-        let filter: FingerprintSet | null = null;
-        let byteLength = 0;
-
-        if (filterBuf && FingerprintSet.isCurrentVersion(filterBuf)) {
           try {
-            filter = FingerprintSet.fromUint8Array(new Uint8Array(filterBuf));
-            byteLength = filter.byteLength;
-          } catch (e: any) {
-            console.warn(`[CustomListsManager] Failed to deserialize filter for list #${listId}:`, e?.message || e);
+            const [fRes, rRes] = await Promise.all([
+              listFilterModel.getListFilter(listId),
+              adguardRulesModel.getListRules(listId)
+            ]);
+            filterBuf = fRes;
+            rulesPayload = rRes;
+          } catch (dbErr: any) {
+            dbFailed = true;
+            console.warn(`[CustomListsManager] Failed to read database for list #${listId} (skipping cache):`, dbErr?.message || dbErr);
           }
-        }
 
-        // Negative caching: if DB query succeeded but returned no domain filter,
-        // use an empty FingerprintSet (0 byteLength) so we don't spam SQLite on every DNS packet
-        if (!filter) {
-          filter = new FingerprintSet(new BigUint64Array(0));
-          byteLength = 0;
-        }
-
-        let engine: AdGuardProfileEngine | null = null;
-        if (rulesPayload) {
-          try {
-            engine = new AdGuardProfileEngine(rulesPayload);
-            // Account for AdGuard rule memory in byteLength:
-            // ~160B per exception, ~200B per rewrite, ~300B per regex pattern
-            const exceptionsBytes = (rulesPayload.exceptions?.length || 0) * 160;
-            const rewritesBytes = Object.keys(rulesPayload.rewrites || {}).length * 200;
-            const patternsBytes = (rulesPayload.patterns?.length || 0) * 300;
-            byteLength += (exceptionsBytes + rewritesBytes + patternsBytes);
-          } catch (e: any) {
-            console.warn(`[CustomListsManager] Failed to instantiate AdGuard engine for list #${listId}:`, e?.message || e);
+          // Check if load was invalidated while waiting for DB I/O
+          if (this.generations.get(listId) !== currentGen) {
+            if (attempt === 0) {
+              // Retry once so the current query gets the latest data rather than skipping
+              continue;
+            }
+            return;
           }
-        }
 
-        this.cache.set(listId, {
-          filter,
-          engine,
-          byteLength,
-          ts: Date.now()
-        });
+          // Transient DB error: do NOT negative-cache, apply short backoff (15s) so queries aren't blocked
+          if (dbFailed) {
+            this.dbErrorBackoffs.set(listId, Date.now() + 15000);
+            return;
+          }
+
+          // Successful DB read: clear any previous error backoff
+          this.dbErrorBackoffs.delete(listId);
+
+          let filter: FingerprintSet | null = null;
+          let byteLength = 0;
+
+          if (filterBuf && FingerprintSet.isCurrentVersion(filterBuf)) {
+            try {
+              filter = FingerprintSet.fromUint8Array(new Uint8Array(filterBuf));
+              byteLength = filter.byteLength;
+            } catch (e: any) {
+              console.warn(`[CustomListsManager] Failed to deserialize filter for list #${listId}:`, e?.message || e);
+            }
+          }
+
+          // Negative caching: if DB query succeeded but returned no domain filter,
+          // use an empty FingerprintSet (0 byteLength) so we don't spam SQLite on every DNS packet
+          if (!filter) {
+            filter = new FingerprintSet(new BigUint64Array(0));
+            byteLength = 0;
+          }
+
+          let engine: AdGuardProfileEngine | null = null;
+          if (rulesPayload) {
+            try {
+              engine = new AdGuardProfileEngine(rulesPayload);
+              // Account for AdGuard rule memory in byteLength:
+              // ~250B per exception, ~200B per rewrite, ~300B per regex pattern
+              const exceptionsBytes = (rulesPayload.exceptions?.length || 0) * 250;
+              const rewritesBytes = Object.keys(rulesPayload.rewrites || {}).length * 200;
+              const patternsBytes = (rulesPayload.patterns?.length || 0) * 300;
+              byteLength += (exceptionsBytes + rewritesBytes + patternsBytes);
+            } catch (e: any) {
+              console.warn(`[CustomListsManager] Failed to instantiate AdGuard engine for list #${listId}:`, e?.message || e);
+            }
+          }
+
+          this.cache.set(listId, {
+            filter,
+            engine,
+            byteLength,
+            ts: Date.now()
+          });
+          break;
+        }
       } finally {
         this.inFlightLoads.delete(listId);
       }
