@@ -42,7 +42,8 @@ export async function migrateFilterFormatIfLegacy(env: Env): Promise<FilterMigra
     const purgeSqls = [
       "DELETE FROM system_list_blooms WHERE system_list_id IN (SELECT system_list_id FROM system_list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
       "DELETE FROM list_blooms WHERE list_id IN (SELECT list_id FROM list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
-      "DELETE FROM profile_blooms WHERE profile_id IN (SELECT profile_id FROM profile_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')"
+      "DELETE FROM profile_blooms WHERE profile_id IN (SELECT profile_id FROM profile_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
+      "DELETE FROM profile_blooms_staging WHERE profile_id IN (SELECT profile_id FROM profile_blooms_staging WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')"
     ];
     for (const sql of purgeSqls) {
       await env.DB.prepare(sql).bind().run().catch(() => {});
@@ -96,6 +97,7 @@ export async function migrateFilterFormatIfLegacy(env: Env): Promise<FilterMigra
         "DELETE FROM system_list_blooms WHERE system_list_id IN (SELECT system_list_id FROM system_list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
         "DELETE FROM list_blooms WHERE list_id IN (SELECT list_id FROM list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
         "DELETE FROM profile_blooms WHERE profile_id IN (SELECT profile_id FROM profile_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
+        "DELETE FROM profile_blooms_staging WHERE profile_id IN (SELECT profile_id FROM profile_blooms_staging WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
         // Reset system lists so they are re-downloaded and rebuilt
         "UPDATE system_lists SET etag = NULL, last_modified = NULL, last_synced_at = NULL",
         // Reset profile custom lists
