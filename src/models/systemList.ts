@@ -125,7 +125,8 @@ export class SystemListModel {
 
     let chunkIndex = 0;
     for (let offset = 0; offset < uint8Array.length; offset += FILTER_CHUNK_SIZE) {
-      const chunkData = uint8Array.slice(offset, offset + FILTER_CHUNK_SIZE).buffer as ArrayBuffer;
+      const chunkEnd = Math.min(offset + FILTER_CHUNK_SIZE, uint8Array.length);
+      const chunkData = uint8Array.subarray(offset, chunkEnd);
       statements.push(
         this.db.prepare(
           "INSERT INTO system_list_blooms (system_list_id, chunk_index, bloom_filter_chunk, updated_at) VALUES (?, ?, ?, ?)"
@@ -144,6 +145,11 @@ export class SystemListModel {
     ).bind(systemListId).all<{ bloom_filter_chunk: ArrayBuffer }>();
 
     if (!results || results.length === 0) return null;
+
+    if (results.length === 1) {
+      const chunk = results[0].bloom_filter_chunk;
+      return chunk instanceof ArrayBuffer ? chunk : ((chunk as any).buffer || chunk);
+    }
 
     const totalLength = results.reduce((acc, row) => {
       const len = row.bloom_filter_chunk.byteLength ?? (row.bloom_filter_chunk as any).length;

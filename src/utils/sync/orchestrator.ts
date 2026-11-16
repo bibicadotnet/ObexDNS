@@ -1,9 +1,7 @@
 import { Env, ExecutionContext } from "../../types";
 import { ProfileModel } from "../../models/profile";
 import { ListModel } from "../../models/list";
-import { ProfileFilterModel } from "../../models/profileFilter";
 import { ListFilterModel } from "../../models/listFilter";
-import { combineAndPromote } from "./combine";
 import { syncSingleList } from "./singleListSync";
 import { FingerprintSet } from "../fingerprintSet";
 import { AdguardRulesModel } from "../../models/adguardRules";
@@ -101,7 +99,6 @@ async function _executeSyncNextListForProfile(
 ): Promise<void> {
   const profileModel = new ProfileModel(env.DB);
   const listModel = new ListModel(env.DB);
-  const profileFilterModel = new ProfileFilterModel(env.DB);
   const listFilterModel = new ListFilterModel(env.DB);
   const now = Math.floor(Date.now() / 1000);
 
@@ -117,12 +114,11 @@ async function _executeSyncNextListForProfile(
     const activeLists = lists.filter((l) => !!l.enabled);
 
     if (activeLists.length === 0) {
-      await profileFilterModel.clearProfileFilters(profileId);
       await profileModel.updateListUpdatedAt(profileId, now);
       if (ctx && typeof ctx.waitUntil === "function") {
-        ctx.waitUntil(pipelineCache.clear(profileId, true, env));
+        ctx.waitUntil(pipelineCache.clear(profileId, false, env));
       } else {
-        await pipelineCache.clear(profileId, true, env);
+        await pipelineCache.clear(profileId, false, env);
       }
       return;
     }
@@ -138,28 +134,12 @@ async function _executeSyncNextListForProfile(
 
     if (pendingLists.length === 0) {
       await profileModel.updateListUpdatedAt(profileId, now);
-      await combineAndPromote(
-        profileId,
-        listModel,
-        listFilterModel,
-        profileFilterModel,
-        profileModel,
-        ctx,
-        now,
-        undefined,
-        undefined,
-        env
-      );
+      await pipelineCache.clear(profileId, false, env);
       return;
     }
 
     const list = pendingLists[0];
     await syncSingleList(profileId, list, env, listModel, listFilterModel, now);
-
-    const rebuiltOthers = await rebuildMismatchedLists(profileId, env, listModel, listFilterModel, {
-      excludeListId: list.id,
-      skipSyncedAfter: lastFullSync
-    });
 
     const updatedLists = await listModel.getLists(profileId);
     const activeUpdatedLists = updatedLists.filter((l) => !!l.enabled);
@@ -167,37 +147,11 @@ async function _executeSyncNextListForProfile(
 
     if (allDone) {
       await profileModel.updateListUpdatedAt(profileId, now);
-      await combineAndPromote(
-        profileId,
-        listModel,
-        listFilterModel,
-        profileFilterModel,
-        profileModel,
-        ctx,
-        now,
-        undefined,
-        undefined,
-        env
-      );
+      await pipelineCache.clear(profileId, false, env);
       console.log(
-        `[Sync] Profile ${profileId}: all ${activeUpdatedLists.length} list(s) processed — promoted combined active filter.`
+        `[Sync] Profile ${profileId}: all ${activeUpdatedLists.length} list(s) processed.`
       );
     } else {
-      if (rebuiltOthers > 0) {
-        await combineAndPromote(
-          profileId,
-          listModel,
-          listFilterModel,
-          profileFilterModel,
-          profileModel,
-          ctx,
-          now,
-          undefined,
-          undefined,
-          env
-        );
-        await profileModel.updateListUpdatedAt(profileId, lastFullSync);
-      }
       const remaining = activeUpdatedLists.filter(
         (l) => (l.last_synced_at ?? 0) <= lastFullSync
       ).length;
@@ -259,7 +213,6 @@ async function _executeSyncAllListsForProfile(
 ): Promise<void> {
   const profileModel = new ProfileModel(env.DB);
   const listModel = new ListModel(env.DB);
-  const profileFilterModel = new ProfileFilterModel(env.DB);
   const listFilterModel = new ListFilterModel(env.DB);
   const now = Math.floor(Date.now() / 1000);
 
@@ -274,12 +227,11 @@ async function _executeSyncAllListsForProfile(
     const activeLists = lists.filter((l) => !!l.enabled);
 
     if (activeLists.length === 0) {
-      await profileFilterModel.clearProfileFilters(profileId);
       await profileModel.updateListUpdatedAt(profileId, now);
       if (ctx && typeof ctx.waitUntil === "function") {
-        ctx.waitUntil(pipelineCache.clear(profileId, true, env));
+        ctx.waitUntil(pipelineCache.clear(profileId, false, env));
       } else {
-        await pipelineCache.clear(profileId, true, env);
+        await pipelineCache.clear(profileId, false, env);
       }
       return;
     }
@@ -296,30 +248,11 @@ async function _executeSyncAllListsForProfile(
       }
     }
 
-    const existingProfileFilter = await profileFilterModel.getProfileFilterHeader(profileId);
-    const isProfileFilterCurrent = FingerprintSet.isCurrentVersion(existingProfileFilter);
-
-    if (!anyListModified && isProfileFilterCurrent) {
-      await profileModel.updateListUpdatedAt(profileId, now);
-      console.log(`[Sync] Profile ${profileId}: all ${activeLists.length} list(s) were 304 Not Modified and profile filter is current — skipped combine.`);
-      return;
-    }
-
     await profileModel.updateListUpdatedAt(profileId, now);
-
-    await combineAndPromote(
-      profileId,
-      listModel,
-      listFilterModel,
-      profileFilterModel,
-      profileModel,
-      ctx,
-      now,
-      undefined,
-      undefined,
-      env
-    );
-    console.log(`[Sync] Profile ${profileId}: manual sync cycle complete.`);
+    if (anyListModified) {
+      await pipelineCache.clear(profileId, false, env);
+    }
+    console.log(`[Sync] Profile ${profileId}: sync cycle complete.`);
   } catch (e) {
     console.error(`[Sync] Critical failure in manual sync for Profile ${profileId}:`, e);
     await profileModel.updateListUpdatedAt(profileId, now);
@@ -387,7 +320,6 @@ async function _executeSyncSingleListForProfile(
 ): Promise<void> {
   const listModel = new ListModel(env.DB);
   const listFilterModel = new ListFilterModel(env.DB);
-  const profileFilterModel = new ProfileFilterModel(env.DB);
   const profileModel = new ProfileModel(env.DB);
   const now = Math.floor(Date.now() / 1000);
 
@@ -400,30 +332,9 @@ async function _executeSyncSingleListForProfile(
 
     const { notModified } = await syncSingleList(profileId, list, env, listModel, listFilterModel, now, force);
 
-    const rebuiltOthers = list.enabled
-      ? await rebuildMismatchedLists(profileId, env, listModel, listFilterModel, { excludeListId: list.id })
-      : 0;
-
-    const existingProfileFilter = await profileFilterModel.getProfileFilterHeader(profileId);
-    const isProfileFilterCurrent = FingerprintSet.isCurrentVersion(existingProfileFilter);
-
-    if (list.enabled && (!notModified || !isProfileFilterCurrent || rebuiltOthers > 0)) {
+    if (list.enabled && !notModified) {
       await profileModel.updateListUpdatedAt(profileId, now);
-      await combineAndPromote(
-        profileId,
-        listModel,
-        listFilterModel,
-        profileFilterModel,
-        profileModel,
-        ctx,
-        now,
-        undefined,
-        undefined,
-        env
-      );
-    } else if (list.enabled && notModified) {
-      await profileModel.updateListUpdatedAt(profileId, now);
-      console.log(`[Sync] Profile ${profileId}: single list #${listId} 304 Not Modified — skipped combine.`);
+      await pipelineCache.clear(profileId, false, env);
     }
     console.log(`[Sync] Profile ${profileId}: single list #${listId} sync complete.`);
   } catch (e) {
@@ -439,88 +350,5 @@ export async function rebuildProfileFilter(
   env: Env,
   ctx: ExecutionContext
 ): Promise<void> {
-  const activeSync = inFlightSyncs.get(profileId);
-  if (activeSync) {
-    console.log(
-      `[Sync] Profile ${profileId}: waiting for in-flight ${activeSync.type} sync before rebuilding filter.`
-    );
-    await activeSync.promise.catch(() => {});
-  }
-
-  const syncPromise = (async () => {
-    try {
-      await _executeRebuildProfileFilter(profileId, env, ctx);
-    } finally {
-      inFlightSyncs.delete(profileId);
-    }
-  })();
-
-  inFlightSyncs.set(profileId, { type: "rebuild", promise: syncPromise });
-  return syncPromise;
-}
-
-async function _executeRebuildProfileFilter(
-  profileId: string,
-  env: Env,
-  ctx: ExecutionContext
-): Promise<void> {
-  const listModel = new ListModel(env.DB);
-  const listFilterModel = new ListFilterModel(env.DB);
-  const profileFilterModel = new ProfileFilterModel(env.DB);
-  const profileModel = new ProfileModel(env.DB);
-  const adguardRulesModel = env?.DB ? new AdguardRulesModel(env.DB) : null;
-
-  const profile = await profileModel.getById(profileId);
-  const priorListUpdatedAt = profile?.list_updated_at ?? 0;
-
-  if (env?.DB) {
-    await systemListsManager.ensureLoaded(env.DB, false, env);
-  }
-
-  const activeLists = (await listModel.getLists(profileId)).filter((l) => !!l.enabled);
-  const presence = await Promise.all(
-    activeLists.map(async (l) => {
-      if (systemListsManager.isSystemUrl(l.url)) return true;
-      const hasFilter = await listFilterModel.hasListFilter(l.id).catch(() => true);
-      if (hasFilter) return true;
-      if (adguardRulesModel) {
-        return adguardRulesModel.hasListRules(l.id).catch(() => true);
-      }
-      return false;
-    })
-  );
-
-  const missingIndex = presence.findIndex((present) => !present);
-  if (missingIndex !== -1) {
-    const missing = activeLists[missingIndex];
-    try {
-      await syncSingleList(
-        profileId,
-        missing,
-        env,
-        listModel,
-        listFilterModel,
-        Math.floor(Date.now() / 1000)
-      );
-    } catch (e) {
-      console.error(`[Sync] fetch of list ${missing.id} during rebuild failed:`, e);
-    }
-  }
-
-  await rebuildMismatchedLists(profileId, env, listModel, listFilterModel);
-
-  await combineAndPromote(
-    profileId,
-    listModel,
-    listFilterModel,
-    profileFilterModel,
-    profileModel,
-    ctx,
-    Math.floor(Date.now() / 1000),
-    undefined,
-    undefined,
-    env
-  );
-
-  await profileModel.updateListUpdatedAt(profileId, priorListUpdatedAt);
+  await pipelineCache.clear(profileId, false, env);
 }

@@ -10,6 +10,7 @@ import { DNSFilter } from "../lib/filtering";
 import { FingerprintSet } from "../utils/fingerprintSet";
 import { AdGuardProfileEngine } from "../lib/adguard";
 import { systemListsManager } from "../lib/filtering/systemListsManager";
+import { customListsManager } from "../lib/filtering/customListsManager";
 import { pipelineResolver } from "./resolver";
 
 export const pipelineFilter = {
@@ -22,7 +23,8 @@ export const pipelineFilter = {
     bloom: FingerprintSet | undefined,
     track: (name: string) => void,
     adguard?: AdGuardProfileEngine,
-    enabledSystemListIds?: number[]
+    enabledSystemListIds?: number[],
+    enabledCustomListIds?: number[]
   ): Promise<ResolutionResult | null> {
     const domainLower = query.name.toLowerCase();
 
@@ -72,8 +74,8 @@ export const pipelineFilter = {
     }
     track('local_rules');
 
-    // ── 阶段 2：白名单例外 (@@) (Profile 自定义 + System 共享) ───────────────
-    // 2.1 Profile 自定义例外
+    // ── 阶段 2：白名单例外 (@@) (Profile 自定义 + System 共享 + Custom 列表) ──
+    // 2.1 Profile 自定义例外 (nếu có adguard engine riêng)
     if (adguard?.testException(domainLower)) {
       track('adguard_whitelist');
       return pipelineResolver.resolve(request, query, context, settings, "PASS", "External List: Exception");
@@ -88,8 +90,18 @@ export const pipelineFilter = {
         }
       }
     }
+    // 2.3 Custom 列表例外
+    if (enabledCustomListIds && enabledCustomListIds.length > 0) {
+      for (const listId of enabledCustomListIds) {
+        const customAdguard = customListsManager.getAdguard(listId);
+        if (customAdguard?.testException(domainLower)) {
+          track('adguard_whitelist');
+          return pipelineResolver.resolve(request, query, context, settings, "PASS", `Custom List #${listId}: Exception`);
+        }
+      }
+    }
 
-    // ── 阶段 3：DNS 重写 ($dnsrewrite) (Profile 自定义 + System 共享) ─────────
+    // ── 阶段 3：DNS 重写 ($dnsrewrite) (Profile 自定义 + System 共享 + Custom 列表) ─
     let rewrite = adguard?.matchRewrite(domainLower);
     let rewriteLabel = "External List: DNS Rewrite";
     if (!rewrite && enabledSystemListIds && enabledSystemListIds.length > 0) {
@@ -99,6 +111,17 @@ export const pipelineFilter = {
         if (r) {
           rewrite = r;
           rewriteLabel = "System List: DNS Rewrite";
+          break;
+        }
+      }
+    }
+    if (!rewrite && enabledCustomListIds && enabledCustomListIds.length > 0) {
+      for (const listId of enabledCustomListIds) {
+        const customAdguard = customListsManager.getAdguard(listId);
+        const r = customAdguard?.matchRewrite(domainLower);
+        if (r) {
+          rewrite = r;
+          rewriteLabel = `Custom List #${listId}: DNS Rewrite`;
           break;
         }
       }
@@ -122,8 +145,8 @@ export const pipelineFilter = {
       }
     }
 
-    // ── 阶段 4：Bloom 过滤器双态前缀防线 (两层体系：Tier 1 System + Tier 2 Custom) ──
-    // 4.1 Tầng 1: System Shared Bloom (Kiểm tra trước - Phủ 95%+ tên miền quảng cáo/theo dõi)
+    // ── 阶段 4：Fingerprint 过滤器防线 (Tier 1 System + Tier 2 Custom) ──────────
+    // 4.1 Tầng 1: System Shared Filter (Phủ 95%+ tên miền quảng cáo/theo dõi)
     if (enabledSystemListIds && enabledSystemListIds.length > 0) {
       for (const sysId of enabledSystemListIds) {
         const sysBloom = systemListsManager.getBloom(sysId);
@@ -151,7 +174,35 @@ export const pipelineFilter = {
       }
     }
 
-    // 4.2 Tầng 2: Profile Custom Bloom (Chỉ quét danh sách riêng người dùng tự thêm)
+    // 4.2 Tầng 2: Custom Filter Lists (Từng bộ lọc riêng của người dùng)
+    if (enabledCustomListIds && enabledCustomListIds.length > 0) {
+      for (const listId of enabledCustomListIds) {
+        const customFilter = customListsManager.getFilter(listId);
+        if (customFilter) {
+          let currentDomain = domainLower;
+          let isSelf = true;
+          while (currentDomain) {
+            if (isSelf) {
+              if (customFilter.test(currentDomain) || customFilter.testPipePipe(currentDomain)) {
+                track('bloom_check');
+                return pipelineResolver.block(request, query, context, settings, "BLOCK", `Custom List #${listId}: ${currentDomain}`);
+              }
+              isSelf = false;
+            } else {
+              if (customFilter.testPipePipe(currentDomain)) {
+                track('bloom_check');
+                return pipelineResolver.block(request, query, context, settings, "BLOCK", `Custom List #${listId}: ||${currentDomain}`);
+              }
+            }
+            const firstDot = currentDomain.indexOf('.');
+            if (firstDot === -1) break;
+            currentDomain = currentDomain.substring(firstDot + 1);
+          }
+        }
+      }
+    }
+
+    // Tương thích ngược: nếu vẫn có bloom gộp trực tiếp
     if (bloom) {
       let currentDomain = domainLower;
       let isSelf = true;
@@ -186,6 +237,15 @@ export const pipelineFilter = {
         if (sysAdguard?.matchPattern(domainLower)) {
           track('adguard_pattern');
           return pipelineResolver.block(request, query, context, settings, "BLOCK", "System List: Pattern");
+        }
+      }
+    }
+    if (enabledCustomListIds && enabledCustomListIds.length > 0) {
+      for (const listId of enabledCustomListIds) {
+        const customAdguard = customListsManager.getAdguard(listId);
+        if (customAdguard?.matchPattern(domainLower)) {
+          track('adguard_pattern');
+          return pipelineResolver.block(request, query, context, settings, "BLOCK", `Custom List #${listId}: Pattern`);
         }
       }
     }

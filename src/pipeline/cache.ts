@@ -12,6 +12,7 @@ export interface ConfigCacheEntry {
   hasBloom?: boolean;
   hasFilter?: boolean;
   enabledSystemListIds?: number[];
+  enabledCustomListIds?: number[];
 }
 
 /**

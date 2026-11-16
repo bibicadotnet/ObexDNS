@@ -466,11 +466,19 @@ export class FingerprintSetBuilder {
       }
     }
 
-    let merged = allBlocks[0];
-    for (let i = 1; i < allBlocks.length; i++) {
-      merged = await mergeTwoSortedBigUint64(merged, allBlocks[i]);
+    let queue: BigUint64Array[] = allBlocks;
+    while (queue.length > 1) {
+      const nextQueue: BigUint64Array[] = [];
+      for (let i = 0; i < queue.length; i += 2) {
+        if (i + 1 < queue.length) {
+          nextQueue.push(await mergeTwoSortedBigUint64(queue[i], queue[i + 1]));
+        } else {
+          nextQueue.push(queue[i]);
+        }
+      }
+      queue = nextQueue;
     }
 
-    return new FingerprintSet(merged);
+    return new FingerprintSet(queue[0]);
   }
 }

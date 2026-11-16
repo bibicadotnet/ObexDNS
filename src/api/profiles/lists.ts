@@ -6,7 +6,6 @@ import {
   syncNextListForProfile,
   syncAllListsForProfile,
   syncSingleListForProfile,
-  rebuildProfileFilter,
   syncSingleSystemList,
   syncAllSystemLists
 } from "../../utils/sync";
@@ -17,7 +16,9 @@ import { FingerprintSet } from "../../utils/fingerprintSet";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { AdGuardProfileEngine } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
+import { customListsManager } from "../../lib/filtering/customListsManager";
 import { getDefaultProfileFilterUrls } from "../../constants/presets";
+import { logMemoryUsage } from "../../utils/memory";
 
 /**
  * Handle filter lists requests to /api/profiles/:id/lists
@@ -219,29 +220,14 @@ export async function handleProfileListsRequest(
       }
     }
 
-    // System lists are not part of the merged profile filter (they use the shared global
-    // bloom), so rebuilding it would reproduce the same result. Only the profile's
-    // enabledSystemListIds changes, and that is recomputed once the cache is cleared.
-    if (isSystemList) {
-      ctx.waitUntil(
-        pipeline.clearCache(profileId, true, env)
-          .catch((e) => console.error(`[Lists] cache clear failed for ${profileId}:`, e))
-      );
-      return new Response(JSON.stringify({ id: listId, enabled: body.enabled }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
+    logMemoryUsage(`Toggle:Before listId=${listId} enabled=${body.enabled}`);
 
-    // Rebuild the merged profile filter from the per-list blooms already stored.
-    // rebuildProfileFilter skips the incremental orchestrator deliberately: that
-    // path would re-download every remaining list, and with 2+ active lists it
-    // would not recombine at all. Lists whose Bloom still has other size settings (after a MAX_SYNC_DOMAINS /
-    // BLOOM_FALSE_POSITIVE_RATE change) are downloaded again first. clearCache is chained so it cannot run before
-    // the new filter is promoted.
+    // System lists and custom lists both run independently per-list.
+    // Toggling only clears profile config cache to reload enabled list IDs; filters stay in RAM.
     ctx.waitUntil(
-      rebuildProfileFilter(profileId, env, ctx)
-        .catch((e) => console.error(`[Lists] filter rebuild failed for ${profileId}:`, e))
-        .finally(() => pipeline.clearCache(profileId, true, env))
+      pipeline.clearCache(profileId, false, env)
+        .then(() => logMemoryUsage(`Toggle:After listId=${listId} enabled=${body.enabled}`))
+        .catch((e) => console.error(`[Lists] cache clear failed for ${profileId}:`, e))
     );
 
     return new Response(JSON.stringify({ id: listId, enabled: body.enabled }), {
@@ -398,12 +384,16 @@ export async function handleProfileListsRequest(
   if (request.method === 'DELETE') {
     const { id } = await request.json() as { id: number };
     await listModel.deleteList(id, profileId);
-    // 触发纯内存重构合并，并在落库后清除缓存，彻底消除竞态条件与 pending 阻塞
-    ctx.waitUntil(
-      rebuildProfileFilter(profileId, env, ctx)
-        .catch((e) => console.error(`[Lists] filter rebuild after delete failed for ${profileId}:`, e))
-        .finally(() => pipeline.clearCache(profileId, true, env))
-    );
+    if (env.DB) {
+      const listFilterModel = new ListFilterModel(env.DB);
+      const adguardModel = new AdguardRulesModel(env.DB);
+      await Promise.all([
+        listFilterModel.deleteListFilter(id).catch(() => {}),
+        adguardModel.deleteListRules(id).catch(() => {})
+      ]);
+    }
+    customListsManager.invalidate(id);
+    ctx.waitUntil(pipeline.clearCache(profileId, false, env));
     return new Response(null, { status: 204 });
   }
 

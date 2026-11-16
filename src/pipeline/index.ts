@@ -70,7 +70,8 @@ export const pipeline = {
       config.bloom,
       track,
       config.adguard,
-      config.enabledSystemListIds
+      config.enabledSystemListIds,
+      config.enabledCustomListIds
     );
     if (matchResult) return { ...matchResult, timings: { ...timings, ...matchResult.timings } };
 

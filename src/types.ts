@@ -68,6 +68,8 @@ export interface Env {
   DEFAULT_LOG_RETENTION_DAYS?: string | number;
   ADMIN_USER_MAX_LOG_RETENTION_DAYS?: string | number;
   MAX_LOGS_PER_PROFILE?: string | number;
+  SQLITE_CACHE_SIZE_KB?: string | number;
+  SQLITE_MMAP_SIZE_BYTES?: string | number;
   NORMAL_USER_MAX_LOG_RETENTION_DAYS?: string | number;
   NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS?: string | number;
   FAIL_OPEN_UPSTREAM?: string;
