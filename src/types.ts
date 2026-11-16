@@ -12,7 +12,17 @@ export interface Env {
   SESSION_GEO_DISTANCE_KM?: string | number;
   PREAUTH_TTL_SECONDS?: string | number;
   BLOOM_MEM_TTL?: string | number;
+  FILTER_MEM_TTL?: string | number;
+  FILTER_MEM_BYTES?: string | number;
+  BLOOM_MEM_BYTES?: string | number;
+  MAX_PROFILE_CUSTOM_DOMAINS?: string | number;
   CONFIG_MEM_TTL?: string | number;
+  CONFIG_CACHE_LIMIT?: string | number;
+  ADGUARD_CACHE_LIMIT?: string | number;
+  DNS_CACHE_LIMIT?: string | number;
+  PROFILE_KEY_CACHE_LIMIT?: string | number;
+  MEMORY_CACHE_LIMIT?: string | number;
+  RULE_PARSE_CACHE_LIMIT?: string | number;
   SYNC_TIMEOUT_MS?: string | number;
   INACTIVITY_THRESHOLD_DAYS?: string | number;
   INACTIVITY_USER_DAYS?: string | number;
@@ -22,6 +32,7 @@ export interface Env {
   DEFAULT_PROFILE_FILTER_URLS?: string;
   SYSTEM_FILTER_URLS?: string;
   BLOOM_FALSE_POSITIVE_RATE?: string | number;
+  FILTER_FALSE_POSITIVE_RATE?: string | number;
   THROTTLE_ACTIVE_SEC?: string | number;
   SYNC_PROFILE_INTERVAL_SEC?: string | number;
   SYNC_SYSTEM_INTERVAL_SEC?: string | number;
@@ -297,3 +308,4 @@ export interface Passkey {
   created_at: number;
   last_used_at?: number | null;
 }
+

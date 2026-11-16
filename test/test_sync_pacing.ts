@@ -127,9 +127,9 @@ async function runTests() {
     console.log('   ✓ listFetcher supports zero-allocation sync calls and cooperative yields');
 
     // 4. Test singleListSync pacing with custom parameters
-    console.log('4. Testing singleListSync pacing parameters and bloom filter creation...');
+    console.log('4. Testing singleListSync pacing parameters and filter creation...');
     let listModelUpdated = false;
-    let bloomUpserted = false;
+    let filterUpserted = false;
 
     const mockListModel = {
       async updateListSyncStatus(id: number, now: number, enabled: any, err: any) {
@@ -137,12 +137,13 @@ async function runTests() {
       }
     } as any;
 
-    const mockListBloomModel = {
-      async getListBloomHeader() { return null; },
-      async upsertListBloom(id: number, buf: ArrayBuffer, now: number) {
-        bloomUpserted = true;
-        assert.ok(buf.byteLength > 100, 'Bloom buffer should contain serialized data');
-      }
+    const mockListFilterModel = {
+      async getListFilterHeader() { return null; },
+      async upsertListFilter(id: number, buf: ArrayBuffer, now: number) {
+        filterUpserted = true;
+        assert.ok(buf.byteLength > 100, 'Filter buffer should contain serialized data');
+      },
+      async deleteListFilter() {}
     } as any;
 
     const syncEnv = {
@@ -156,14 +157,14 @@ async function runTests() {
       { id: 1, url: mockUrl },
       syncEnv,
       mockListModel,
-      mockListBloomModel,
+      mockListFilterModel,
       Math.floor(Date.now() / 1000)
     );
 
     assert.strictEqual(syncError, null, 'Sync should succeed without error');
     assert.strictEqual(listModelUpdated, true, 'List model should update sync status');
-    assert.strictEqual(bloomUpserted, true, 'Bloom filter should be generated and upserted');
-    console.log('   ✓ singleListSync successfully applies pacing, generates bloom, and completes');
+    assert.strictEqual(filterUpserted, true, 'Filter should be generated and upserted');
+    console.log('   ✓ singleListSync successfully applies pacing, generates filter, and completes');
   } finally {
     globalThis.fetch = originalFetch;
   }

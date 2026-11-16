@@ -1,74 +1,48 @@
 import { Env, ExecutionContext } from "../../types";
 import { ProfileModel } from "../../models/profile";
 import { ListModel } from "../../models/list";
-import { ProfileBloomModel } from "../../models/profileBloom";
-import { ListBloomModel } from "../../models/listBloom";
+import { ProfileFilterModel } from "../../models/profileFilter";
+import { ListFilterModel } from "../../models/listFilter";
 import { combineAndPromote } from "./combine";
 import { syncSingleList } from "./singleListSync";
-import { BloomFilter } from "../bloom";
+import { FingerprintSet } from "../fingerprintSet";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
 import { pipelineCache } from "../../pipeline/cache";
 
-/**
- * 正在执行的同步任务描述
- */
 interface InFlightSync {
   type: "all" | "next" | "single" | "rebuild";
   listId?: number;
   promise: Promise<void>;
 }
 
-/**
- * 内存级 Profile 同步并发互斥锁（按 profileId 隔离）。
- * 彻底防止多协程（例如用户连续点击“同步全部”、Cron 定时任务并发触发、或多个列表同时同步）
- * 导致的大列表重复拉取、内存飙升与 D1 SQLite 数据库写锁冲突。
- */
 const inFlightSyncs = new Map<string, InFlightSync>();
 
-/**
- * 检查指定 profile 是否正在进行同步（供监控或测试使用）
- */
 export function isProfileSyncing(profileId: string): boolean {
   return inFlightSyncs.has(profileId);
 }
 
-/**
- * 仅供测试套件重置互斥锁状态
- */
 export function _resetInFlightSyncsForTesting(): void {
   inFlightSyncs.clear();
 }
 
 /**
- * True when a stored Bloom (list or profile) was built with other MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE
- * values than the ones in effect now. Unknown/legacy formats are not reported as mismatches here: the regular
- * "not current version" handling already covers them.
+ * True when a stored filter (list or profile) is not in the current FingerprintSet format (e.g. legacy Bloom).
  */
-function bloomParamsMismatch(head: Uint8Array | null, env: Env): boolean {
-  const p = BloomFilter.readHeaderParams(head);
-  if (!p) return false;
-  const want = BloomFilter.computeParams(
-    Number(env.MAX_SYNC_DOMAINS) || 1000000,
-    Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001
-  );
-  return p.size !== want.size || p.hashes !== want.hashes;
+function filterFormatMismatch(head: Uint8Array | null): boolean {
+  if (!head) return false;
+  return !FingerprintSet.isCurrentVersion(head);
 }
 
 /**
- * Bloom filters of different sizes cannot be OR-merged, so before a profile Bloom is rebuilt every enabled custom
- * list whose stored Bloom has other size settings is downloaded again (full download, no ETag) with the current
- * ones. Without this, one rebuilt list plus several old-size lists could never be combined correctly.
- * Called from every path that is about to combine: cron (the picked list plus all the other stale ones in the same
- * run), single-list sync, and add / delete / enable / disable (rebuildProfileBloom).
- *
- * @returns how many lists were rebuilt.
+ * Lists whose stored filter is in legacy Bloom or incompatible format are re-downloaded
+ * so they can be merged into the new FingerprintSet.
  */
 async function rebuildMismatchedLists(
   profileId: string,
   env: Env,
   listModel: ListModel,
-  listBloomModel: ListBloomModel,
+  listFilterModel: ListFilterModel,
   opts: { excludeListId?: number; skipSyncedAfter?: number } = {}
 ): Promise<number> {
   if (env?.DB) await systemListsManager.ensureLoaded(env.DB, false, env);
@@ -77,25 +51,23 @@ async function rebuildMismatchedLists(
   );
   let rebuilt = 0;
   for (const list of lists) {
-    // The list the caller has just synced itself (a failed attempt must not be repeated right away).
     if (opts.excludeListId !== undefined && list.id === opts.excludeListId) continue;
-    // Cron: a list already attempted in the current cycle (even if it failed) is not downloaded a second time.
     if (opts.skipSyncedAfter !== undefined && (list.last_synced_at ?? 0) > opts.skipSyncedAfter) continue;
-    const head = await listBloomModel.getListBloomHeader(list.id);
-    if (!bloomParamsMismatch(head, env)) continue;
-    console.log(`[Sync] Profile ${profileId}: list #${list.id} Bloom has other size settings; downloading it again.`);
+    const head = await listFilterModel.getListFilterHeader(list.id);
+    if (!filterFormatMismatch(head)) continue;
+    console.log(`[Sync] Profile ${profileId}: list #${list.id} has legacy filter format; downloading it again.`);
     try {
-      await syncSingleList(profileId, list, env, listModel, listBloomModel, Math.floor(Date.now() / 1000), true);
+      await syncSingleList(profileId, list, env, listModel, listFilterModel, Math.floor(Date.now() / 1000), true);
       rebuilt++;
     } catch (e) {
-      console.error(`[Sync] Rebuild of list #${list.id} with the current size settings failed:`, e);
+      console.error(`[Sync] Rebuild of list #${list.id} failed:`, e);
     }
   }
   return rebuilt;
 }
 
 /**
- * 【Cron 专用】每次触发时处理**单个**最旧的订阅列表。
+ * 【Cron 专用】每次触发时处理单个最旧的订阅列表。
  */
 export async function syncNextListForProfile(
   profileId: string,
@@ -129,8 +101,8 @@ async function _executeSyncNextListForProfile(
 ): Promise<void> {
   const profileModel = new ProfileModel(env.DB);
   const listModel = new ListModel(env.DB);
-  const profileBloomModel = new ProfileBloomModel(env.DB);
-  const listBloomModel = new ListBloomModel(env.DB);
+  const profileFilterModel = new ProfileFilterModel(env.DB);
+  const listFilterModel = new ListFilterModel(env.DB);
   const now = Math.floor(Date.now() / 1000);
 
   try {
@@ -145,7 +117,7 @@ async function _executeSyncNextListForProfile(
     const activeLists = lists.filter((l) => !!l.enabled);
 
     if (activeLists.length === 0) {
-      await profileBloomModel.clearProfileBlooms(profileId);
+      await profileFilterModel.clearProfileFilters(profileId);
       await profileModel.updateListUpdatedAt(profileId, now);
       if (ctx && typeof ctx.waitUntil === "function") {
         ctx.waitUntil(pipelineCache.clear(profileId, true, env));
@@ -155,96 +127,73 @@ async function _executeSyncNextListForProfile(
       return;
     }
 
-    // ── 新周期检测 ────────────────────────────────────────────────────────────
     const isNewCycle = !activeLists.some((l) => (l.last_synced_at ?? 0) > lastFullSync);
-
     if (isNewCycle) {
       console.log(`[Sync] Profile ${profileId}: starting a new sync cycle.`);
     }
 
-    // ── 选取下一个待同步列表 ──────────────────────────────────────────────────
     const pendingLists = activeLists
       .filter((l) => (l.last_synced_at ?? 0) <= lastFullSync)
       .sort((a, b) => (a.last_synced_at ?? 0) - (b.last_synced_at ?? 0));
 
     if (pendingLists.length === 0) {
-      // 逻辑重入边际情况：所有列表已完成，进行合并
-      const maxDomains = Number(env.MAX_SYNC_DOMAINS) || 1000000;
-      const falsePositiveRate = Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001;
-
-      // 【熔断器】在进入高能 CPU 运算前，抢先将时间戳标记为当前时间。
-      // 避免万一合并阶段超时崩掉，导致该 Profile 下次仍处于 stale 态，从而陷入每分钟无限重试超时的死循环。
       await profileModel.updateListUpdatedAt(profileId, now);
-
       await combineAndPromote(
         profileId,
         listModel,
-        listBloomModel,
-        profileBloomModel,
+        listFilterModel,
+        profileFilterModel,
         profileModel,
         ctx,
         now,
-        maxDomains,
-        falsePositiveRate,
+        undefined,
+        undefined,
         env
       );
       return;
     }
 
-    // ── 处理单个列表 ──────────────────────────────────────────────────────────
     const list = pendingLists[0];
-    await syncSingleList(profileId, list, env, listModel, listBloomModel, now);
+    await syncSingleList(profileId, list, env, listModel, listFilterModel, now);
 
-    // Other lists still holding a Bloom with other size settings (MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE changed)
-    // are rebuilt in this same run instead of one per tick, so the profile Bloom can be combined correctly right away.
-    // Lists already attempted in this cycle are not downloaded again.
-    const rebuiltOthers = await rebuildMismatchedLists(profileId, env, listModel, listBloomModel, {
+    const rebuiltOthers = await rebuildMismatchedLists(profileId, env, listModel, listFilterModel, {
       excludeListId: list.id,
       skipSyncedAfter: lastFullSync
     });
 
-    // ── 检查本周期是否全部完成 ────────────────────────────────────────────────
     const updatedLists = await listModel.getLists(profileId);
     const activeUpdatedLists = updatedLists.filter((l) => !!l.enabled);
     const allDone = activeUpdatedLists.every((l) => (l.last_synced_at ?? 0) > lastFullSync);
 
     if (allDone) {
-      const maxDomains = Number(env.MAX_SYNC_DOMAINS) || 1000000;
-      const falsePositiveRate = Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001;
-
-      // 【熔断器】先标记该 Profile 为 Fresh 态，以防 combineAndPromote 超时 crash 造成死循环重试
       await profileModel.updateListUpdatedAt(profileId, now);
-
       await combineAndPromote(
         profileId,
         listModel,
-        listBloomModel,
-        profileBloomModel,
+        listFilterModel,
+        profileFilterModel,
         profileModel,
         ctx,
         now,
-        maxDomains,
-        falsePositiveRate,
+        undefined,
+        undefined,
         env
       );
       console.log(
-        `[Sync] Profile ${profileId}: all ${activeUpdatedLists.length} list(s) processed — ` +
-          `promoted combined active bloom.`
+        `[Sync] Profile ${profileId}: all ${activeUpdatedLists.length} list(s) processed — promoted combined active filter.`
       );
     } else {
       if (rebuiltOthers > 0) {
-        // Every list is on the current size now, so promote right away instead of waiting for the end of the cycle,
-        // but keep the cycle open (restore list_updated_at) so the remaining lists still get their regular refresh.
         await combineAndPromote(
           profileId,
           listModel,
-          listBloomModel,
-          profileBloomModel,
+          listFilterModel,
+          profileFilterModel,
           profileModel,
           ctx,
           now,
-          Number(env.MAX_SYNC_DOMAINS) || 1000000,
-          Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001,
+          undefined,
+          undefined,
           env
         );
         await profileModel.updateListUpdatedAt(profileId, lastFullSync);
@@ -258,7 +207,6 @@ async function _executeSyncNextListForProfile(
     }
   } catch (e) {
     console.error(`[Sync] Critical failure for Profile ${profileId}:`, e);
-    // 防止单点故障永久阻塞
     await profileModel.updateListUpdatedAt(profileId, now);
   }
 }
@@ -311,8 +259,8 @@ async function _executeSyncAllListsForProfile(
 ): Promise<void> {
   const profileModel = new ProfileModel(env.DB);
   const listModel = new ListModel(env.DB);
-  const profileBloomModel = new ProfileBloomModel(env.DB);
-  const listBloomModel = new ListBloomModel(env.DB);
+  const profileFilterModel = new ProfileFilterModel(env.DB);
+  const listFilterModel = new ListFilterModel(env.DB);
   const now = Math.floor(Date.now() / 1000);
 
   try {
@@ -326,7 +274,7 @@ async function _executeSyncAllListsForProfile(
     const activeLists = lists.filter((l) => !!l.enabled);
 
     if (activeLists.length === 0) {
-      await profileBloomModel.clearProfileBlooms(profileId);
+      await profileFilterModel.clearProfileFilters(profileId);
       await profileModel.updateListUpdatedAt(profileId, now);
       if (ctx && typeof ctx.waitUntil === "function") {
         ctx.waitUntil(pipelineCache.clear(profileId, true, env));
@@ -336,12 +284,10 @@ async function _executeSyncAllListsForProfile(
       return;
     }
 
-    // 依次串行同步所有列表（不并发）。仅在刚刚真正下载/解析过列表（非 304、非系统共享列表快速通道）后
-    // 相隔 1 秒，防范 CPU 激增与锁争用；命中 304 或系统列表时没有重负载，无需等待。
     let anyListModified = false;
     for (let i = 0; i < activeLists.length; i++) {
       const list = activeLists[i];
-      const res = await syncSingleList(profileId, list, env, listModel, listBloomModel, now, force);
+      const res = await syncSingleList(profileId, list, env, listModel, listFilterModel, now, force);
       if (!res.notModified) {
         anyListModified = true;
       }
@@ -350,46 +296,38 @@ async function _executeSyncAllListsForProfile(
       }
     }
 
-    // 检查 Profile 级已合并布隆过滤器是否为最新版本 (v2)
-    const existingProfileBloom = await profileBloomModel.getProfileBloomHeader(profileId);
-    const isProfileBloomCurrent = BloomFilter.isCurrentVersion(existingProfileBloom) && !bloomParamsMismatch(existingProfileBloom, env);
+    const existingProfileFilter = await profileFilterModel.getProfileFilterHeader(profileId);
+    const isProfileFilterCurrent = FingerprintSet.isCurrentVersion(existingProfileFilter);
 
-    // 若全部列表均命中 304 协商缓存且已合并布隆也是最新 v2 格式，直接跳过合并晋升阶段，零 CPU/DB 消耗
-    if (!anyListModified && isProfileBloomCurrent) {
+    if (!anyListModified && isProfileFilterCurrent) {
       await profileModel.updateListUpdatedAt(profileId, now);
-      console.log(`[Sync] Profile ${profileId}: all ${activeLists.length} list(s) were 304 Not Modified and profile bloom is current — skipped combine.`);
+      console.log(`[Sync] Profile ${profileId}: all ${activeLists.length} list(s) were 304 Not Modified and profile filter is current — skipped combine.`);
       return;
     }
 
-    // 【熔断器】先更新主表时间，以防合并过程中崩溃导致无限重试
     await profileModel.updateListUpdatedAt(profileId, now);
 
-    const maxDomains = Number(env.MAX_SYNC_DOMAINS) || 1000000;
-    const falsePositiveRate = Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001;
-
-    // 全部同步完毕后，执行合并和晋升操作
     await combineAndPromote(
       profileId,
       listModel,
-      listBloomModel,
-      profileBloomModel,
+      listFilterModel,
+      profileFilterModel,
       profileModel,
       ctx,
       now,
-      maxDomains,
-      falsePositiveRate,
+      undefined,
+      undefined,
       env
     );
     console.log(`[Sync] Profile ${profileId}: manual sync cycle complete.`);
   } catch (e) {
     console.error(`[Sync] Critical failure in manual sync for Profile ${profileId}:`, e);
-    // 防止单点故障永久阻塞
     await profileModel.updateListUpdatedAt(profileId, now);
   }
 }
 
 /**
- * 【单个列表手动同步专用】针对指定 listId 进行单独同步并触发 Profile 布隆过滤器与 AdGuard 规则重构。
+ * 【单个列表手动同步专用】针对指定 listId 进行单独同步并触发 Profile 过滤器与 AdGuard 规则重构。
  */
 export async function syncSingleListForProfile(
   profileId: string,
@@ -448,8 +386,8 @@ async function _executeSyncSingleListForProfile(
   force: boolean = false
 ): Promise<void> {
   const listModel = new ListModel(env.DB);
-  const listBloomModel = new ListBloomModel(env.DB);
-  const profileBloomModel = new ProfileBloomModel(env.DB);
+  const listFilterModel = new ListFilterModel(env.DB);
+  const profileFilterModel = new ProfileFilterModel(env.DB);
   const profileModel = new ProfileModel(env.DB);
   const now = Math.floor(Date.now() / 1000);
 
@@ -460,32 +398,27 @@ async function _executeSyncSingleListForProfile(
       return;
     }
 
-    // 1. 单独同步该列表 (自动检测 v2 版本或 force 强制重新拉取)
-    const { notModified } = await syncSingleList(profileId, list, env, listModel, listBloomModel, now, force);
+    const { notModified } = await syncSingleList(profileId, list, env, listModel, listFilterModel, now, force);
 
-    // 1b. Other enabled lists still holding a Bloom with other size settings are rebuilt now, so the merge below
-    //     can combine all of them instead of leaving some out.
     const rebuiltOthers = list.enabled
-      ? await rebuildMismatchedLists(profileId, env, listModel, listBloomModel, { excludeListId: list.id })
+      ? await rebuildMismatchedLists(profileId, env, listModel, listFilterModel, { excludeListId: list.id })
       : 0;
 
-    // 2. 检查 Profile 级布隆过滤器是否为最新版本
-    const existingProfileBloom = await profileBloomModel.getProfileBloomHeader(profileId);
-    const isProfileBloomCurrent = BloomFilter.isCurrentVersion(existingProfileBloom) && !bloomParamsMismatch(existingProfileBloom, env);
+    const existingProfileFilter = await profileFilterModel.getProfileFilterHeader(profileId);
+    const isProfileFilterCurrent = FingerprintSet.isCurrentVersion(existingProfileFilter);
 
-    // 3. 若列表处于启用状态且内容发生变动（或 Profile 布隆非最新），触发 Profile 布隆过滤器与 AdGuard 规则的重构合并
-    if (list.enabled && (!notModified || !isProfileBloomCurrent || rebuiltOthers > 0)) {
+    if (list.enabled && (!notModified || !isProfileFilterCurrent || rebuiltOthers > 0)) {
       await profileModel.updateListUpdatedAt(profileId, now);
       await combineAndPromote(
         profileId,
         listModel,
-        listBloomModel,
-        profileBloomModel,
+        listFilterModel,
+        profileFilterModel,
         profileModel,
         ctx,
         now,
-        Number(env.MAX_SYNC_DOMAINS) || 1000000,
-        Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001,
+        undefined,
+        undefined,
         env
       );
     } else if (list.enabled && notModified) {
@@ -499,10 +432,9 @@ async function _executeSyncSingleListForProfile(
 }
 
 /**
- * 快速重构并合并 Profile 的布隆过滤器（通常为纯内存合并；仅当仍有列表的 Bloom 参数与当前配置不一致时，才会先重新下载这些列表）。
- * 适用场景：删除规则列表、切换列表启用/禁用状态等仅改变参与合并的集合、而不改变列表本身内容的场景。
+ * 快速重构并合并 Profile 的过滤器。
  */
-export async function rebuildProfileBloom(
+export async function rebuildProfileFilter(
   profileId: string,
   env: Env,
   ctx: ExecutionContext
@@ -510,14 +442,14 @@ export async function rebuildProfileBloom(
   const activeSync = inFlightSyncs.get(profileId);
   if (activeSync) {
     console.log(
-      `[Sync] Profile ${profileId}: waiting for in-flight ${activeSync.type} sync before rebuilding bloom.`
+      `[Sync] Profile ${profileId}: waiting for in-flight ${activeSync.type} sync before rebuilding filter.`
     );
     await activeSync.promise.catch(() => {});
   }
 
   const syncPromise = (async () => {
     try {
-      await _executeRebuildProfileBloom(profileId, env, ctx);
+      await _executeRebuildProfileFilter(profileId, env, ctx);
     } finally {
       inFlightSyncs.delete(profileId);
     }
@@ -527,36 +459,30 @@ export async function rebuildProfileBloom(
   return syncPromise;
 }
 
-async function _executeRebuildProfileBloom(
+async function _executeRebuildProfileFilter(
   profileId: string,
   env: Env,
   ctx: ExecutionContext
 ): Promise<void> {
   const listModel = new ListModel(env.DB);
-  const listBloomModel = new ListBloomModel(env.DB);
-  const profileBloomModel = new ProfileBloomModel(env.DB);
+  const listFilterModel = new ListFilterModel(env.DB);
+  const profileFilterModel = new ProfileFilterModel(env.DB);
   const profileModel = new ProfileModel(env.DB);
   const adguardRulesModel = env?.DB ? new AdguardRulesModel(env.DB) : null;
 
   const profile = await profileModel.getById(profileId);
   const priorListUpdatedAt = profile?.list_updated_at ?? 0;
 
-  // Nạp system lists vào RAM trước khi kiểm tra isSystemUrl (tránh map urlToId bị rỗng khi process mới khởi động)
   if (env?.DB) {
     await systemListsManager.ensureLoaded(env.DB, false, env);
   }
 
-  // A list can be enabled while it has no bloom yet - added disabled in bulk, or
-  // its last sync failed. combineAndPromote would skip it silently, so fetch it
-  // first. hasListBloom is an existence probe: getListBloom would concatenate
-  // every chunk of every list just to answer a boolean.
-  // Coi list là "đã có dữ liệu" nếu là system list, hoặc đã có Bloom, hoặc đã có AdGuard rules.
   const activeLists = (await listModel.getLists(profileId)).filter((l) => !!l.enabled);
   const presence = await Promise.all(
     activeLists.map(async (l) => {
       if (systemListsManager.isSystemUrl(l.url)) return true;
-      const hasBloom = await listBloomModel.hasListBloom(l.id).catch(() => true);
-      if (hasBloom) return true;
+      const hasFilter = await listFilterModel.hasListFilter(l.id).catch(() => true);
+      if (hasFilter) return true;
       if (adguardRulesModel) {
         return adguardRulesModel.hasListRules(l.id).catch(() => true);
       }
@@ -564,10 +490,6 @@ async function _executeRebuildProfileBloom(
     })
   );
 
-  // Sync the list that is actually missing, rather than delegating to
-  // syncNextListForProfile: a list whose sync errored carries a recent
-  // last_synced_at, so that picker would fetch a healthy list ahead of it.
-  // One per call keeps this bounded; cron handles any others.
   const missingIndex = presence.findIndex((present) => !present);
   if (missingIndex !== -1) {
     const missing = activeLists[missingIndex];
@@ -577,7 +499,7 @@ async function _executeRebuildProfileBloom(
         missing,
         env,
         listModel,
-        listBloomModel,
+        listFilterModel,
         Math.floor(Date.now() / 1000)
       );
     } catch (e) {
@@ -585,25 +507,20 @@ async function _executeRebuildProfileBloom(
     }
   }
 
-  // Lists that still hold a Bloom with other size settings (see rebuildMismatchedLists) are rebuilt first,
-  // so adding, removing, enabling or disabling a list gives the exact result right away.
-  await rebuildMismatchedLists(profileId, env, listModel, listBloomModel);
+  await rebuildMismatchedLists(profileId, env, listModel, listFilterModel);
 
   await combineAndPromote(
     profileId,
     listModel,
-    listBloomModel,
-    profileBloomModel,
+    listFilterModel,
+    profileFilterModel,
     profileModel,
     ctx,
     Math.floor(Date.now() / 1000),
-    Number(env.MAX_SYNC_DOMAINS) || 1000000,
-    Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001,
+    undefined,
+    undefined,
     env
   );
 
-  // combineAndPromote 会将 list_updated_at 标记为当前时间戳（类似于完成了一个全量同步周期）。
-  // 由于本次仅为列表删除后的本地重构合并，并未真正重新下载更新所有列表，因此需恢复先前的 list_updated_at；
-  // 否则 Cron 定时任务会误认为刚刚完成了全量更新，从而推迟常规的周期性刷新。
   await profileModel.updateListUpdatedAt(profileId, priorListUpdatedAt);
 }

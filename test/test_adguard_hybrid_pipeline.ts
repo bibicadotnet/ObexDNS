@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { DNSFilter } from "../src/lib/filtering";
 import { AdGuardProfileEngine, parseAdGuardLine, AdGuardRuleKind, AdGuardPayload } from "../src/lib/adguard";
-import { BloomFilter } from "../src/utils/bloom";
+import { FingerprintSetBuilder } from "../src/utils/fingerprintSet";
 import { pipelineFilter } from "../src/pipeline/filter";
 import { Context, DNSQuery, ProfileSettings, Rule } from "../src/types";
 
@@ -58,16 +58,17 @@ async function runPipelineTests(): Promise<void> {
   assert.strictEqual(DNSFilter.isMatch("notwildcard.com", wildcardRule), false);
   console.log("   ✓ Custom rule exact vs subdomain matching verified.");
 
-  // 2. Dual-State Bloom Filter (|| vs exact)
-  console.log("2. Testing dual-state Bloom filter (prefix-encoded subdomain distinction)...");
-  const bloom = BloomFilter.create(10000, 0.0001);
+  // 2. Dual-State FingerprintSet (|| vs exact)
+  console.log("2. Testing dual-state FingerprintSet (prefix-encoded subdomain distinction)...");
+  const builder = new FingerprintSetBuilder();
 
   // Add a wildcard rule: ||blocked-all.com^
-  bloom.add("blocked-all.com");
-  bloom.add("||blocked-all.com");
+  builder.add("blocked-all.com");
+  builder.addPipePipe("blocked-all.com");
 
   // Add an exact rule: exact-single.com
-  bloom.add("exact-single.com");
+  builder.add("exact-single.com");
+  const filter = await builder.build();
 
   const mockContext: Context = {
     profileId: "p1",
@@ -86,7 +87,7 @@ async function runPipelineTests(): Promise<void> {
   // Query sub.blocked-all.com -> should match Level 1 ||blocked-all.com -> BLOCK!
   const querySubBlocked: DNSQuery = { name: "sub.blocked-all.com", type: "A", raw: new Uint8Array() };
   const resSubBlocked = await pipelineFilter.match(
-    dummyRequest, querySubBlocked, mockContext, mockSettings, [], bloom, () => {}
+    dummyRequest, querySubBlocked, mockContext, mockSettings, [], filter, () => {}
   );
   assert.strictEqual(resSubBlocked?.action, "BLOCK");
   assert.strictEqual(resSubBlocked?.reason, "External List: ||blocked-all.com");
@@ -94,7 +95,7 @@ async function runPipelineTests(): Promise<void> {
   // Query exact-single.com -> matches exact -> BLOCK!
   const queryExact: DNSQuery = { name: "exact-single.com", type: "A", raw: new Uint8Array() };
   const resExact = await pipelineFilter.match(
-    dummyRequest, queryExact, mockContext, mockSettings, [], bloom, () => {}
+    dummyRequest, queryExact, mockContext, mockSettings, [], filter, () => {}
   );
   assert.strictEqual(resExact?.action, "BLOCK");
   assert.strictEqual(resExact?.reason, "External List: exact-single.com");
@@ -102,10 +103,10 @@ async function runPipelineTests(): Promise<void> {
   // Query sub.exact-single.com -> parent is exact-single.com without || -> NOT BLOCKED!
   const querySubExact: DNSQuery = { name: "sub.exact-single.com", type: "A", raw: new Uint8Array() };
   const resSubExact = await pipelineFilter.match(
-    dummyRequest, querySubExact, mockContext, mockSettings, [], bloom, () => {}
+    dummyRequest, querySubExact, mockContext, mockSettings, [], filter, () => {}
   );
   assert.strictEqual(resSubExact, null);
-  console.log("   ✓ Dual-state Bloom filter successfully avoids false subdomain blocks.");
+  console.log("   ✓ Dual-state FingerprintSet successfully avoids false subdomain blocks.");
 
   // 3. AdGuard Exceptions (@@) Overriding Bloom
   console.log("3. Testing AdGuard exception whitelist overriding Bloom...");
@@ -129,20 +130,20 @@ async function runPipelineTests(): Promise<void> {
     raw: buildDNSQuery("safe.blocked-all.com", "A")
   };
   const resExempted = await pipelineFilter.match(
-    dummyRequest, queryExempted, mockContext, mockSettings, [], bloom, () => {}, engine
+    dummyRequest, queryExempted, mockContext, mockSettings, [], filter, () => {}, engine
   );
-  // It was exempted from Bloom! It dispatched to resolver as Whitelist Exception rather than BLOCK.
+  // It was exempted from Filter! It dispatched to resolver as Whitelist Exception rather than BLOCK.
   assert.ok(resExempted !== null);
   assert.notStrictEqual(resExempted?.action, "BLOCK");
   assert.strictEqual(resExempted?.action, "PASS");
   assert.strictEqual(resExempted?.reason, "External List: Exception");
-  console.log("   ✓ External list whitelist exception successfully overrides Bloom block.");
+  console.log("   ✓ External list whitelist exception successfully overrides Filter block.");
 
   // 4. External List DNS Rewrite ($dnsrewrite)
   console.log("4. Testing External List DNS rewrites ($dnsrewrite)...");
   const queryRewrite: DNSQuery = { name: "sub.router.local", type: "A", raw: new Uint8Array() };
   const resRewrite = await pipelineFilter.match(
-    dummyRequest, queryRewrite, mockContext, mockSettings, [], bloom, () => {}, engine
+    dummyRequest, queryRewrite, mockContext, mockSettings, [], filter, () => {}, engine
   );
   assert.strictEqual(resRewrite?.action, "REDIRECT");
   assert.strictEqual(resRewrite?.reason, "External List: DNS Rewrite");
@@ -152,14 +153,14 @@ async function runPipelineTests(): Promise<void> {
   console.log("5. Testing External List complex regex pattern matching...");
   const queryPatternHit: DNSQuery = { name: "ad123.track.com", type: "A", raw: new Uint8Array() };
   const resPatternHit = await pipelineFilter.match(
-    dummyRequest, queryPatternHit, mockContext, mockSettings, [], bloom, () => {}, engine
+    dummyRequest, queryPatternHit, mockContext, mockSettings, [], filter, () => {}, engine
   );
   assert.strictEqual(resPatternHit?.action, "BLOCK");
   assert.strictEqual(resPatternHit?.reason, "External List: Pattern");
 
   const queryPatternMiss: DNSQuery = { name: "good.track.com", type: "A", raw: new Uint8Array() };
   const resPatternMiss = await pipelineFilter.match(
-    dummyRequest, queryPatternMiss, mockContext, mockSettings, [], bloom, () => {}, engine
+    dummyRequest, queryPatternMiss, mockContext, mockSettings, [], filter, () => {}, engine
   );
   assert.strictEqual(resPatternMiss, null);
   console.log("   ✓ AdGuard regex pattern evaluation passed.");

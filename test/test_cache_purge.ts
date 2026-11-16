@@ -90,7 +90,7 @@ async function runTests() {
     await pipelineCache.clear(profileId);
     assert.strictEqual(purgeCalls.length, 0, "No global purge fetch should be made when env is omitted");
     assert(defaultMockCache.deleted.some(u => u.includes(encodeURIComponent(`${PROFILE_CACHE_KEY_PREFIX}:${profileId}`))), "Local cache should delete active profile versioned key");
-    assert(defaultMockCache.deleted.some(u => u.includes(encodeURIComponent(`bloom-bin:${profileId}`))), "Local cache should delete bloom-bin key");
+    assert(defaultMockCache.deleted.some(u => u.includes(encodeURIComponent(`filter-bin:${profileId}`))), "Local cache should delete filter-bin key");
 
     // 2.2 Test pipelineCache.clear with env and clearBloom = true
     console.log("3. Testing pipelineCache.clear(profileId, true, env)...");
@@ -101,7 +101,7 @@ async function runTests() {
     assert.strictEqual(purgeCalls[0].method, "POST");
     assert.strictEqual(purgeCalls[0].headers?.["Authorization"], "Bearer token_secret_456");
     assert.deepStrictEqual(purgeCalls[0].body, {
-      tags: [`profile-${profileId}`, `bloom-${profileId}`]
+      tags: [`profile-${profileId}`, `filter-${profileId}`]
     });
 
     // 2.3 Test pipelineCache.clear with env and clearBloom = false
@@ -119,7 +119,7 @@ async function runTests() {
     await pipelineCache.clear(profileId, testEnv);
     assert.strictEqual(purgeCalls.length, 1, "One purge request should be made");
     assert.deepStrictEqual(purgeCalls[0].body, {
-      tags: [`profile-${profileId}`, `bloom-${profileId}`]
+      tags: [`profile-${profileId}`, `filter-${profileId}`]
     });
 
     // 2.5 Test overloaded signature pipelineCache.clear(profileId, env, false)

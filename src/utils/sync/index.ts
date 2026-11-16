@@ -5,7 +5,7 @@ export {
   syncNextListForProfile,
   syncAllListsForProfile,
   syncSingleListForProfile,
-  rebuildProfileBloom,
+  rebuildProfileFilter,
   isProfileSyncing,
   _resetInFlightSyncsForTesting,
 } from "./orchestrator";
@@ -13,3 +13,6 @@ export {
   syncSingleSystemList,
   syncAllSystemLists,
 } from "./systemListSync";
+export {
+  migrateFilterFormatIfLegacy,
+} from "./filterMigration";

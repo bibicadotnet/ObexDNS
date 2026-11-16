@@ -210,8 +210,17 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     ACCESS_TOKEN_EXPIRATION_MINUTES: Number(process.env.ACCESS_TOKEN_EXPIRATION_MINUTES) || 10,
     SESSION_GEO_DISTANCE_KM: process.env.SESSION_GEO_DISTANCE_KM || 50,
     PREAUTH_TTL_SECONDS: process.env.PREAUTH_TTL_SECONDS || 300,
-    BLOOM_MEM_TTL: process.env.BLOOM_MEM_TTL || 600000,
+    FILTER_MEM_TTL: process.env.FILTER_MEM_TTL || process.env.BLOOM_MEM_TTL || 600000,
+    FILTER_MEM_BYTES: Number(process.env.FILTER_MEM_BYTES || process.env.BLOOM_MEM_BYTES) || 32 * 1024 * 1024,
+    BLOOM_MEM_TTL: process.env.FILTER_MEM_TTL || process.env.BLOOM_MEM_TTL || 600000,
+    BLOOM_MEM_BYTES: Number(process.env.FILTER_MEM_BYTES || process.env.BLOOM_MEM_BYTES) || 32 * 1024 * 1024,
     CONFIG_MEM_TTL: process.env.CONFIG_MEM_TTL || 300000,
+    CONFIG_CACHE_LIMIT: Number(process.env.CONFIG_CACHE_LIMIT) || 200,
+    ADGUARD_CACHE_LIMIT: Number(process.env.ADGUARD_CACHE_LIMIT) || 20,
+    DNS_CACHE_LIMIT: Number(process.env.DNS_CACHE_LIMIT) || 500,
+    PROFILE_KEY_CACHE_LIMIT: Number(process.env.PROFILE_KEY_CACHE_LIMIT) || 500,
+    MEMORY_CACHE_LIMIT: Number(process.env.MEMORY_CACHE_LIMIT) || 5000,
+    RULE_PARSE_CACHE_LIMIT: Number(process.env.RULE_PARSE_CACHE_LIMIT) || 5000,
     SYNC_TIMEOUT_MS: process.env.SYNC_TIMEOUT_MS || 30000,
     INACTIVITY_THRESHOLD_DAYS: process.env.INACTIVITY_THRESHOLD_DAYS !== undefined && process.env.INACTIVITY_THRESHOLD_DAYS !== ''
       ? Number(process.env.INACTIVITY_THRESHOLD_DAYS)
@@ -222,8 +231,7 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     THROTTLE_ACTIVE_SEC: process.env.THROTTLE_ACTIVE_SEC || 3600,
     SYNC_PROFILE_INTERVAL_SEC: process.env.SYNC_PROFILE_INTERVAL_SEC || 86400,
     SYNC_SYSTEM_INTERVAL_SEC: process.env.SYNC_SYSTEM_INTERVAL_SEC || 21600,
-    BLOOM_FALSE_POSITIVE_RATE: process.env.BLOOM_FALSE_POSITIVE_RATE || 0.0001,
-    MAX_SYNC_DOMAINS: process.env.MAX_SYNC_DOMAINS || 1000000,
+    MAX_PROFILE_CUSTOM_DOMAINS: process.env.MAX_PROFILE_CUSTOM_DOMAINS,
     MAX_LIST_DOMAINS: process.env.MAX_LIST_DOMAINS || 500000,
     MAX_LIST_BYTES: process.env.MAX_LIST_BYTES || 26214400, // 25 MB
     MAX_LOG_RETENTION_DAYS: process.env.MAX_LOG_RETENTION_DAYS || 30,

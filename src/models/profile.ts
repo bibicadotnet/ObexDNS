@@ -2,22 +2,23 @@ import { D1Database } from "@cloudflare/workers-types";
 import { Profile, ProfileSettings } from "../types";
 import { generateId, generateZBase32Token } from "../lib/auth";
 
-export interface ProfileWithBloom extends Profile {
+export interface ProfileWithFilter extends Profile {
   list_bloom?: string;
   list_updated_at?: number;
 }
+export type ProfileWithBloom = ProfileWithFilter;
 
 export class ProfileModel {
   constructor(private db: D1Database) {}
 
   // --- Core Profile Methods ---
-  async getById(id: string): Promise<ProfileWithBloom | null> {
+  async getById(id: string): Promise<ProfileWithFilter | null> {
     return await this.db.prepare("SELECT * FROM profiles WHERE id = ?")
       .bind(id)
-      .first<ProfileWithBloom>();
+      .first<ProfileWithFilter>();
   }
 
-  async findByKey(profileKey: string): Promise<ProfileWithBloom & { access_point_id?: string, access_point_name?: string } | null> {
+  async findByKey(profileKey: string): Promise<ProfileWithFilter & { access_point_id?: string, access_point_name?: string } | null> {
     try {
       const match = await this.db.prepare(`
         SELECT * FROM (
@@ -34,7 +35,7 @@ export class ProfileModel {
         LIMIT 1
       `)
         .bind(profileKey, profileKey, profileKey)
-        .first<ProfileWithBloom & { access_point_id?: string, access_point_name?: string }>();
+        .first<ProfileWithFilter & { access_point_id?: string, access_point_name?: string }>();
 
       return match || null;
     } catch (e: any) {

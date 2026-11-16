@@ -16,21 +16,29 @@ async function main() {
   let savedProfilePayload: any = null;
 
   const db: any = {
-    prepare: (sql: string) => ({
-      bind: (...args: any[]) => ({
-        first: async () => {
+    prepare: (sql: string) => {
+      const stmt = {
+        first: async (...args: any[]) => {
           if (sql.includes("FROM list_adguard_rules")) {
             return { payload: JSON.stringify({ exceptions: [], rewrites: {}, patterns: listPatterns[args[0]] || [] }) };
           }
           return null;
         },
         all: async () => ({ results: [] }),
-        run: async () => {
+        run: async (...args: any[]) => {
           if (sql.includes("INTO profile_adguard_rules")) savedProfilePayload = JSON.parse(args[1]);
           return { success: true };
         },
-      }),
-    }),
+      };
+      return {
+        bind: (...args: any[]) => ({
+          first: async () => stmt.first(...args),
+          all: stmt.all,
+          run: async () => stmt.run(...args),
+        }),
+        ...stmt,
+      };
+    },
   };
 
   const env = { DB: db, MAX_REGEX_RULES: 10 } as unknown as Env; // per-URL limit 10, each list has 8
@@ -41,12 +49,12 @@ async function main() {
     ],
     updateListUpdatedAt: async () => true,
   };
-  const listBloomModel: any = { getListBloom: async () => null, getListBloomHeader: async () => null };
-  const profileBloomModel: any = { clearProfileBlooms: async () => true, upsertProfileBloom: async () => true };
+  const listFilterModel: any = { getListFilter: async () => null, getListFilterHeader: async () => null };
+  const profileFilterModel: any = { clearProfileFilters: async () => true, upsertProfileFilter: async () => true };
   const profileModel: any = { updateListUpdatedAt: async () => true };
   const ctx: any = { waitUntil: (p: Promise<any>) => { p.catch(() => {}); } };
 
-  await combineAndPromote("prof", listModel, listBloomModel, profileBloomModel, profileModel, ctx, 1, 1000, 0.0001, env);
+  await combineAndPromote("prof", listModel, listFilterModel, profileFilterModel, profileModel, ctx, 1, undefined, undefined, env);
 
   assert.ok(savedProfilePayload, "profile rules must be saved");
   assert.strictEqual(

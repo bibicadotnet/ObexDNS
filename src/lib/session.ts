@@ -3,6 +3,7 @@ import { SessionModel } from '../models/session';
 import { generateId } from '../utils/crypto';
 import { base64urlEncode, base64urlDecode } from './jwt';
 import { calculateDistanceInKm } from '../utils/geo';
+import { isServerfullEnv } from '../utils/serverfullEnv';
 
 export interface Session {
   id: string;
@@ -175,13 +176,7 @@ export async function rotateSession(
   }
 
   // Geolocation Check
-  const isServerfull = Boolean(
-    env.SERVERFULL_DEFAULT_PROFILE_KEY !== undefined ||
-    env.SERVERFULL_HOST !== undefined ||
-    env.SERVERFULL_DOT_DOMAIN !== undefined ||
-    env.SERVERFULL_HTTP_PORT !== undefined ||
-    env.SERVERFULL_HTTPS_PORT !== undefined
-  );
+  const isServerfull = isServerfullEnv(env);
 
   const hasFallbackCoords = (session.latitude === 0 && session.longitude === 0) ||
                             (currentLat === 0 && currentLon === 0);

@@ -13,14 +13,15 @@ async function main() {
     const listModel: any = {
       updateListSyncStatus: async (_i: any, _n: any, _e: any, err: string | null) => { savedErr = err; return true; },
     };
-    const listBloomModel: any = { getListBloomHeader: async () => null };
+    const listFilterModel: any = { getListFilterHeader: async () => null };
     // hasListRules is true -> cache headers are used
-    const db: any = { prepare: () => ({ bind: () => ({ first: async () => ({ x: 1 }), all: async () => ({ results: [] }), run: async () => ({ success: true }) }) }) };
+    const dbObj = { first: async () => ({ x: 1 }), all: async () => ({ results: [] }), run: async () => ({ success: true }) };
+    const db: any = { prepare: () => ({ bind: () => dbObj, ...dbObj }) };
     const env = { DB: db } as unknown as Env;
     const res = await syncSingleList(
       "prof",
       { id: 1, url: "http://93.184.216.34/l.txt", etag: '"abc"', last_modified: null, sync_error: "limit:domains=500000" } as any,
-      env, listModel, listBloomModel, 1, false
+      env, listModel, listFilterModel, 1, false
     );
     assert.strictEqual(res.notModified, true, "expected the 304 path");
     assert.strictEqual(savedErr, "limit:domains=500000", `warning wiped by 304 (saved: ${savedErr})`);

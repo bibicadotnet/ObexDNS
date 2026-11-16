@@ -5,6 +5,7 @@ import { UserModel } from "../../models/user";
 import { ProfileModel } from "../../models/profile";
 import { SystemSettingsModel } from "../../models/systemSettings";
 import { PASSWORD_REGEX, USERNAME_REGEX } from "../../utils/validator";
+import { isServerfullEnv } from "../../utils/serverfullEnv";
 import {
   getDatabaseService,
   isTursoConfigured,
@@ -104,14 +105,7 @@ export async function handleAdminRequest(
 
   // 数据库管理与迁移接口: /api/admin/database
   if (pathParts[2] === 'database') {
-    const isServerfull = Boolean(
-      env.SERVERFULL_DEFAULT_PROFILE_KEY !== undefined ||
-      env.SERVERFULL_HOST !== undefined ||
-      env.SERVERFULL_DOT_DOMAIN !== undefined ||
-      env.SERVERFULL_HTTP_PORT !== undefined ||
-      env.SERVERFULL_HTTPS_PORT !== undefined ||
-      env.SERVERFULL_DB_PATH !== undefined
-    );
+    const isServerfull = isServerfullEnv(env);
     const dbService = getDatabaseService(env, isServerfull);
     const isTurso = dbService === 'Turso' && isTursoConfigured(env);
 

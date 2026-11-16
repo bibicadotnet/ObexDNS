@@ -1,13 +1,13 @@
 /**
  * @file filter.ts
  * @description Multi-tier DNS filtering pipeline combining local custom rules,
- * AdGuard exceptions, DNS rewrites, two-tier Bloom filter (System Shared + Profile Custom),
+ * AdGuard exceptions, DNS rewrites, two-tier Fingerprint Filter (System Shared + Profile Custom),
  * and complex regex patterns.
  */
 
 import { Context, DNSQuery, ResolutionResult, ProfileSettings, Rule } from "../types";
 import { DNSFilter } from "../lib/filtering";
-import { BloomFilter } from "../utils/bloom";
+import { FingerprintSet } from "../utils/fingerprintSet";
 import { AdGuardProfileEngine } from "../lib/adguard";
 import { systemListsManager } from "../lib/filtering/systemListsManager";
 import { pipelineResolver } from "./resolver";
@@ -19,7 +19,7 @@ export const pipelineFilter = {
     context: Context,
     settings: ProfileSettings,
     rules: Rule[],
-    bloom: BloomFilter | undefined,
+    bloom: FingerprintSet | undefined,
     track: (name: string) => void,
     adguard?: AdGuardProfileEngine,
     enabledSystemListIds?: number[]

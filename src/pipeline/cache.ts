@@ -1,6 +1,7 @@
 import { Env, ProfileSettings, Rule } from "../types";
-import { BloomFilter } from "../utils/bloom";
+import { FingerprintSet } from "../utils/fingerprintSet";
 import { cacheUtils } from "../utils/cache";
+import { isServerfullEnv } from "../utils/serverfullEnv";
 import { AdGuardProfileEngine, AdGuardPayload } from "../lib/adguard";
 
 export interface ConfigCacheEntry {
@@ -9,6 +10,7 @@ export interface ConfigCacheEntry {
   timestamp: number;
   adguard?: AdGuardPayload | null;
   hasBloom?: boolean;
+  hasFilter?: boolean;
   enabledSystemListIds?: number[];
 }
 
@@ -16,41 +18,159 @@ export interface ConfigCacheEntry {
  * 高性能、零依赖的容量受限 Map (LRU 淘汰策略)。
  * 利用 JavaScript Map 保证的“按插入顺序迭代”特性，在 O(1) 复杂度内自动淘汰最旧的数据。
  */
-class SizeCappedMap<K, V> extends Map<K, V> {
+export class SizeCappedMap<K, V> extends Map<K, V> {
   constructor(private maxEntries: number) {
     super();
   }
 
+  setMaxEntries(entries: number): void {
+    if (entries > 0) {
+      this.maxEntries = entries;
+      while (this.size > this.maxEntries) {
+        const oldestKey = this.keys().next().value;
+        if (oldestKey === undefined) break;
+        this.delete(oldestKey);
+      }
+    }
+  }
+
+  getMaxEntries(): number {
+    return this.maxEntries;
+  }
+
+  override get(key: K): V | undefined {
+    const val = super.get(key);
+    if (val !== undefined) {
+      super.delete(key);
+      super.set(key, val);
+    }
+    return val;
+  }
+
   override set(key: K, value: V): this {
-    // 若键不存在且即将超出容量，淘汰最旧的记录 (第一项)
     if (!this.has(key) && this.size >= this.maxEntries) {
       const oldestKey = this.keys().next().value;
       if (oldestKey !== undefined) {
         this.delete(oldestKey);
       }
     }
-    // 重新更新插入顺序，使其作为最近活跃项移到链表末尾
     this.delete(key);
     super.set(key, value);
     return this;
   }
 }
 
-// --- L1 Memory Cache (Isolate 全局，容量硬性限制) ---
-// 布隆过滤器占用较大（每个 ~2.4MB），限制最多缓存 3 个 Profile，内存硬顶为 ~7.2MB，规避 GC 抖动崩溃
-export const bloomMemoryMap = new SizeCappedMap<string, { bloom: BloomFilter; ts: number }>(3);
+/**
+ * Byte-budget capped Map with LRU eviction.
+ * Entries larger than the budget are still admitted, evicting other entries.
+ */
+export class ByteCappedMap<K, V extends { byteLength?: number }> extends Map<K, V> {
+  private currentBytes: number = 0;
 
-// 基础配置体积较小，允许缓存 200 个 Profile
-export const configCache = new SizeCappedMap<string, ConfigCacheEntry>(200);
+  constructor(private maxBytes: number = 32 * 1024 * 1024) {
+    super();
+  }
 
-// AdGuard 扩展规则引擎内存缓存 (L1 内存缓存，限制最多 20 个 Profile)
-export const adguardMemoryMap = new SizeCappedMap<string, { engine: AdGuardProfileEngine; ts: number }>(20);
+  setMaxBytes(bytes: number): void {
+    if (bytes > 0) {
+      this.maxBytes = bytes;
+      while (this.size > 0 && this.currentBytes > this.maxBytes) {
+        const oldestKey = this.keys().next().value;
+        if (oldestKey === undefined) break;
+        this.delete(oldestKey);
+      }
+    }
+  }
 
-// DNS 缓存限制最多 500 条记录，防止遭受海量随机子域名查询（DNS Tunnel / Random Query Attack）时导致 Isolate 内存耗尽
-export const dnsCache = new SizeCappedMap<string, any>(500);
+  getMaxBytes(): number {
+    return this.maxBytes;
+  }
 
-// Profile Key 到 Profile 元数据映射缓存 (L1 内存缓存，限制最多 500 个 Key)
-export const profileKeyMemoryMap = new SizeCappedMap<string, { data: any; ts: number }>(500);
+  override get(key: K): V | undefined {
+    const val = super.get(key);
+    if (val !== undefined) {
+      super.delete(key);
+      super.set(key, val);
+    }
+    return val;
+  }
+
+  override set(key: K, value: V): this {
+    const itemBytes = value.byteLength || 0;
+    this.delete(key);
+
+    // Evict oldest until within budget
+    while (this.size > 0 && this.currentBytes + itemBytes > this.maxBytes) {
+      const oldestKey = this.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.delete(oldestKey);
+    }
+
+    super.set(key, value);
+    this.currentBytes += itemBytes;
+    return this;
+  }
+
+  override delete(key: K): boolean {
+    const existing = super.get(key);
+    if (existing) {
+      this.currentBytes -= existing.byteLength || 0;
+    }
+    return super.delete(key);
+  }
+
+  override clear(): void {
+    this.currentBytes = 0;
+    super.clear();
+  }
+
+  get totalBytes(): number {
+    return this.currentBytes;
+  }
+}
+
+export interface FilterMemoryEntry {
+  filter: FingerprintSet;
+  ts: number;
+  byteLength: number;
+  // Backward compatibility getter/alias
+  bloom?: FingerprintSet;
+}
+
+function getEnvNumber(key: string, defaultVal: number): number {
+  if (typeof process !== "undefined" && process?.env && process.env[key]) {
+    const val = Number(process.env[key]);
+    if (Number.isFinite(val) && val > 0) return val;
+  }
+  return defaultVal;
+}
+
+// --- L1 Memory Cache (Isolate 全局，字节预算限制) ---
+// Bảng lọc có ngân sách RAM mặc định 32 MiB (FILTER_MEM_BYTES)
+export const filterMemoryMap = new ByteCappedMap<string, FilterMemoryEntry>(
+  getEnvNumber("FILTER_MEM_BYTES", getEnvNumber("BLOOM_MEM_BYTES", 32 * 1024 * 1024))
+);
+export const bloomMemoryMap = filterMemoryMap;
+
+// 基础配置体积较小，允许缓存 200 个 Profile (CONFIG_CACHE_LIMIT)
+export const configCache = new SizeCappedMap<string, ConfigCacheEntry>(
+  getEnvNumber("CONFIG_CACHE_LIMIT", 200)
+);
+
+// AdGuard 扩展规则引擎内存缓存 (L1 内存缓存，限制最多 20 个 Profile, ADGUARD_CACHE_LIMIT)
+export const adguardMemoryMap = new SizeCappedMap<string, { engine: AdGuardProfileEngine; ts: number }>(
+  getEnvNumber("ADGUARD_CACHE_LIMIT", 20)
+);
+
+// DNS 缓存限制最多 500 条记录 (DNS_CACHE_LIMIT)
+export const dnsCache = new SizeCappedMap<string, any>(
+  getEnvNumber("DNS_CACHE_LIMIT", 500)
+);
+
+// Profile Key 到 Profile 元数据映射缓存 (L1 内存缓存，限制最多 500 个 Key, PROFILE_KEY_CACHE_LIMIT)
+export const profileKeyMemoryMap = new SizeCappedMap<string, { data: any; ts: number }>(
+  getEnvNumber("PROFILE_KEY_CACHE_LIMIT", 500)
+);
 
 // 默认 Profile 元数据内存缓存 (L1 内存缓存，5 分钟 TTL，防范 UDP DNS 高频穿透)
 export let defaultProfileMemoryCache: { data: any; ts: number } | null = null;
@@ -61,7 +181,6 @@ export function setDefaultProfileMemoryCache(entry: { data: any; ts: number } | 
 /**
  * 通过 Cloudflare Zone Cache Purge API 全球按 Tag 主动失效缓存。
  * 需配置 CF_ZONE_ID 与 CF_PURGE_TOKEN (具备 Zone -> Cache Purge 权限)。
- * 若未配置或调用失败，仅记录日志，不阻断主业务流程。
  */
 async function purgeTags(env: Env, tags: string[]): Promise<void> {
   try {
@@ -86,41 +205,54 @@ export const PROFILE_CACHE_KEY_PREFIX = "profile_v8";
 
 export const pipelineCache = {
   /**
+   * Cập nhật giới hạn dung lượng cache động từ env (hỗ trợ cả Workers và Serverfull).
+   */
+  initFromEnv(env?: Env): void {
+    if (!env) return;
+    const filterBytes = Number(env.FILTER_MEM_BYTES) || Number(env.BLOOM_MEM_BYTES);
+    if (filterBytes && filterBytes > 0) filterMemoryMap.setMaxBytes(filterBytes);
+
+    const configLimit = Number(env.CONFIG_CACHE_LIMIT);
+    if (configLimit && configLimit > 0) configCache.setMaxEntries(configLimit);
+
+    const adguardLimit = Number(env.ADGUARD_CACHE_LIMIT);
+    if (adguardLimit && adguardLimit > 0) adguardMemoryMap.setMaxEntries(adguardLimit);
+
+    const dnsLimit = Number(env.DNS_CACHE_LIMIT);
+    if (dnsLimit && dnsLimit > 0) dnsCache.setMaxEntries(dnsLimit);
+
+    const keyLimit = Number(env.PROFILE_KEY_CACHE_LIMIT);
+    if (keyLimit && keyLimit > 0) profileKeyMemoryMap.setMaxEntries(keyLimit);
+  },
+
+  /**
    * 清理指定 Profile 的各级缓存。
-   * 包含 L1 内存缓存、L2 本地数据中心 Cache API，以及 (若配置了 env) L2 全球边缘节点 Cache-Tag 失效。
-   *
-   * 签名支持多种重载形式，确保向后完全兼容：
-   * - clear(profileId)
-   * - clear(profileId, clearBloom)
-   * - clear(profileId, env)
-   * - clear(profileId, clearBloom, env)
-   * - clear(profileId, env, clearBloom)
    */
   async clear(
     profileId: string,
-    clearBloomOrEnv: boolean | Env = true,
-    envOrClearBloom?: Env | boolean
+    clearFilterOrEnv: boolean | Env = true,
+    envOrClearFilter?: Env | boolean
   ): Promise<void> {
-    let clearBloom = true;
+    let clearFilter = true;
     let targetEnv: Env | undefined;
 
-    if (typeof clearBloomOrEnv === "boolean") {
-      clearBloom = clearBloomOrEnv;
-      if (envOrClearBloom && typeof envOrClearBloom === "object") {
-        targetEnv = envOrClearBloom as Env;
+    if (typeof clearFilterOrEnv === "boolean") {
+      clearFilter = clearFilterOrEnv;
+      if (envOrClearFilter && typeof envOrClearFilter === "object") {
+        targetEnv = envOrClearFilter as Env;
       }
-    } else if (clearBloomOrEnv && typeof clearBloomOrEnv === "object") {
-      targetEnv = clearBloomOrEnv as Env;
-      if (typeof envOrClearBloom === "boolean") {
-        clearBloom = envOrClearBloom;
+    } else if (clearFilterOrEnv && typeof clearFilterOrEnv === "object") {
+      targetEnv = clearFilterOrEnv as Env;
+      if (typeof envOrClearFilter === "boolean") {
+        clearFilter = envOrClearFilter;
       }
     }
 
     // 清理 L1 (内存)
     configCache.delete(profileId);
     adguardMemoryMap.delete(profileId);
-    if (clearBloom) {
-      bloomMemoryMap.delete(profileId);
+    if (clearFilter) {
+      filterMemoryMap.delete(profileId);
     }
     profileKeyMemoryMap.clear();
     defaultProfileMemoryCache = null;
@@ -129,32 +261,31 @@ export const pipelineCache = {
         dnsCache.delete(key);
       }
     }
-    
-    // 清理 L2 (本地数据中心 Cache API)
-    try {
-      if (typeof caches !== "undefined" && caches && (caches as any).default) {
+
+    // 清理 L2 (本地数据中心 Cache API - Workers only, skipped on Serverfull)
+    const isServerfull = isServerfullEnv(targetEnv);
+    if (!isServerfull && typeof caches !== "undefined" && caches && (caches as any).default) {
+      try {
         const cache = (caches as any).default;
         const tasks: Promise<any>[] = [
           cacheUtils.delete(cache, `${PROFILE_CACHE_KEY_PREFIX}:${profileId}`),
           cacheUtils.delete(cache, `profile_v7:${profileId}`),
           cacheUtils.delete(cache, `profile_v6:${profileId}`)
         ];
-        if (clearBloom) {
-          tasks.push(cacheUtils.delete(cache, `bloom-bin:${profileId}`));
-          // 防御性清理旧版硬编码 URL
-          tasks.push(cache.delete(`https://obex.local/bloom-bin/${profileId}`));
+        if (clearFilter) {
+          tasks.push(cacheUtils.delete(cache, `filter-bin:${profileId}`));
         }
         await Promise.all(tasks);
+      } catch (e) {
+        console.error("Failed to clear cache API:", e);
       }
-    } catch (e) {
-      console.error("Failed to clear cache API:", e);
     }
 
     // 清理 L2 全球边缘节点 (Cloudflare Zone Cache Purge by Tag)
     if (targetEnv && targetEnv.CF_ZONE_ID && targetEnv.CF_PURGE_TOKEN) {
       const tags = [`profile-${profileId}`];
-      if (clearBloom) {
-        tags.push(`bloom-${profileId}`);
+      if (clearFilter) {
+        tags.push(`filter-${profileId}`);
       }
       await purgeTags(targetEnv, tags);
     }

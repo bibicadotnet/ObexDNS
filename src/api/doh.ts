@@ -1,7 +1,7 @@
 import { Context, Env, ExecutionContext } from '../types';
 import { parseDNSQuery, createServFail } from '../utils/dns';
 import { pipeline } from '../pipeline';
-import { ProfileModel, ProfileWithBloom } from '../models/profile';
+import { ProfileModel, ProfileWithFilter } from '../models/profile';
 import { UserModel } from '../models/user';
 import { cacheUtils } from '../utils/cache';
 import { recordActiveConnection } from '../utils/activeDns';
@@ -71,7 +71,7 @@ export async function resolveProfileByKey(
   profileKey: string,
   env: Env,
   ctx: ExecutionContext
-): Promise<(ProfileWithBloom & { access_point_id?: string; access_point_name?: string }) | null> {
+): Promise<(ProfileWithFilter & { access_point_id?: string; access_point_name?: string }) | null> {
   const cache = typeof caches !== "undefined" ? (caches as any).default : null;
   const now = Date.now();
 
@@ -148,7 +148,7 @@ export async function resolveProfileByKey(
 export async function resolveDefaultProfile(
   env: Env,
   ctx: ExecutionContext
-): Promise<(ProfileWithBloom & { access_point_id?: string; access_point_name?: string }) | null> {
+): Promise<(ProfileWithFilter & { access_point_id?: string; access_point_name?: string }) | null> {
   const now = Date.now();
   if (defaultProfileMemoryCache && now - defaultProfileMemoryCache.ts < 300_000) {
     return defaultProfileMemoryCache.data;

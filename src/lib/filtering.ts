@@ -22,7 +22,15 @@ import { Rule } from "../types";
 import { wildcardToRegex } from "./adguard/parser";
 
 const MAX_REGEX_LENGTH = 512;
-const MAX_PARSE_CACHE = 5000;
+const DEFAULT_MAX_PARSE_CACHE = 5000;
+
+function getMaxParseCache(): number {
+  if (typeof process !== "undefined" && process?.env?.RULE_PARSE_CACHE_LIMIT) {
+    const val = Number(process.env.RULE_PARSE_CACHE_LIMIT);
+    if (Number.isFinite(val) && val > 0) return val;
+  }
+  return DEFAULT_MAX_PARSE_CACHE;
+}
 
 type RuleType = Rule["type"];
 
@@ -101,7 +109,7 @@ function parsePattern(raw: string, includeSubdomains: boolean): ParsedPattern | 
   const key = `${includeSubdomains ? 1 : 0}|${raw}`;
   if (parseCache.has(key)) return parseCache.get(key)!;
   const parsed = parsePatternUncached(raw, includeSubdomains);
-  if (parseCache.size >= MAX_PARSE_CACHE) {
+  if (parseCache.size >= getMaxParseCache()) {
     const oldest = parseCache.keys().next().value;
     if (oldest !== undefined) parseCache.delete(oldest);
   }

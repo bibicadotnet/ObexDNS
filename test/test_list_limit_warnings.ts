@@ -21,10 +21,10 @@ async function run(payload: string, envOverrides: Partial<Env>) {
       return true;
     },
   };
-  const listBloomModel: any = {
-    getListBloomHeader: async () => null,
-    upsertListBloom: async () => true,
-    deleteListBloom: async () => true,
+  const listFilterModel: any = {
+    getListFilterHeader: async () => null,
+    upsertListFilter: async () => true,
+    deleteListFilter: async () => true,
   };
   // Stream in small chunks like a real download (the fetcher drops a whole chunk that crosses MAX_LIST_BYTES)
   globalThis.fetch = (async () => {
@@ -38,7 +38,7 @@ async function run(payload: string, envOverrides: Partial<Env>) {
     return new Response(stream, { status: 200, headers: { "Content-Type": "text/plain" } });
   }) as any;
   const env = { ...envOverrides } as Env; // no DB: skips system-list fast path and rule persistence
-  const res = await syncSingleList("prof", { id: 1, url: "http://93.184.216.34/l.txt" }, env, listModel, listBloomModel, 1, true);
+  const res = await syncSingleList("prof", { id: 1, url: "http://93.184.216.34/l.txt" }, env, listModel, listFilterModel, 1, true);
   return { res, saved };
 }
 
@@ -100,7 +100,7 @@ async function main() {
     await syncSingleList(
       "prof", { id: 1, url: "http://93.184.216.34/l.txt" }, {} as Env,
       { updateListSyncStatus: async (_a: any, _b: any, _c: any, e: any, _d: any, _f: any, t: any) => { saved.e = e; saved.t = t; return true; } } as any,
-      { getListBloomHeader: async () => null } as any, 1, true
+      { getListFilterHeader: async () => null } as any, 1, true
     );
     assert.ok(String(saved.e).startsWith("HTTP error"), "real error is not turned into a limit code");
     assert.ok(!saved.t);

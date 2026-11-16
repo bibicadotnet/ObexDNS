@@ -4,6 +4,7 @@ import { PROBE_NONCE_RE, getActiveProfileId, getVerifyProbe } from '../utils/act
 import { getPresetEchFrontingDomains } from '../utils/ech/constants';
 import { fetchGeoIP } from '../utils/geoip';
 import { isPublicInternetIP, isIPv4, isIPv6 } from '../utils/validator';
+import { isServerfullEnv } from '../utils/serverfullEnv';
 import {
   DEFAULT_SUBSTITUTE_DOMAIN,
   getPresetUpstreams,
@@ -62,13 +63,7 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
       }
     }
 
-    const isServerfull = Boolean(
-      env.SERVERFULL_DEFAULT_PROFILE_KEY !== undefined ||
-      env.SERVERFULL_HOST !== undefined ||
-      env.SERVERFULL_DOT_DOMAIN !== undefined ||
-      env.SERVERFULL_HTTP_PORT !== undefined ||
-      env.SERVERFULL_HTTPS_PORT !== undefined
-    );
+    const isServerfull = isServerfullEnv(env);
 
     return new Response(JSON.stringify({
       ip: clientIp,

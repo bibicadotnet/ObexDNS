@@ -18,21 +18,25 @@ import { handleMapDataRequest } from './api/mapData';
 import { isUsableJwtSecret } from './lib/jwt';
 import { isTursoConfigured, getTursoDatabase, getDatabaseService, ensureTursoMigrations } from './lib/turso';
 import { cacheUtils } from './utils/cache';
+import { migrateFilterFormatIfLegacy } from './utils/sync';
+import { isServerfullEnv } from './utils/serverfullEnv';
+
+let filterMigrationChecked = false;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     cacheUtils.setOrigin(new URL(request.url).origin);
-    const isServerfull = Boolean(
-      env.SERVERFULL_DEFAULT_PROFILE_KEY !== undefined ||
-      env.SERVERFULL_HOST !== undefined ||
-      env.SERVERFULL_DOT_DOMAIN !== undefined ||
-      env.SERVERFULL_HTTP_PORT !== undefined ||
-      env.SERVERFULL_HTTPS_PORT !== undefined ||
-      env.SERVERFULL_DB_PATH !== undefined
-    );
+    const isServerfull = isServerfullEnv(env);
     const dbService = getDatabaseService(env, isServerfull);
     if (dbService === 'Turso' && isTursoConfigured(env)) {
       env.DB = getTursoDatabase(env);
+    }
+
+    if (!filterMigrationChecked && env.DB) {
+      filterMigrationChecked = true;
+      if (ctx && typeof ctx.waitUntil === 'function') {
+        ctx.waitUntil(migrateFilterFormatIfLegacy(env).catch(() => {}));
+      }
     }
 
     const nonceBytes = new Uint8Array(16);
@@ -320,6 +324,7 @@ export default {
         console.warn('[Turso] Scheduled migration check notice:', err.message || err);
       }
     }
+    await migrateFilterFormatIfLegacy(env);
     await handleScheduled(event, env, ctx);
   }
 };

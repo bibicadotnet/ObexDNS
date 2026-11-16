@@ -2,7 +2,7 @@
 import assert from "node:assert";
 import { parseDNSAnswer, parseDNSQueryFromRaw } from "../src/utils/dns/decoder";
 import { buildDNSQuery, buildResponseMulti } from "../src/utils/dns/encoder";
-import { BloomFilter } from "../src/utils/bloom";
+import { FingerprintSet } from "../src/utils/fingerprintSet";
 import { rebuildEchWithFronting } from "../src/utils/ech/codec";
 
 async function runTests() {
@@ -188,27 +188,28 @@ async function runTests() {
     console.log("  Passed: Reserved RFC 1035 label bits safely rejected.");
   }
 
-  // 12. Bloom filter deserialization boundary checks
-  console.log("\n12. Testing BloomFilter.fromUint8Array boundary and truncation enforcement...");
+  // 12. FingerprintSet deserialization boundary checks
+  console.log("\n12. Testing FingerprintSet.fromUint8Array boundary and truncation enforcement...");
   {
-    // Buffer too short (< 8 bytes)
+    // Buffer too short (< 16 bytes)
     assert.throws(
-      () => BloomFilter.fromUint8Array(new Uint8Array(5)),
-      /Invalid bloom filter buffer: header too short/,
-      "Must reject buffer < 8 bytes"
+      () => FingerprintSet.fromUint8Array(new Uint8Array(5)),
+      /Invalid fingerprint buffer: header too short/,
+      "Must reject buffer < 16 bytes"
     );
 
-    // Truncated bit array (declares large size but buffer has only header)
-    const truncatedBuf = new Uint8Array(12);
+    // Truncated array (declares large count but buffer has only header)
+    const truncatedBuf = new Uint8Array(20);
     const view = new DataView(truncatedBuf.buffer);
-    view.setUint32(0, 100000, true); // size = 100,000 bits (~3125 words = 12,500 bytes)
-    view.setUint32(4, 7, true);      // hashes = 7
+    view.setUint32(0, 0x54525046, true); // 'FPRT' magic
+    view.setUint8(4, 1);                  // version 1
+    view.setUint32(8, 100000, true);      // count = 100,000 domains
     assert.throws(
-      () => BloomFilter.fromUint8Array(truncatedBuf),
-      /Invalid bloom filter buffer: bit array truncated/,
-      "Must reject truncated bit array to prevent silent fail-open"
+      () => FingerprintSet.fromUint8Array(truncatedBuf),
+      /Truncated fingerprint buffer/,
+      "Must reject truncated data to prevent silent fail-open"
     );
-    console.log("  Passed: Bloom filter buffer boundary checks throw expected errors.");
+    console.log("  Passed: FingerprintSet buffer boundary checks throw expected errors.");
   }
 
   // 13. ECH codec boundary validation

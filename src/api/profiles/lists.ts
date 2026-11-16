@@ -6,14 +6,14 @@ import {
   syncNextListForProfile,
   syncAllListsForProfile,
   syncSingleListForProfile,
-  rebuildProfileBloom,
+  rebuildProfileFilter,
   syncSingleSystemList,
   syncAllSystemLists
 } from "../../utils/sync";
 import { isSafeUrl } from "../../utils/validator";
 import { pipeline } from "../../pipeline";
-import { ListBloomModel } from "../../models/listBloom";
-import { BloomFilter } from "../../utils/bloom";
+import { ListFilterModel } from "../../models/listFilter";
+import { FingerprintSet } from "../../utils/fingerprintSet";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { AdGuardProfileEngine } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
@@ -37,8 +37,8 @@ export async function handleProfileListsRequest(
     // GET /api/profiles/:id/lists/:listId/check?domain=example.com
     //
     // Answers "does this list block this domain" straight from the list's own
-    // bloom filter, walking parent domains exactly as pipeline/filter.ts does.
-    // External lists are stored only as bloom filters, so their entries cannot
+    // Fingerprint Filter, walking parent domains exactly as pipeline/filter.ts does.
+    // External lists are stored only as Fingerprint Filters, so their entries cannot
     // be enumerated or substring-searched - but membership is answerable in
     // microseconds, which is the question the UI actually asks.
     if (pathParts[5] === 'check') {
@@ -65,11 +65,11 @@ export async function handleProfileListsRequest(
         const sysId = systemListsManager.getIdByUrl(list.url);
         if (sysId) {
           const sysModel = new SystemListModel(env.DB);
-          buffer = await sysModel.getSystemListBloom(sysId);
+          buffer = await sysModel.getSystemListFilter(sysId);
           adguardPayload = await sysModel.getSystemListAdguard(sysId);
         }
       } else {
-        buffer = await new ListBloomModel(env.DB).getListBloom(listId);
+        buffer = await new ListFilterModel(env.DB).getListFilter(listId);
         const adguardRulesModel = env.DB ? new AdguardRulesModel(env.DB) : null;
         adguardPayload = adguardRulesModel ? await adguardRulesModel.getListRules(listId) : null;
       }
@@ -96,31 +96,31 @@ export async function handleProfileListsRequest(
         }), { headers: { 'Content-Type': 'application/json' } });
       }
 
-      // ── 阶段 2：Bloom 过滤器双态前缀检查 ────────────────────────────────────
-      let bloom: BloomFilter | null = null;
+      // ── 阶段 2：Fingerprint 过滤器双态前缀检查 ────────────────────────────────────
+      let filter: FingerprintSet | null = null;
       if (buffer) {
         try {
-          bloom = BloomFilter.fromUint8Array(new Uint8Array(buffer));
+          filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
         } catch (err) {
-          console.error(`[Lists] Failed to deserialize bloom filter for list #${listId}:`, err);
+          console.error(`[Lists] Failed to deserialize Fingerprint Filter for list #${listId}:`, err);
         }
       }
 
       let currentDomain = domain;
       let isSelf = true;
       let matched: string | null = null;
-      if (bloom) {
+      if (filter) {
         while (currentDomain) {
           if (isSelf) {
             // 精确自身测试：匹配单域名黑名单 或 带有 || 的自身
-            if (bloom.test(currentDomain) || bloom.testPipePipe(currentDomain)) {
+            if (filter.test(currentDomain) || filter.testPipePipe(currentDomain)) {
               matched = currentDomain;
               break;
             }
             isSelf = false;
           } else {
             // 父级子域测试：仅当父域名是以 || 前缀注册时才拦截子域！
-            if (bloom.testPipePipe(currentDomain)) {
+            if (filter.testPipePipe(currentDomain)) {
               matched = currentDomain;
               break;
             }
@@ -152,7 +152,7 @@ export async function handleProfileListsRequest(
         blocked: matched !== null,
         whitelisted: false,
         matchedEntry: matched,
-        falsePositiveRate: matched && bloom ? (Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001) : 0,
+        falsePositiveRate: matched && filter ? ((Number(env.FILTER_FALSE_POSITIVE_RATE) || Number(env.BLOOM_FALSE_POSITIVE_RATE)) || 1e-13) : 0,
         enabled: !!list.enabled,
         synced: true
       }), { headers: { 'Content-Type': 'application/json' } });
@@ -219,7 +219,7 @@ export async function handleProfileListsRequest(
       }
     }
 
-    // System lists are not part of the merged profile bloom (they use the shared global
+    // System lists are not part of the merged profile filter (they use the shared global
     // bloom), so rebuilding it would reproduce the same result. Only the profile's
     // enabledSystemListIds changes, and that is recomputed once the cache is cleared.
     if (isSystemList) {
@@ -232,15 +232,15 @@ export async function handleProfileListsRequest(
       });
     }
 
-    // Rebuild the merged profile bloom from the per-list blooms already stored.
-    // rebuildProfileBloom skips the incremental orchestrator deliberately: that
+    // Rebuild the merged profile filter from the per-list blooms already stored.
+    // rebuildProfileFilter skips the incremental orchestrator deliberately: that
     // path would re-download every remaining list, and with 2+ active lists it
     // would not recombine at all. Lists whose Bloom still has other size settings (after a MAX_SYNC_DOMAINS /
     // BLOOM_FALSE_POSITIVE_RATE change) are downloaded again first. clearCache is chained so it cannot run before
-    // the new bloom is promoted.
+    // the new filter is promoted.
     ctx.waitUntil(
-      rebuildProfileBloom(profileId, env, ctx)
-        .catch((e) => console.error(`[Lists] bloom rebuild failed for ${profileId}:`, e))
+      rebuildProfileFilter(profileId, env, ctx)
+        .catch((e) => console.error(`[Lists] filter rebuild failed for ${profileId}:`, e))
         .finally(() => pipeline.clearCache(profileId, true, env))
     );
 
@@ -400,8 +400,8 @@ export async function handleProfileListsRequest(
     await listModel.deleteList(id, profileId);
     // 触发纯内存重构合并，并在落库后清除缓存，彻底消除竞态条件与 pending 阻塞
     ctx.waitUntil(
-      rebuildProfileBloom(profileId, env, ctx)
-        .catch((e) => console.error(`[Lists] Bloom rebuild after delete failed for ${profileId}:`, e))
+      rebuildProfileFilter(profileId, env, ctx)
+        .catch((e) => console.error(`[Lists] filter rebuild after delete failed for ${profileId}:`, e))
         .finally(() => pipeline.clearCache(profileId, true, env))
     );
     return new Response(null, { status: 204 });

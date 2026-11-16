@@ -3,9 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { initNodeGlobals } from "../src/serverfull/cache";
 import { initServerfullDb } from "../src/serverfull/db";
-import { ProfileBloomModel } from "../src/models/profileBloom";
+import { ProfileFilterModel } from "../src/models/profileFilter";
 import { SystemSettingsModel } from "../src/models/systemSettings";
-import { BloomFilter } from "../src/utils/bloom";
+import { FingerprintSet } from "../src/utils/fingerprintSet";
 import { syncNextListForProfile, syncAllListsForProfile, _resetInFlightSyncsForTesting } from "../src/utils/sync";
 import type { Env } from "../src/types";
 
@@ -28,11 +28,14 @@ function installFetch() {
     return new Response(body, { status: 200, headers: { ETag: `"e-${n}-${n === "1" && list1Changed ? 2 : 1}"` } });
   }) as any;
 }
+const dbs: any[] = [];
+
 async function setup(name: string) {
   SystemSettingsModel.clearMemoryCache(); _resetInFlightSyncsForTesting();
   const dir = path.join(process.cwd(), "temp_probe_nomig"); fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${name}.sqlite`); for (const s of ["", "-wal", "-shm"]) fs.rmSync(file + s, { force: true });
   const db: any = initServerfullDb(file); const now = Math.floor(Date.now() / 1000);
+  dbs.push(db);
   await db.prepare("INSERT INTO users (id, username, hashed_password, role, created_at) VALUES (?, ?, ?, ?, ?)").bind("u1", "admin", "x", "admin", now).run();
   await db.prepare("INSERT INTO profiles (id, name, settings, owner_id, profile_key, created_at, updated_at, list_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind("p1", "P1", "{}", "u1", "k1", now, now, 0).run();
   for (let i = 1; i <= 4; i++) await db.prepare("INSERT INTO lists (profile_id, url, enabled) VALUES (?, ?, 1)").bind("p1", `http://93.184.216.34/${i}.txt`).run();
@@ -45,27 +48,36 @@ async function setup(name: string) {
   return db;
 }
 async function report(db: any, label: string) {
-  const buf = await new ProfileBloomModel(db).getProfileBloom("p1");
+  const buf = await new ProfileFilterModel(db).getProfileFilter("p1");
   let s = `   ${label}: `;
   if (!buf) { failures++; s += "!! LOST FILTERING !! (NONE - profile has no bloom)"; }
-  else { const f = BloomFilter.fromUint8Array(new Uint8Array(buf)); const want = BloomFilter.computeParams(2000000, 0.0001);
-    const p = BloomFilter.readHeaderParams(new Uint8Array(buf.slice(0, 20)))!;
+  else {
+    const f = FingerprintSet.fromUint8Array(new Uint8Array(buf));
     const blocked = [1, 2, 3, 4].map((i) => f.test(`d${i}.example.com`) || f.testPipePipe(`d${i}.example.com`));
     if (blocked.some((b) => !b)) { failures++; s += "!! LOST FILTERING !! "; }
-    s += `[${p.size === want.size ? "NEW" : "old"}] ` + blocked.map((b, i) => `d${i + 1}=${b ? "BLOCKED" : "not-blocked"}`).join(" "); }
+    s += `[FPRT] ` + blocked.map((b, i) => `d${i + 1}=${b ? "BLOCKED" : "not-blocked"}`).join(" ");
+  }
   console.log(s);
 }
 async function main() {
   initNodeGlobals();
-  for (const changed of [false, true]) {
-    list1Changed = changed;
-    console.log(`\n=== no migration; daily cron cycle; upstream: list 1 ${changed ? "CHANGED (200)" : "unchanged (304)"}, lists 2-4 unchanged (304)`);
-    const db = await setup(changed ? "chg" : "unchg");
-    await report(db, "before cron cycle (old install)");
-    const env = { DB: db, ...NEW } as unknown as Env;
-    for (let t = 1; t <= 4; t++) { await syncNextListForProfile("p1", env, ctx); await report(db, `after cron tick ${t}`); }
-    console.log(`   requests: ${sent.join(", ")}`);
+  try {
+    for (const changed of [false, true]) {
+      list1Changed = changed;
+      console.log(`\n=== no migration; daily cron cycle; upstream: list 1 ${changed ? "CHANGED (200)" : "unchanged (304)"}, lists 2-4 unchanged (304)`);
+      const db = await setup(changed ? "chg" : "unchg");
+      await report(db, "before cron cycle (old install)");
+      const env = { DB: db, ...NEW } as unknown as Env;
+      for (let t = 1; t <= 4; t++) { await syncNextListForProfile("p1", env, ctx); await report(db, `after cron tick ${t}`); }
+      console.log(`   requests: ${sent.join(", ")}`);
+    }
+  } finally {
+    for (const db of dbs) {
+      try { db.close(); } catch {}
+    }
+    try {
+      fs.rmSync(path.join(process.cwd(), "temp_probe_nomig"), { recursive: true, force: true });
+    } catch {}
   }
-  fs.rmSync(path.join(process.cwd(), "temp_probe_nomig"), { recursive: true, force: true });
 }
 main().then(() => { if (failures) { console.error(`\nFAILED: ${failures} step(s) lost filtering`); process.exit(1); } console.log("\nNO-MIGRATION BLOOM PARAMS TEST PASSED"); process.exit(0); }).catch((e) => { console.error("FAILED:", e); process.exit(1); });

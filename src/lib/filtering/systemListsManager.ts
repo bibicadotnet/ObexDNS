@@ -5,7 +5,7 @@
 
 import { D1Database } from "@cloudflare/workers-types";
 import { SystemListModel } from "../../models/systemList";
-import { BloomFilter } from "../../utils/bloom";
+import { FingerprintSet } from "../../utils/fingerprintSet";
 import { AdGuardProfileEngine, AdGuardPayload } from "../adguard";
 import { getSystemFilterUrls, getSystemFilterEntries } from "../../constants/presets";
 
@@ -14,7 +14,7 @@ export interface SystemListCacheItem {
   url: string;
   name: string | null;
   description: string | null;
-  bloom: BloomFilter | null;
+  bloom: FingerprintSet | null;
   adguard: AdGuardProfileEngine | null;
   updatedAt: number;
 }
@@ -76,8 +76,12 @@ class SystemListsManager {
     return this.version;
   }
 
-  getBloom(id: number): BloomFilter | null {
+  getFilter(id: number): FingerprintSet | null {
     return this.items.get(id)?.bloom || null;
+  }
+
+  getBloom(id: number): FingerprintSet | null {
+    return this.getFilter(id);
   }
 
   getAdguard(id: number): AdGuardProfileEngine | null {
@@ -152,13 +156,13 @@ class SystemListsManager {
 
           let loadFailed = false;
 
-          let bloom: BloomFilter | null = null;
+          let bloom: FingerprintSet | null = null;
           let adguard: AdGuardProfileEngine | null = null;
 
           try {
-            const bloomBuf = await model.getSystemListBloom(list.id);
+            const bloomBuf = await model.getSystemListFilter(list.id);
             if (bloomBuf) {
-              bloom = BloomFilter.fromUint8Array(new Uint8Array(bloomBuf));
+              bloom = FingerprintSet.fromUint8Array(new Uint8Array(bloomBuf));
               if (bloom.isEmpty()) {
                 bloom = null;
               }

@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { BloomFilter } from '../src/utils/bloom';
+import { FingerprintSet, FingerprintSetBuilder } from '../src/utils/fingerprintSet';
 import { fetchListContent } from '../src/utils/listFetcher';
 import {
   syncAllListsForProfile,
@@ -79,37 +79,52 @@ async function runOptimizationsTests() {
     const profileId = 'prof_mutex_test';
     let executeCount = 0;
 
+    const sampleSetBuilder = new FingerprintSetBuilder();
+    sampleSetBuilder.add("blocked.test");
+    const sampleSet = await sampleSetBuilder.build();
+    const sampleSetBuf = sampleSet.toUint8Array().buffer;
+
     // Create a mock DB and environment
     const mockDb = {
       prepare(sql: string) {
+        const stmt = {
+          async all() {
+            if (sql.includes('system_lists')) {
+              return { results: [] };
+            }
+            if (sql.includes('list_blooms')) {
+              return {
+                results: [{
+                  chunk_index: 0,
+                  bloom_filter_chunk: sampleSetBuf
+                }]
+              };
+            }
+            return {
+              results: [
+                {
+                  id: 1,
+                  profile_id: profileId,
+                  name: 'List 1',
+                  url: 'http://93.184.216.34/rules.txt',
+                  enabled: 1,
+                  last_synced_at: 0
+                }
+              ]
+            };
+          },
+          async first() {
+            return { id: profileId, list_updated_at: 0, settings: '{}' };
+          },
+          async run() {
+            return { success: true };
+          }
+        };
         return {
           bind() {
-            return {
-              async all() {
-                // Return 1 list or 1 listBloom chunk
-                return {
-                  results: [
-                    {
-                      id: 1,
-                      profile_id: profileId,
-                      name: 'List 1',
-                      url: 'http://93.184.216.34/rules.txt',
-                      enabled: 1,
-                      last_synced_at: 0,
-                      chunk_index: 0,
-                      bloom_filter_chunk: new Uint8Array([8, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]).buffer
-                    }
-                  ]
-                };
-              },
-              async first() {
-                return { id: profileId, list_updated_at: 0, settings: '{}' };
-              },
-              async run() {
-                return { success: true };
-              }
-            };
-          }
+            return stmt;
+          },
+          ...stmt
         };
       },
       async batch() {
@@ -175,49 +190,31 @@ async function runOptimizationsTests() {
     );
     console.log('   ✓ syncNextListForProfile properly skipped when profile was busy.');
 
-    // 4. Test Bloom Filter Compression, Decompression & Legacy Compatibility
-    console.log('4. Testing Bloom Filter compression, decompression & legacy backward compatibility...');
-    const originalBf = BloomFilter.create(100000, 0.0001);
+    // 4. Test FingerprintSet Serialization & Element Lookup
+    console.log('4. Testing FingerprintSet serialization & element lookup...');
+    const builder = new FingerprintSetBuilder();
     for (let i = 0; i < 500; i++) {
-      originalBf.add(`tracker-${i}.adservice.com`);
+      builder.add(`tracker-${i}.adservice.com`);
     }
+    const originalFp = await builder.build();
 
-    // A. Verify compressed binary size reduction
-    const rawBinary = originalBf.toUint8Array(false); // Legacy uncompressed
-    const compressedBinary = originalBf.toUint8Array(true); // Default compressed
+    // A. Verify binary size: exactly 16 bytes header + 8 bytes per domain
+    const binary = originalFp.toUint8Array();
+    assert.strictEqual(binary.length, 16 + 500 * 8, "Binary must be 16 bytes header + 8 bytes per domain");
 
-    assert.ok(
-      compressedBinary.length < rawBinary.length * 0.15,
-      `Compressed bloom binary should be < 15% of raw binary (raw: ${rawBinary.length} bytes, compressed: ${compressedBinary.length} bytes)`
-    );
-    console.log(
-      `   ✓ Bloom binary compression reduced size by ${((1 - compressedBinary.length / rawBinary.length) * 100).toFixed(1)}% (${rawBinary.length} B -> ${compressedBinary.length} B)`
-    );
+    // B. Verify FPRT magic header
+    const magicView = new DataView(binary.buffer, binary.byteOffset, 4);
+    assert.strictEqual(magicView.getUint32(0, true), 0x54525046, "Header must start with FPRT magic bytes");
+    console.log('   ✓ FPRT magic header verified.');
 
-    // B. Verify BLMZ magic header
-    const magicView = new DataView(compressedBinary.buffer, compressedBinary.byteOffset, 4);
-    assert.strictEqual(magicView.getUint32(0, true), 0x5a4d4c42, "Header must start with BLMZ magic bytes");
-    console.log('   ✓ BLMZ magic header verified.');
-
-    // C. Verify decompression and element lookup
-    const restoredFromCompressed = BloomFilter.fromUint8Array(compressedBinary);
-    assert.strictEqual(restoredFromCompressed.getSize(), originalBf.getSize());
-    assert.strictEqual(restoredFromCompressed.getHashes(), originalBf.getHashes());
+    // C. Verify element lookup
+    const restored = FingerprintSet.fromUint8Array(binary);
+    assert.strictEqual(restored.size, 500);
     for (let i = 0; i < 500; i++) {
-      assert.strictEqual(restoredFromCompressed.test(`tracker-${i}.adservice.com`), true);
+      assert.strictEqual(restored.test(`tracker-${i}.adservice.com`), true);
     }
-    assert.strictEqual(restoredFromCompressed.test('safe-domain.example.com'), false);
-    console.log('   ✓ Restored compressed Bloom Filter correctly verified all elements.');
-
-    // D. Verify backward compatibility with legacy uncompressed format
-    const restoredFromLegacy = BloomFilter.fromUint8Array(rawBinary);
-    assert.strictEqual(restoredFromLegacy.getSize(), originalBf.getSize());
-    assert.strictEqual(restoredFromLegacy.getHashes(), originalBf.getHashes());
-    for (let i = 0; i < 500; i++) {
-      assert.strictEqual(restoredFromLegacy.test(`tracker-${i}.adservice.com`), true);
-    }
-    assert.strictEqual(restoredFromLegacy.test('safe-domain.example.com'), false);
-    console.log('   ✓ Legacy uncompressed format seamlessly restored without errors.');
+    assert.strictEqual(restored.test('safe-domain.example.com'), false);
+    console.log('   ✓ Restored FingerprintSet correctly verified all elements.');
 
   } finally {
     globalThis.fetch = originalFetch;

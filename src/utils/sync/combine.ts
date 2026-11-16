@@ -1,30 +1,27 @@
 import { Env, ExecutionContext } from "../../types";
-import { BloomFilter } from "../bloom";
+import { FingerprintSet } from "../fingerprintSet";
 import { pipelineCache } from "../../pipeline/cache";
 import { ProfileModel } from "../../models/profile";
 import { ListModel } from "../../models/list";
-import { ProfileBloomModel } from "../../models/profileBloom";
-import { ListBloomModel } from "../../models/listBloom";
+import { ProfileFilterModel } from "../../models/profileFilter";
+import { ListFilterModel } from "../../models/listFilter";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { AdGuardPayload } from "../../lib/adguard/types";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
 
 /**
- * 汇总并合并所有已启用列表的 Bloom Filter 与 AdGuard 扩展规则，并原子更新为 Profile 的 active 状态。
- * 
- * 性能优化：依次单独加载每个列表的 Bloom Filter 在内存中进行按位或合并，
- * 并将所有 AdGuard 扩展规则（例外、重写、正则池）汇总存入 profile_adguard_rules。
+ * 汇总并合并所有已启用列表的 Fingerprint Filter 与 AdGuard 扩展规则，并原子更新为 Profile 的 active 状态。
  */
 export async function combineAndPromote(
   profileId: string,
   listModel: ListModel,
-  listBloomModel: ListBloomModel,
-  profileBloomModel: ProfileBloomModel,
+  listFilterModel: ListFilterModel,
+  profileFilterModel: ProfileFilterModel,
   profileModel: ProfileModel,
   ctx: ExecutionContext,
   now: number,
-  maxDomains: number,
-  falsePositiveRate: number,
+  maxDomains?: number,
+  falsePositiveRate?: number,
   env?: Env
 ): Promise<void> {
   const lists = await listModel.getLists(profileId);
@@ -34,28 +31,43 @@ export async function combineAndPromote(
   if (env?.DB) {
     await systemListsManager.ensureLoaded(env.DB, false, env);
   }
-  // 过滤掉系统共享列表：系统共享列表走全局 Tier 1 Bloom，无需合并进各 Profile 的 Bloom
+  // 过滤掉系统共享列表：系统共享列表走全局 Tier 1 Filter，无需合并进各 Profile
   const customLists = activeLists.filter((l) => !systemListsManager.isSystemUrl(l.url));
 
+  const maxProfileDomains = maxDomains || (env
+    ? (Number(env.MAX_PROFILE_CUSTOM_DOMAINS) ||
+       ((Number(env.MAX_LIST_DOMAINS) || 500000) * (Number(env.MAX_CUSTOM_LISTS_PER_PROFILE) || 5)))
+    : 2500000);
+
   if (customLists.length === 0) {
-    // 若没有自定义外部列表，清空 profile_blooms 与 profile_adguard_rules (纯享系统共享 Bloom)
     await Promise.all([
-      profileBloomModel.clearProfileBlooms(profileId),
+      profileFilterModel.clearProfileFilters(profileId),
       adguardRulesModel?.clearProfileRules(profileId)
     ]);
   } else if (customLists.length === 1) {
     // 性能优化：单自定义列表短路晋升 (Single-List Direct Promotion)
     const single = customLists[0];
     const [buf, listRules] = await Promise.all([
-      listBloomModel.getListBloom(single.id),
+      listFilterModel.getListFilter(single.id),
       adguardRulesModel ? adguardRulesModel.getListRules(single.id) : Promise.resolve(null)
     ]);
 
     const saveOps: Promise<any>[] = [];
     if (buf) {
-      saveOps.push(profileBloomModel.upsertProfileBloom(profileId, buf, now));
+      try {
+        const parsed = FingerprintSet.fromUint8Array(new Uint8Array(buf));
+        let finalBuf = buf;
+        if (parsed.size > maxProfileDomains) {
+          console.warn(`[Sync] Profile ${profileId}: single list #${single.id} domains (${parsed.size}) exceeds limit (${maxProfileDomains}). Truncating.`);
+          // Truncation samples domains uniformly across the 64-bit hash space up to maxProfileDomains.
+          finalBuf = parsed.truncate(maxProfileDomains).toUint8Array().buffer as ArrayBuffer;
+        }
+        saveOps.push(profileFilterModel.upsertProfileFilter(profileId, finalBuf, now));
+      } catch (err) {
+        console.warn(`[Sync] List #${single.id} has invalid/legacy filter format, preserving existing profile filter:`, err);
+      }
     } else {
-      saveOps.push(profileBloomModel.clearProfileBlooms(profileId));
+      saveOps.push(profileFilterModel.clearProfileFilters(profileId));
     }
     if (adguardRulesModel) {
       const payload: AdGuardPayload = listRules || { exceptions: [], rewrites: {}, patterns: [] };
@@ -63,52 +75,26 @@ export async function combineAndPromote(
     }
     await Promise.all(saveOps);
   } else {
-    // 重建并按位或 (OR) 合并所有自定义列表级布隆过滤器，并汇总 AdGuard 规则
-    const merged = BloomFilter.create(maxDomains, falsePositiveRate);
-    let hasMergedAny = false;
-
-    // A list Bloom built with other MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE values cannot be OR-merged.
-    // Merging only the compatible ones would silently drop the others' domains, so in that case the profile's
-    // current Bloom is left untouched (it keeps filtering) until every list has been rebuilt with the current size.
-    // singleListSync forces a full download for such lists, so the next sync cycle rebuilds them.
-    const want = BloomFilter.computeParams(maxDomains, falsePositiveRate);
-    const mismatchedListIds: number[] = [];
-    for (const list of customLists) {
-      const head = await listBloomModel.getListBloomHeader(list.id);
-      const p = BloomFilter.readHeaderParams(head);
-      if (p && (p.size !== want.size || p.hashes !== want.hashes)) mismatchedListIds.push(list.id);
-    }
-    const keepProfileBloom = mismatchedListIds.length > 0;
-    if (keepProfileBloom) {
-      console.warn(`[Sync] Profile ${profileId}: list(s) #${mismatchedListIds.join(", #")} still hold a Bloom built with other size settings; keeping the profile's current Bloom until they are rebuilt.`);
-    }
-
+    // 合并所有自定义列表的 FingerprintSet 与 AdGuard 扩展规则
+    const sets: FingerprintSet[] = [];
     const mergedAdguard: AdGuardPayload = {
       exceptions: [],
       rewrites: {},
       patterns: []
     };
     const seenExceptions = new Set<string>();
+    let hasInvalidOrLegacyList = false;
 
     for (const list of customLists) {
-      // 1. Bloom Filter 单列表合并 (独立 try：Bloom 合并失败不应连带丢弃该列表的例外/重写/正则规则)
+      // 1. FingerprintSet 加载
       try {
-        const buf = keepProfileBloom ? null : await listBloomModel.getListBloom(list.id);
+        const buf = await listFilterModel.getListFilter(list.id);
         if (buf) {
-          const filter = BloomFilter.fromUint8Array(new Uint8Array(buf));
-          merged.merge(filter);
-          hasMergedAny = true;
+          sets.push(FingerprintSet.fromUint8Array(new Uint8Array(buf)));
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("different sizes")) {
-          // The list still holds a Bloom built before MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE changed
-          // (e.g. its download failed during the rebuild). Only its domain Bloom is left out of this merge until
-          // it is re-synced; its exceptions, rewrites and patterns below are still merged.
-          console.warn(`[Sync] Profile ${profileId}: list #${list.id} Bloom skipped in merge (built with other size settings); it will be rebuilt on its next sync.`);
-        } else {
-          console.error(`[Sync] Failed to load/merge Bloom for list #${list.id}:`, err);
-        }
+        console.error(`[Sync] Failed to load filter for list #${list.id}:`, err);
+        hasInvalidOrLegacyList = true;
       }
 
       // 2. AdGuard 扩展规则合并
@@ -129,8 +115,6 @@ export async function combineAndPromote(
               Object.assign(mergedAdguard.rewrites, listRules.rewrites);
             }
             if (Array.isArray(listRules.patterns)) {
-              // MAX_REGEX_RULES chỉ giới hạn theo từng URL (đã áp dụng lúc sync từng list),
-              // không cắt lần nữa ở cấp profile để tránh bỏ rule im lặng.
               for (const pat of listRules.patterns) {
                 mergedAdguard.patterns.push(pat);
               }
@@ -142,13 +126,29 @@ export async function combineAndPromote(
       }
     }
 
-    if (keepProfileBloom) {
-      // keep the existing profile Bloom as is
-    } else if (hasMergedAny) {
-      const binary = merged.toUint8Array();
-      await profileBloomModel.upsertProfileBloom(profileId, binary.buffer as ArrayBuffer, now);
+    if (hasInvalidOrLegacyList) {
+      console.warn(
+        `[Sync] Profile ${profileId}: one or more custom lists failed to parse as FingerprintSet (e.g. legacy BLMZ). ` +
+        `Preserving existing profile filter to prevent dropping rules until all lists are resynced.`
+      );
     } else {
-      await profileBloomModel.clearProfileBlooms(profileId);
+      const merged = await FingerprintSet.mergeSets(sets);
+      let finalSet = merged;
+      if (merged.size > maxProfileDomains) {
+        console.warn(
+          `[Sync] Profile ${profileId}: total merged domains (${merged.size}) exceeds limit (${maxProfileDomains}). Truncating.`
+        );
+        // Truncation on sorted 64-bit domain fingerprints provides an unbiased pseudo-random sample
+        // across all input lists rather than dropping whole lists or alphabetical subsets.
+        finalSet = merged.truncate(maxProfileDomains);
+      }
+
+      if (!finalSet.isEmpty()) {
+        const binary = finalSet.toUint8Array();
+        await profileFilterModel.upsertProfileFilter(profileId, binary.buffer as ArrayBuffer, now);
+      } else {
+        await profileFilterModel.clearProfileFilters(profileId);
+      }
     }
 
     if (adguardRulesModel) {
@@ -156,7 +156,6 @@ export async function combineAndPromote(
     }
   }
 
-  // 二次确认更新 Profile 主表的时间戳（即使前置步骤已防范性地写入过）
   await profileModel.updateListUpdatedAt(profileId, now);
 
   if (ctx && typeof ctx.waitUntil === "function") {

@@ -2,13 +2,12 @@
  * @file systemListSync.ts
  * @description Synchronization engine for system-wide shared filter lists.
  * Downloads and compiles shared external filter lists once globally, eliminating redundant
- * per-profile downloads and Bloom filter duplication.
+ * per-profile downloads and filter duplication.
  */
 
 import { Env } from "../../types";
 import { SystemListModel } from "../../models/systemList";
-import { ListModel } from "../../models/list";
-import { BloomFilter } from "../bloom";
+import { FingerprintSet, FingerprintSetBuilder } from "../fingerprintSet";
 import { fetchListContent, getListFetchTuning } from "../listFetcher";
 import { encodeLimitWarnings, keepLimitWarning, ListLimitKind } from "./syncWarnings";
 import { AdGuardRuleKind, AdGuardPayload, ParsedAdGuardRule } from "../../lib/adguard";
@@ -39,15 +38,13 @@ export async function syncSingleSystemList(
   const now = Math.floor(Date.now() / 1000);
   const timeoutMs = Number(env.SYNC_TIMEOUT_MS) || 30000;
   const maxListDomains = Number(env.MAX_LIST_DOMAINS) || 500000;
-  const maxDomains = Number(env.MAX_SYNC_DOMAINS) || 1000000;
   const maxListBytes = Number(env.MAX_LIST_BYTES) || DEFAULT_MAX_LIST_BYTES;
-  const falsePositiveRate = Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001;
   const maxRegexRules = Number(env.MAX_REGEX_RULES) || 1000;
 
   const yieldBatchSize = Number(env.SYNC_YIELD_BATCH_SIZE) || 5000;
   const yieldSleepMs = Number(env.SYNC_YIELD_SLEEP_MS) || 10;
 
-  let listBloom = null as BloomFilter | null; // lazily allocated, see singleListSync.ts
+  const filterBuilder = new FingerprintSetBuilder();
   const adguardPayload: AdGuardPayload = {
     exceptions: [],
     rewrites: {},
@@ -56,17 +53,14 @@ export async function syncSingleSystemList(
 
   let count = 0;
   let domainsSinceYield = 0;
-  // Limits (MAX_LIST_DOMAINS / MAX_REGEX_RULES) that dropped rules; surfaced to the UI as warnings
   let domainLimitHit = false;
   let regexLimitHit = false;
 
-  // Check if existing Bloom is current v2 format, or if non-bloom rules (whitelist/rewrite) exist locally
-  const existingBloomHead = await model.getSystemListBloomHeader(systemListId);
+  const existingFilterHead = await model.getSystemListFilterHeader(systemListId);
   const hasExistingRules = await model.hasSystemListAdguardRules(systemListId);
-  const hasLocalData = Boolean(existingBloomHead || hasExistingRules);
-  const isBloomCurrent = existingBloomHead ? BloomFilter.isCurrentVersion(existingBloomHead) : hasLocalData;
-  // description == null: row predates the Description column -> skip 304 negotiation once so it gets backfilled
-  const useCacheHeaders = !force && isBloomCurrent && Boolean(systemList.etag || systemList.last_modified) && systemList.description != null;
+  const hasLocalData = Boolean(existingFilterHead || hasExistingRules);
+  const isFilterCurrent = existingFilterHead ? FingerprintSet.isCurrentVersion(existingFilterHead) : hasLocalData;
+  const useCacheHeaders = !force && isFilterCurrent && Boolean(systemList.etag || systemList.last_modified) && systemList.description != null;
 
   const { error: fetchError, truncated, notModified, etag, lastModified, title, description } = await fetchListContent(
     systemList.url,
@@ -75,11 +69,10 @@ export async function syncSingleSystemList(
     (rule: ParsedAdGuardRule) => {
       if (count < maxListDomains) {
         if (rule.kind === AdGuardRuleKind.BLOOM_DOMAIN && rule.domain) {
-          if (!listBloom) listBloom = BloomFilter.create(maxDomains, falsePositiveRate);
           if (rule.includeSubdomains) {
-            listBloom.addPipePipe(rule.domain);
+            filterBuilder.addPipePipe(rule.domain);
           } else {
-            listBloom.add(rule.domain);
+            filterBuilder.add(rule.domain);
           }
           count++;
         } else if (rule.kind === AdGuardRuleKind.EXCEPTION && rule.domain) {
@@ -127,8 +120,6 @@ export async function syncSingleSystemList(
   // 304 Not Modified
   if (notModified) {
     console.log(`[SystemListSync] System list #${systemListId} (${systemList.url}) 304 Not Modified.`);
-    // Content unchanged => still truncated as before: keep the limit:* warning. A stale real error is cleared,
-    // on system_lists too, otherwise the next profile sync would copy it back from there.
     const keptWarning = keepLimitWarning(systemList.sync_error);
     await model.updateMetadata(systemListId, {
       last_synced_at: now,
@@ -137,14 +128,12 @@ export async function syncSingleSystemList(
       sync_error: keptWarning
     });
 
-    // Update all matching profile list rows so user dashboard displays fresh sync timestamp
     await syncProfileListRows(env.DB, systemList.url, now, keptWarning);
     return { syncError: keptWarning, notModified: true };
   }
 
   let syncError: string | null = fetchError;
   if (!fetchError) {
-    // Machine-readable warning code carrying the limits actually in effect (from env); the UI localizes it
     const limitHits: Partial<Record<ListLimitKind, number>> = {};
     if (truncated) limitHits.bytes = maxListBytes;
     if (domainLimitHit) limitHits.domains = maxListDomains;
@@ -154,14 +143,15 @@ export async function syncSingleSystemList(
       console.warn(`[SystemListSync] System list #${systemListId} truncated with ${count} rules. Warning: ${syncError}`);
     }
 
-    // Save Bloom and AdGuard rules (skip saving empty Bloom for whitelist/rewrites to save DB & RAM)
+    const listFilter = await filterBuilder.build();
+
     const saveOps: Promise<any>[] = [
       model.upsertSystemListAdguard(systemListId, adguardPayload, now)
     ];
-    if (listBloom && !listBloom.isEmpty()) {
-      saveOps.push(model.upsertSystemListBloom(systemListId, listBloom.toUint8Array().buffer as ArrayBuffer, now));
+    if (!listFilter.isEmpty()) {
+      saveOps.push(model.upsertSystemListFilter(systemListId, listFilter.toUint8Array().buffer as ArrayBuffer, now));
     } else {
-      saveOps.push(model.clearSystemListBloom(systemListId));
+      saveOps.push(model.clearSystemListFilter(systemListId));
     }
     await Promise.all(saveOps);
 
@@ -175,15 +165,11 @@ export async function syncSingleSystemList(
     });
     if (title) await model.setNameIfEmpty(systemListId, title);
 
-    // Update matching profile list rows
     await syncProfileListRows(env.DB, systemList.url, now, syncError);
 
-    // Invalidate and reload in-memory cache
     systemListsManager.invalidate();
     await systemListsManager.ensureLoaded(env.DB, true);
 
-    // Invalidate pipeline cache (dnsCache, configCache, L2 Cache API & Edge Cache-Tags)
-    // for all active profiles subscribing to this system list
     if (env?.DB) {
       try {
         const affected = await env.DB
@@ -218,9 +204,6 @@ export async function syncSingleSystemList(
   return { syncError, notModified: false };
 }
 
-/**
- * Updates profile list rows corresponding to a system URL so UI reflects current sync status.
- */
 async function syncProfileListRows(
   db: any,
   url: string,
@@ -240,15 +223,6 @@ async function syncProfileListRows(
   }
 }
 
-/**
- * Synchronizes all registered system-wide shared filter lists.
- * Employs on-demand optimization: only lists that are currently active in at least
- * one profile (or explicitly forced) are downloaded/synced, avoiding unnecessary
- * bandwidth and CPU consumption for dormant presets.
- *
- * When profileId is specified (e.g. from a user's dashboard "Sync All Lists" action),
- * the sync scope is strictly scoped to the active system lists belonging to that profile.
- */
 export async function syncAllSystemLists(env: Env, force: boolean = false, profileId?: string): Promise<void> {
   if (env?.DB) {
     await systemListsManager.ensureLoaded(env.DB, false, env);
@@ -256,7 +230,6 @@ export async function syncAllSystemLists(env: Env, force: boolean = false, profi
   const model = new SystemListModel(env.DB);
   const lists = await model.getSystemLists();
 
-  // Determine which system lists are actively in use (scoped to profileId if specified)
   const activeUrls = new Set<string>();
   if (env?.DB) {
     try {
@@ -283,8 +256,6 @@ export async function syncAllSystemLists(env: Env, force: boolean = false, profi
     const listNorm = list.url.trim().toLowerCase();
     const isActiveInProfile = activeUrls.has(listNorm);
 
-    // Skip dormant system presets if no profile is actively using them.
-    // When profileId is specified, strictly skip any system list not active in this profile even if force=true.
     if (!isActiveInProfile && (!force || profileId)) {
       continue;
     }
@@ -296,4 +267,3 @@ export async function syncAllSystemLists(env: Env, force: boolean = false, profi
     }
   }
 }
-

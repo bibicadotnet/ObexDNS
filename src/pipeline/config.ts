@@ -2,24 +2,29 @@ import { Context, ProfileSettings, Rule } from "../types";
 import { ProfileModel } from "../models/profile";
 import { RuleModel } from "../models/rule";
 import { ListModel } from "../models/list";
-import { ProfileBloomModel } from "../models/profileBloom";
+import { ProfileFilterModel } from "../models/profileFilter";
 import { AdguardRulesModel } from "../models/adguardRules";
-import { BloomFilter } from "../utils/bloom";
+import { FingerprintSet } from "../utils/fingerprintSet";
 import { cacheUtils } from "../utils/cache";
-import { configCache, bloomMemoryMap, adguardMemoryMap, PROFILE_CACHE_KEY_PREFIX } from "./cache";
+import { configCache, filterMemoryMap, adguardMemoryMap, pipelineCache, PROFILE_CACHE_KEY_PREFIX } from "./cache";
 import { DEFAULT_FAIL_OPEN_UPSTREAM } from "../constants/presets";
-import { AdGuardProfileEngine, AdGuardPayload } from "../lib/adguard";
+import { AdGuardProfileEngine } from "../lib/adguard";
 import { systemListsManager } from "../lib/filtering/systemListsManager";
+import { isServerfullEnv } from "../utils/serverfullEnv";
 
 export const pipelineConfig = {
   async load(context: Context, track: (name: string) => void): Promise<{
     settings: ProfileSettings;
     rules: Rule[];
-    bloom?: BloomFilter;
+    bloom?: FingerprintSet;
+    filter?: FingerprintSet;
     adguard?: AdGuardProfileEngine;
     enabledSystemListIds?: number[];
   } | null> {
     const { profileId, env, ctx } = context;
+
+    // Initialize/update memory cache limits from env
+    pipelineCache.initFromEnv(env);
 
     // Ensure system shared lists are active in memory before building/checking config
     if (env.DB) {
@@ -37,78 +42,86 @@ export const pipelineConfig = {
         log_retention_days: 0,
         ecs: { enabled: true, use_client_ip: true }
       };
-      return { settings: defaultSettings, rules: [], bloom: undefined, adguard: undefined, enabledSystemListIds: [] };
+      return { settings: defaultSettings, rules: [], bloom: undefined, filter: undefined, adguard: undefined, enabledSystemListIds: [] };
     }
 
     // 1. 检查 L1 Memory (Isolate Global)
-    const inMem = bloomMemoryMap.get(profileId);
+    const inMem = filterMemoryMap.get(profileId);
     const inMemAdguard = adguardMemoryMap.get(profileId);
     const cachedConfig = configCache.get(profileId);
     
-    const bloomMemTtl = Number(env.BLOOM_MEM_TTL) || 600000;
+    const filterMemTtl = (Number(env.FILTER_MEM_TTL) || Number(env.BLOOM_MEM_TTL)) || 600000;
     const configuredMemTtl = Number(env.CONFIG_MEM_TTL) || 300000;
     const configMemTtl = Number.isFinite(configuredMemTtl) && configuredMemTtl > 0
       ? configuredMemTtl
       : 300000;
     if (cachedConfig && (Date.now() - (cachedConfig.timestamp || 0) < configMemTtl)) {
       track('load_config_l1_mem');
-      const validBloom = (inMem && Date.now() - inMem.ts < bloomMemTtl) ? inMem.bloom : undefined;
-      // 若该配置标记包含 Bloom，但内存中 Bloom 已过期缺失，不盲目短路返回，继续向下恢复 Bloom
-      if (!cachedConfig.hasBloom || validBloom) {
+      const validFilter = (inMem && Date.now() - inMem.ts < filterMemTtl) ? (inMem.filter || inMem.bloom) : undefined;
+      if (!cachedConfig.hasBloom && !cachedConfig.hasFilter || validFilter) {
         const validAdguard = inMemAdguard ? inMemAdguard.engine : (cachedConfig.adguard ? new AdGuardProfileEngine(cachedConfig.adguard) : undefined);
-        return { ...cachedConfig, bloom: validBloom, adguard: validAdguard, enabledSystemListIds: cachedConfig.enabledSystemListIds || [] };
+        return { ...cachedConfig, bloom: validFilter, filter: validFilter, adguard: validAdguard, enabledSystemListIds: cachedConfig.enabledSystemListIds || [] };
       }
     }
 
-    // 2. 检查 L2 Cache API
-    const cache = typeof caches !== "undefined" ? (caches as any).default : null;
+    // 2. 检查 L2 Cache API (Cloudflare Workers only, skipped on Serverfull)
+    const isServerfull = isServerfullEnv(env);
+    const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;
     const profileCacheKey = `${PROFILE_CACHE_KEY_PREFIX}:${profileId}`;
-    const bloomInternalUrl = cacheUtils.generateCacheUrl(`bloom-bin:${profileId}`);
+    const filterInternalUrl = cacheUtils.generateCacheUrl(`filter-bin:${profileId}`);
     
     let apiCached = cache ? await cacheUtils.get<any>(cache, profileCacheKey) : null;
-    let bloom: BloomFilter | undefined;
+    let filter: FingerprintSet | undefined;
     let adguardEngine: AdGuardProfileEngine | undefined;
 
     if (apiCached) {
       track('load_config_l2_cache');
-      if (inMem && Date.now() - inMem.ts < bloomMemTtl) {
-        bloom = inMem.bloom;
+      if (inMem && Date.now() - inMem.ts < filterMemTtl) {
+        filter = inMem.filter || inMem.bloom;
       } else if (cache) {
         try {
-          const bloomRes = await cache.match(bloomInternalUrl);
-          if (bloomRes) {
-            track('load_bloom_l2_cache');
-            const buffer = await bloomRes.arrayBuffer();
-            bloom = BloomFilter.fromUint8Array(new Uint8Array(buffer));
-            bloomMemoryMap.set(profileId, { bloom, ts: Date.now() });
+          const filterRes = await cache.match(filterInternalUrl);
+          if (filterRes) {
+            track('load_filter_l2_cache');
+            const buffer = await filterRes.arrayBuffer();
+            try {
+              filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
+              filterMemoryMap.set(profileId, { filter, bloom: filter, ts: Date.now(), byteLength: filter.byteLength });
+            } catch (e) {
+              console.warn(`[Config] Failed to deserialize cached filter for profile ${profileId}, ignoring:`, e);
+            }
           }
         } catch {
-          // Non-critical bloom cache read error
+          // Non-critical cache read error
         }
       }
 
-      // 防御回退：若 L2 缓存指示存在 Bloom 规则，但在内存及 Cache API 中均未命中，从 D1 回退拉取 Bloom
-      if (apiCached.hasBloom && !bloom && env.DB) {
+      // 回退拉取
+      if ((apiCached.hasBloom || apiCached.hasFilter) && !filter && env.DB) {
         try {
-          const bloomModel = new ProfileBloomModel(env.DB);
-          const buffer = await bloomModel.getProfileBloom(profileId);
+          const filterModel = new ProfileFilterModel(env.DB);
+          const buffer = await filterModel.getProfileFilter(profileId);
           if (buffer) {
-            track('load_bloom_d1_fallback');
-            bloom = BloomFilter.fromUint8Array(new Uint8Array(buffer));
-            bloomMemoryMap.set(profileId, { bloom, ts: Date.now() });
-            if (cache) {
-              const bloomRes = new Response(buffer, {
-                headers: {
-                  "Content-Type": "application/octet-stream",
-                  "Cache-Control": "public, max-age=86400",
-                  "Cache-Tag": `bloom-${profileId}`
-                }
-              });
-              ctx.waitUntil(cache.put(bloomInternalUrl, bloomRes));
+            track('load_filter_d1_fallback');
+            try {
+              filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
+              filterMemoryMap.set(profileId, { filter, bloom: filter, ts: Date.now(), byteLength: filter.byteLength });
+              if (cache) {
+                const filterRes = new Response(buffer, {
+                  headers: {
+                    "Content-Type": "application/octet-stream",
+                    "Cache-Control": "public, max-age=604800",
+                    "Cache-Tag": `filter-${profileId}`
+                  }
+                });
+                ctx.waitUntil(cache.put(filterInternalUrl, filterRes));
+              }
+            } catch (e) {
+              console.warn(`[Config] D1 filter buffer invalid for profile ${profileId}, skipping:`, e);
             }
           }
         } catch (e) {
-          console.error(`[Config] D1 Bloom fallback fetch failed for profile ${profileId}:`, e);
+          console.error(`[Config] D1 Filter fallback fetch failed for profile ${profileId}:`, e);
         }
       }
 
@@ -120,23 +133,22 @@ export const pipelineConfig = {
       }
       
       configCache.set(profileId, { ...apiCached, timestamp: Date.now() });
-      return { ...apiCached, bloom, adguard: adguardEngine, enabledSystemListIds: apiCached.enabledSystemListIds || [] };
+      return { ...apiCached, bloom: filter, filter, adguard: adguardEngine, enabledSystemListIds: apiCached.enabledSystemListIds || [] };
     }
 
-    // 3. 回退到 D1 (带 Fail-Open 降级保护)
+    // 3. 回退到 D1
     try {
       const profileModel = new ProfileModel(env.DB);
       const ruleModel = new RuleModel(env.DB);
-      const bloomModel = new ProfileBloomModel(env.DB);
+      const filterModel = new ProfileFilterModel(env.DB);
       const adguardModel = new AdguardRulesModel(env.DB);
       const listModel = new ListModel(env.DB);
 
-      // 并发从 D1 读取配置、规则、布隆过滤器、AdGuard 扩展规则及订阅列表列表，同时确保系统共享列表已就绪
       const [profile, rules, buffer, adguardPayload, profileLists] = await Promise.all([
         profileModel.getById(profileId),
         ruleModel.getRules(profileId),
-        bloomModel.getProfileBloom(profileId).catch((e) => {
-          console.error("[Config] D1 Bloom loading failed:", e);
+        filterModel.getProfileFilter(profileId).catch((e) => {
+          console.error("[Config] D1 Filter loading failed:", e);
           return null;
         }),
         adguardModel.getProfileRules(profileId).catch((e) => {
@@ -150,7 +162,7 @@ export const pipelineConfig = {
       if (!profile) {
         if (cachedConfig) {
           console.warn(`[Config] Profile ${profileId} not in D1, using stale memory config.`);
-          return { ...cachedConfig, bloom: inMem?.bloom, adguard: inMemAdguard?.engine };
+          return { ...cachedConfig, bloom: inMem?.filter || inMem?.bloom, filter: inMem?.filter || inMem?.bloom, adguard: inMemAdguard?.engine };
         }
         console.warn(`[Config] Profile ${profileId} not found in DB. Serving emergency fail-open fallback.`);
         const failOpenUpstream = env.FAIL_OPEN_UPSTREAM || DEFAULT_FAIL_OPEN_UPSTREAM;
@@ -160,24 +172,20 @@ export const pipelineConfig = {
           log_retention_days: 0,
           ecs: { enabled: true, use_client_ip: true }
         };
-        return { settings: fallbackSettings, rules: [], bloom: undefined, adguard: undefined };
+        return { settings: fallbackSettings, rules: [], bloom: undefined, filter: undefined, adguard: undefined };
       }
       
       const settings = JSON.parse(profile.settings);
       
-      // 处理布隆过滤器并写入 L2 Cache API
       if (buffer) {
-        track('load_bloom_l3_d1');
+        track('load_filter_l3_d1');
         const uint8 = new Uint8Array(buffer);
-        bloom = BloomFilter.fromUint8Array(uint8);
-
-        ctx.waitUntil(cache.put(bloomInternalUrl, new Response(uint8, {
-          headers: { 
-            'Content-Type': 'application/octet-stream',
-            'Cache-Control': 'public, max-age=604800',
-            'Cache-Tag': `bloom-${profileId}`
-          }
-        })));
+        try {
+          filter = FingerprintSet.fromUint8Array(uint8);
+        } catch (e) {
+          console.warn(`[Config] Legacy or invalid filter data for profile ${profileId}, will be rebuilt on next sync:`, e);
+          filter = undefined;
+        }
       }
 
       if (adguardPayload) {
@@ -193,36 +201,36 @@ export const pipelineConfig = {
         }
       }
 
-      const config = { settings, rules, adguard: adguardPayload, hasBloom: Boolean(buffer), enabledSystemListIds };
-      if (bloom) bloomMemoryMap.set(profileId, { bloom, ts: Date.now() });
+      const config = { settings, rules, adguard: adguardPayload, hasBloom: Boolean(filter), hasFilter: Boolean(filter), enabledSystemListIds };
+      if (filter) {
+        filterMemoryMap.set(profileId, { filter, bloom: filter, ts: Date.now(), byteLength: filter.byteLength });
+      }
       
       configCache.set(profileId, { ...config, timestamp: Date.now() });
       if (cache) {
         ctx.waitUntil(cacheUtils.set(cache, profileCacheKey, config, 86400, [`profile-${profileId}`]));
-        if (buffer) {
-          const bloomRes = new Response(buffer, {
+        if (filter && buffer) {
+          const filterRes = new Response(buffer, {
             headers: {
               "Content-Type": "application/octet-stream",
-              "Cache-Control": "public, max-age=86400",
-              "Cache-Tag": `bloom-${profileId}`
+              "Cache-Control": "public, max-age=604800",
+              "Cache-Tag": `filter-${profileId}`
             }
           });
-          ctx.waitUntil(cache.put(bloomInternalUrl, bloomRes));
+          ctx.waitUntil(cache.put(filterInternalUrl, filterRes));
         }
       }
       
       track('load_config_full_sync');
-      return { ...config, bloom, adguard: adguardEngine, enabledSystemListIds };
+      return { ...config, bloom: filter, filter, adguard: adguardEngine, enabledSystemListIds };
     } catch (e: any) {
       console.warn(`[Config] D1 profile fetch failed for ${profileId}:`, e?.message || e);
       
-      // 容灾模式 1: Stale-While-Error (使用过期的 L1 缓存)
       if (cachedConfig) {
         console.warn(`[Config] Serving stale config from memory for profile ${profileId}`);
-        return { ...cachedConfig, bloom: inMem?.bloom, adguard: inMemAdguard?.engine, enabledSystemListIds: cachedConfig.enabledSystemListIds || [] };
+        return { ...cachedConfig, bloom: inMem?.filter || inMem?.bloom, filter: inMem?.filter || inMem?.bloom, adguard: inMemAdguard?.engine, enabledSystemListIds: cachedConfig.enabledSystemListIds || [] };
       }
 
-      // 容灾模式 2: Emergency Safe Default Fallback
       console.warn(`[Config] Serving emergency fail-open safe fallback for profile ${profileId}`);
       const failOpenUpstream = env.FAIL_OPEN_UPSTREAM || DEFAULT_FAIL_OPEN_UPSTREAM;
       const fallbackSettings: ProfileSettings = {
@@ -231,7 +239,7 @@ export const pipelineConfig = {
         log_retention_days: 0,
         ecs: { enabled: true, use_client_ip: true }
       };
-      return { settings: fallbackSettings, rules: [], bloom: undefined, adguard: undefined, enabledSystemListIds: [] };
+      return { settings: fallbackSettings, rules: [], bloom: undefined, filter: undefined, adguard: undefined, enabledSystemListIds: [] };
     }
   }
 };

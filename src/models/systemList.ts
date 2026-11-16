@@ -5,7 +5,7 @@
 
 import { D1Database } from "@cloudflare/workers-types";
 import { SystemList } from "../types";
-import { BLOOM_CHUNK_SIZE } from "../utils/bloom";
+import { FILTER_CHUNK_SIZE, FPRT_HEADER_SIZE } from "../utils/fingerprintSet";
 import { AdGuardPayload } from "../lib/adguard/types";
 
 export class SystemListModel {
@@ -105,9 +105,9 @@ export class SystemListModel {
     return result.success;
   }
 
-  // ─── System List Bloom Filter Storage ──────────────────────────────────────
+  // ─── System List Fingerprint Filter Storage ──────────────────────────────────────
 
-  async clearSystemListBloom(systemListId: number): Promise<boolean> {
+  async clearSystemListFilter(systemListId: number): Promise<boolean> {
     const result = await this.db
       .prepare("DELETE FROM system_list_blooms WHERE system_list_id = ?")
       .bind(systemListId)
@@ -115,8 +115,8 @@ export class SystemListModel {
     return result.success;
   }
 
-  async upsertSystemListBloom(systemListId: number, bloomFilter: ArrayBuffer, now: number): Promise<boolean> {
-    const uint8Array = new Uint8Array(bloomFilter);
+  async upsertSystemListFilter(systemListId: number, FingerprintFilter: ArrayBuffer, now: number): Promise<boolean> {
+    const uint8Array = new Uint8Array(FingerprintFilter);
     const statements = [];
 
     statements.push(
@@ -124,8 +124,8 @@ export class SystemListModel {
     );
 
     let chunkIndex = 0;
-    for (let offset = 0; offset < uint8Array.length; offset += BLOOM_CHUNK_SIZE) {
-      const chunkData = uint8Array.slice(offset, offset + BLOOM_CHUNK_SIZE).buffer as ArrayBuffer;
+    for (let offset = 0; offset < uint8Array.length; offset += FILTER_CHUNK_SIZE) {
+      const chunkData = uint8Array.slice(offset, offset + FILTER_CHUNK_SIZE).buffer as ArrayBuffer;
       statements.push(
         this.db.prepare(
           "INSERT INTO system_list_blooms (system_list_id, chunk_index, bloom_filter_chunk, updated_at) VALUES (?, ?, ?, ?)"
@@ -138,7 +138,7 @@ export class SystemListModel {
     return results.every(r => r.success);
   }
 
-  async getSystemListBloom(systemListId: number): Promise<ArrayBuffer | null> {
+  async getSystemListFilter(systemListId: number): Promise<ArrayBuffer | null> {
     const { results } = await this.db.prepare(
       "SELECT bloom_filter_chunk FROM system_list_blooms WHERE system_list_id = ? ORDER BY chunk_index ASC"
     ).bind(systemListId).all<{ bloom_filter_chunk: ArrayBuffer }>();
@@ -161,12 +161,12 @@ export class SystemListModel {
   }
 
   /**
-   * Reads only the first 20 bytes (BLMZ header) of the stored Bloom instead of
-   * concatenating every ~1.5MB chunk. Enough for BloomFilter.isCurrentVersion().
+   * Reads only the first FPRT_HEADER_SIZE bytes of the stored filter instead of
+   * concatenating every ~1.5MB chunk. Enough for FingerprintSet.isCurrentVersion().
    */
-  async getSystemListBloomHeader(systemListId: number): Promise<Uint8Array | null> {
+  async getSystemListFilterHeader(systemListId: number): Promise<Uint8Array | null> {
     const row = await this.db.prepare(
-      "SELECT substr(bloom_filter_chunk, 1, 20) AS head FROM system_list_blooms WHERE system_list_id = ? AND chunk_index = 0"
+      `SELECT substr(bloom_filter_chunk, 1, ${FPRT_HEADER_SIZE}) AS head FROM system_list_blooms WHERE system_list_id = ? AND chunk_index = 0`
     ).bind(systemListId).first<{ head: ArrayBuffer | Uint8Array | null }>();
     if (!row || !row.head) return null;
     return row.head instanceof Uint8Array ? row.head : new Uint8Array(row.head);

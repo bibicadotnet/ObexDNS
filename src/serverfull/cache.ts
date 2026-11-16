@@ -7,8 +7,13 @@ export class MemoryCache {
   private store = new Map<string, { body: Uint8Array; headers: Headers; status: number; statusText: string; expires: number }>();
   private readonly maxEntries: number;
 
-  constructor(maxEntries = 5000) {
-    this.maxEntries = maxEntries;
+  constructor(maxEntries?: number) {
+    const envLimit = typeof process !== 'undefined' && process?.env?.MEMORY_CACHE_LIMIT
+      ? Number(process.env.MEMORY_CACHE_LIMIT)
+      : undefined;
+    this.maxEntries = maxEntries && maxEntries > 0
+      ? maxEntries
+      : (envLimit && envLimit > 0 ? envLimit : 5000);
   }
 
   async match(request: string | Request): Promise<Response | undefined> {

@@ -22,8 +22,7 @@ import { formatBanner, formatDiagnostic, formatKeyValueSection } from './format'
 import { checkNodeVersion, parseCli } from './cli';
 import { systemListsManager } from '../lib/filtering/systemListsManager';
 import { SystemListModel } from '../models/systemList';
-import { syncAllSystemLists } from '../utils/sync';
-import { migrateBloomParamsIfChanged } from '../utils/sync/bloomParams';
+import { syncAllSystemLists, migrateFilterFormatIfLegacy } from '../utils/sync';
 
 export * from './cli';
 
@@ -152,11 +151,21 @@ async function bootstrap(): Promise<void> {
     env.DB = db;
   }
 
+  // Cảnh báo cấu hình mâu thuẫn nếu MAX_LIST_DOMAINS * ~30 byte > MAX_LIST_BYTES
+  const maxListDomains = Number(process.env.MAX_LIST_DOMAINS) || 500000;
+  const maxListBytes = Number(process.env.MAX_LIST_BYTES) || 25 * 1024 * 1024;
+  if (maxListDomains * 30 > maxListBytes) {
+    console.warn(
+      `[Config Warning] MAX_LIST_DOMAINS (${maxListDomains}) * ~30 bytes exceeds MAX_LIST_BYTES (${maxListBytes} bytes). ` +
+      `Lists will be truncated by byte limit before reaching the domain ceiling. Consider increasing MAX_LIST_BYTES.`
+    );
+  }
+
+  // One-time startup check: migrate legacy BLMZ filters to FPRT format
+  await migrateFilterFormatIfLegacy(env);
+
   // Pre-load System Shared Lists into Memory and auto-register configured URLs
   systemListsManager.ensureLoaded(env.DB, false, env).then(async () => {
-    // If MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE changed since the last start, reset sync state once so
-    // every list is rebuilt with the new Bloom size. Must run before the unsynced-system-list check below.
-    await migrateBloomParamsIfChanged(env);
     const sysModel = new SystemListModel(env.DB);
     const sysLists = await sysModel.getSystemLists();
     const needsSync = sysLists.some(l => !l.last_synced_at);

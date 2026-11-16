@@ -5,7 +5,7 @@ import { pipelineConfig } from "../src/pipeline/config";
 import { fetchListContent } from "../src/utils/listFetcher";
 import { syncSingleList } from "../src/utils/sync/singleListSync";
 import { cacheUtils } from "../src/utils/cache";
-import { BloomFilter } from "../src/utils/bloom";
+import { FingerprintSet, FingerprintSetBuilder, hashDomain, hashDomainWithPipePipe } from "../src/utils/fingerprintSet";
 import type { Context, Env } from "../src/types";
 
 // Mock Cache API
@@ -126,26 +126,28 @@ async function runIssueVerificationTests() {
         return true;
       }
     };
-    const mockListBloomModel: any = {
-      getListBloomHeader: async () => null,
-      upsertListBloom: async () => true,
-      deleteListBloom: async () => true
+    const mockListFilterModel: any = {
+      getListFilterHeader: async () => null,
+      upsertListFilter: async () => true,
+      deleteListFilter: async () => true
+    };
+    const mockDbObj = {
+      run: async () => ({ success: true }),
+      first: async () => null,
+      all: async () => ({ results: [] })
     };
     const mockEnv: Env = {
       MAX_LIST_BYTES: 500, // force truncation
       DB: {
         prepare: () => ({
-          bind: () => ({
-            run: async () => ({ success: true }),
-            first: async () => null,
-            all: async () => ({ results: [] })
-          })
+          bind: () => mockDbObj,
+          ...mockDbObj
         })
       } as any,
       ASSETS: {}
     };
 
-    const syncRes = await syncSingleList("prof_trunc_test", { id: 42, url: mockListUrl }, mockEnv, mockListModel, mockListBloomModel, Math.floor(Date.now() / 1000));
+    const syncRes = await syncSingleList("prof_trunc_test", { id: 42, url: mockListUrl }, mockEnv, mockListModel, mockListFilterModel, Math.floor(Date.now() / 1000));
     const syncWarning = syncRes.syncError;
     assert.ok(syncWarning !== null, "syncError should not be null on truncation");
     // Warning is a machine-readable code carrying the effective env limit; the UI localizes it
@@ -154,15 +156,20 @@ async function runIssueVerificationTests() {
     console.log("   ✓ syncSingleList safely recorded truncation warning without silent pass.");
 
     // Test 1.4: Zero-allocation addPipePipe bit-for-bit equivalence with add("||" + domain)
-    const bfStandard = BloomFilter.create(10000, 0.0001);
-    const bfOptimized = BloomFilter.create(10000, 0.0001);
     const testDomains = ["adservice.google.com", "tracker.analytics.net", "telemetry.badsite.org"];
     for (const d of testDomains) {
-      bfStandard.add(`||${d}`);
-      bfOptimized.addPipePipe(d);
+      assert.strictEqual(hashDomainWithPipePipe(d), hashDomain(`||${d}`), "hashDomainWithPipePipe must match hashDomain(||domain)");
     }
-    const buf1 = bfStandard.toUint8Array();
-    const buf2 = bfOptimized.toUint8Array();
+    const b1 = new FingerprintSetBuilder();
+    const b2 = new FingerprintSetBuilder();
+    for (const d of testDomains) {
+      b1.add(`||${d}`);
+      b2.addPipePipe(d);
+    }
+    const s1 = await b1.build();
+    const s2 = await b2.build();
+    const buf1 = s1.toUint8Array();
+    const buf2 = s2.toUint8Array();
     assert.strictEqual(buf1.length, buf2.length);
     assert.ok(buf1.every((byte, idx) => byte === buf2[idx]), "addPipePipe must match standard add(||domain) bit for bit");
     console.log("   ✓ addPipePipe zero-heap-allocation prefix hash verified bit-for-bit identical.");
@@ -191,22 +198,23 @@ async function runIssueVerificationTests() {
     // =========================================================================
     // 2. Verify L2 Cache consistency and Bloom rehydration
     // =========================================================================
-    console.log("3. Testing L2 Cache versioning & Bloom Filter loading...");
+    console.log("3. Testing L2 Cache versioning & Filter loading...");
 
     const profileId = "prof_cache_sync_test";
     const profileCacheKey = `${PROFILE_CACHE_KEY_PREFIX}:${profileId}`;
-    const bloomUrl = cacheUtils.generateCacheUrl(`bloom-bin:${profileId}`);
+    const filterUrl = cacheUtils.generateCacheUrl(`filter-bin:${profileId}`);
 
-    // Create a real small Bloom filter
-    const bloom = BloomFilter.create(1000, 0.001);
-    bloom.add("blocked-test.com");
-    bloom.add("||blocked-test.com");
-    const bloomBuffer = bloom.toUint8Array().buffer;
+    // Create a real small FingerprintSet filter
+    const builder = new FingerprintSetBuilder();
+    builder.add("blocked-test.com");
+    builder.addPipePipe("blocked-test.com");
+    const filter = await builder.build();
+    const filterBuffer = filter.toUint8Array().buffer;
 
     let d1BloomReadCount = 0;
     const mockD1: any = {
-      prepare: (sql: string) => ({
-        bind: (...args: any[]) => ({
+      prepare: (sql: string) => {
+        const stmt = {
           first: async () => {
             if (sql.includes("FROM profiles WHERE id =")) {
               return { id: profileId, settings: JSON.stringify({ upstream: ["1.1.1.1"] }), list_updated_at: 100 };
@@ -222,17 +230,26 @@ async function runIssueVerificationTests() {
           all: async () => {
             if (sql.includes("FROM profile_blooms WHERE profile_id =")) {
               d1BloomReadCount++;
-              return { results: [{ bloom_filter_chunk: bloomBuffer }] };
+              return { results: [{ bloom_filter_chunk: filterBuffer }] };
             }
             return { results: [] };
           },
+          run: async () => ({ success: true }),
           raw: async () => []
-        })
-      })
+        };
+        return {
+          bind: (...args: any[]) => stmt,
+          ...stmt
+        };
+      }
     };
 
+    const pendingTasks: Promise<any>[] = [];
     const dummyCtx: any = {
-      waitUntil: (p: Promise<any>) => p
+      waitUntil: (p: Promise<any>) => {
+        pendingTasks.push(p);
+        return p;
+      }
     };
 
     const context: Context = {
@@ -245,16 +262,17 @@ async function runIssueVerificationTests() {
     // Step A: Load config from D1 (simulating first query after blocklist added)
     console.log("   - Performing first pipelineConfig.load (D1 load)...");
     const loaded1 = await pipelineConfig.load(context, () => {});
-    assert.ok(loaded1?.bloom, "Bloom filter should be loaded on initial D1 fetch");
-    assert.strictEqual(loaded1?.bloom?.test("blocked-test.com"), true);
+    await Promise.all(pendingTasks);
+    assert.ok(loaded1?.filter, "Filter should be loaded on initial D1 fetch");
+    assert.strictEqual(loaded1?.filter?.test("blocked-test.com"), true);
     assert.strictEqual(d1BloomReadCount, 1);
 
-    // Verify L2 cache has profile_v8 and bloom-bin
+    // Verify L2 cache has profile_v8 and filter-bin
     const cachedProfileInL2 = mockCache.store.get(cacheUtils.generateCacheUrl(profileCacheKey));
     assert.ok(cachedProfileInL2, "Profile config should be stored under PROFILE_CACHE_KEY_PREFIX in L2 cache");
-    const cachedBloomInL2 = mockCache.store.get(bloomUrl);
-    assert.ok(cachedBloomInL2, "Bloom binary should be stored under bloom-bin in L2 cache");
-    console.log("   ✓ L2 cache successfully stored profile_v8 and bloom-bin binary.");
+    const cachedFilterInL2 = mockCache.store.get(filterUrl);
+    assert.ok(cachedFilterInL2, "Filter binary should be stored under filter-bin in L2 cache");
+    console.log("   ✓ L2 cache successfully stored profile_v8 and filter-bin binary.");
 
     // Step B: Simulate clearing pipelineCache (e.g. on sync or rules change)
     console.log("   - Calling pipelineCache.clear(profileId)...");
@@ -263,25 +281,27 @@ async function runIssueVerificationTests() {
 
     // Verify that current version key was deleted from L2
     assert(mockCache.deleted.includes(cacheUtils.generateCacheUrl(profileCacheKey)), "profile_v8 cache key must be deleted by clear()");
-    assert(mockCache.deleted.includes(bloomUrl), "bloom-bin cache key must be deleted by clear()");
-    console.log("   ✓ pipelineCache.clear successfully invalidated profile_v8 and bloom-bin.");
+    assert(mockCache.deleted.includes(filterUrl), "filter-bin cache key must be deleted by clear()");
+    console.log("   ✓ pipelineCache.clear successfully invalidated profile_v8 and filter-bin.");
 
-    // Step C: Verify fallback rehydration if L2 contains config with hasBloom=true but bloom-bin is missing
-    console.log("   - Testing L2 fallback rehydration when Bloom binary was evicted...");
-    // Put profile config back in L2 with hasBloom: true, but leave bloom-bin empty
+    // Step C: Verify fallback rehydration if L2 contains config with hasFilter=true but filter-bin is missing
+    console.log("   - Testing L2 fallback rehydration when Filter binary was evicted...");
+    // Put profile config back in L2 with hasFilter: true, but leave filter-bin empty
     await cacheUtils.set(mockCache as any, profileCacheKey, {
       settings: { upstream: ["1.1.1.1"] },
       rules: [],
+      hasFilter: true,
       hasBloom: true
     }, 86400);
-    mockCache.store.delete(bloomUrl); // simulate bloom eviction
+    mockCache.store.delete(filterUrl); // simulate filter eviction
 
     d1BloomReadCount = 0;
     const loadedFallback = await pipelineConfig.load(context, () => {});
-    assert.ok(loadedFallback?.bloom, "Bloom filter should be restored via D1 fallback when L2 has hasBloom=true");
-    assert.strictEqual(loadedFallback?.bloom?.test("blocked-test.com"), true);
-    assert.strictEqual(d1BloomReadCount, 1, "D1 Bloom should have been queried exactly once as fallback");
-    console.log("   ✓ Fallback gracefully rehydrated Bloom filter from D1 and repopulated L2.");
+    await Promise.all(pendingTasks);
+    assert.ok(loadedFallback?.filter, "Filter should be restored via D1 fallback when L2 has hasFilter=true");
+    assert.strictEqual(loadedFallback?.filter?.test("blocked-test.com"), true);
+    assert.strictEqual(d1BloomReadCount, 1, "D1 Filter should have been queried exactly once as fallback");
+    console.log("   ✓ Fallback gracefully rehydrated Filter from D1 and repopulated L2.");
 
   } finally {
     (globalThis as any).caches = originalCaches;

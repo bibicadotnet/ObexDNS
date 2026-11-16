@@ -1,11 +1,11 @@
 import { D1Database } from "@cloudflare/workers-types";
-import { BLOOM_CHUNK_SIZE } from "../utils/bloom";
+import { FILTER_CHUNK_SIZE, FPRT_HEADER_SIZE } from "../utils/fingerprintSet";
 
-export class ListBloomModel {
+export class ListFilterModel {
   constructor(private db: D1Database) {}
 
-  async upsertListBloom(listId: number, bloomFilter: ArrayBuffer, now: number): Promise<boolean> {
-    const uint8Array = new Uint8Array(bloomFilter);
+  async upsertListFilter(listId: number, filterBuffer: ArrayBuffer, now: number): Promise<boolean> {
+    const uint8Array = new Uint8Array(filterBuffer);
     const statements = [];
 
     // Delete existing chunks for this list
@@ -13,10 +13,10 @@ export class ListBloomModel {
       this.db.prepare("DELETE FROM list_blooms WHERE list_id = ?").bind(listId)
     );
 
-    // Insert new chunks (1.5MB per chunk, <= 2MB D1 limit)
+    // Insert new chunks (<= 1.5MB per chunk, <= 2MB D1 limit)
     let chunkIndex = 0;
-    for (let offset = 0; offset < uint8Array.length; offset += BLOOM_CHUNK_SIZE) {
-      const chunkData = uint8Array.slice(offset, offset + BLOOM_CHUNK_SIZE).buffer as ArrayBuffer;
+    for (let offset = 0; offset < uint8Array.length; offset += FILTER_CHUNK_SIZE) {
+      const chunkData = uint8Array.slice(offset, offset + FILTER_CHUNK_SIZE).buffer as ArrayBuffer;
       statements.push(
         this.db.prepare(
           "INSERT INTO list_blooms (list_id, chunk_index, bloom_filter_chunk, updated_at) VALUES (?, ?, ?, ?)"
@@ -30,30 +30,25 @@ export class ListBloomModel {
   }
 
   /**
-   * Whether any bloom chunk is stored for this list.
-   *
-   * getListBloom concatenates every chunk (~2.4MB for a 1M-domain list), which
-   * is far too much work to answer a yes/no question - and doing it for several
-   * lists concurrently would blow past the memory ceiling combineAndPromote
-   * maintains by loading one list at a time.
+   * Whether any filter chunk is stored for this list.
    */
-  async hasListBloom(listId: number): Promise<boolean> {
+  async hasListFilter(listId: number): Promise<boolean> {
     const row = await this.db.prepare(
       "SELECT 1 AS present FROM list_blooms WHERE list_id = ? LIMIT 1"
     ).bind(listId).first<{ present: number }>();
     return !!row;
   }
 
-  /** First 20 bytes (BLMZ header) of the stored Bloom; avoids loading all chunks just to check the version. */
-  async getListBloomHeader(listId: number): Promise<Uint8Array | null> {
+  /** First FPRT_HEADER_SIZE bytes of the stored filter; avoids loading all chunks to check version. */
+  async getListFilterHeader(listId: number): Promise<Uint8Array | null> {
     const row = await this.db.prepare(
-      "SELECT substr(bloom_filter_chunk, 1, 20) AS head FROM list_blooms WHERE list_id = ? AND chunk_index = 0"
+      `SELECT substr(bloom_filter_chunk, 1, ${FPRT_HEADER_SIZE}) AS head FROM list_blooms WHERE list_id = ? AND chunk_index = 0`
     ).bind(listId).first<{ head: ArrayBuffer | Uint8Array | null }>();
     if (!row || !row.head) return null;
     return row.head instanceof Uint8Array ? row.head : new Uint8Array(row.head);
   }
 
-  async getListBloom(listId: number): Promise<ArrayBuffer | null> {
+  async getListFilter(listId: number): Promise<ArrayBuffer | null> {
     const { results } = await this.db.prepare(
       "SELECT bloom_filter_chunk FROM list_blooms WHERE list_id = ? ORDER BY chunk_index ASC"
     )
@@ -78,7 +73,7 @@ export class ListBloomModel {
     return combined.buffer as ArrayBuffer;
   }
 
-  async deleteListBloom(listId: number): Promise<boolean> {
+  async deleteListFilter(listId: number): Promise<boolean> {
     const result = await this.db.prepare(
       "DELETE FROM list_blooms WHERE list_id = ?"
     )
@@ -87,7 +82,7 @@ export class ListBloomModel {
     return result.success;
   }
 
-  async getActiveListBloomsForProfile(profileId: string): Promise<ArrayBuffer[]> {
+  async getActiveListFiltersForProfile(profileId: string): Promise<ArrayBuffer[]> {
     const { results } = await this.db.prepare(`
       SELECT lb.list_id, lb.bloom_filter_chunk
       FROM list_blooms lb
@@ -100,7 +95,6 @@ export class ListBloomModel {
 
     if (!results || results.length === 0) return [];
 
-    // Group chunks by list_id
     const groups = new Map<number, ArrayBuffer[]>();
     for (const row of results) {
       if (!groups.has(row.list_id)) {
@@ -109,8 +103,7 @@ export class ListBloomModel {
       groups.get(row.list_id)!.push(row.bloom_filter_chunk);
     }
 
-    // Combine chunks for each list_id
-    const blooms: ArrayBuffer[] = [];
+    const filters: ArrayBuffer[] = [];
     for (const [, chunks] of groups.entries()) {
       const totalLength = chunks.reduce((acc, chunk) => {
         const len = chunk.byteLength ?? (chunk as any).length;
@@ -123,9 +116,9 @@ export class ListBloomModel {
         combined.set(chunkArr, offset);
         offset += chunkArr.length;
       }
-      blooms.push(combined.buffer as ArrayBuffer);
+      filters.push(combined.buffer as ArrayBuffer);
     }
 
-    return blooms;
+    return filters;
   }
 }

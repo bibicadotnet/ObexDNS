@@ -4,18 +4,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { initNodeGlobals } from "../src/serverfull/cache";
 import { initServerfullDb } from "../src/serverfull/db";
-import { ListBloomModel } from "../src/models/listBloom";
+import { ListFilterModel } from "../src/models/listFilter";
 import { SystemSettingsModel } from "../src/models/systemSettings";
-import { BloomFilter } from "../src/utils/bloom";
-import { migrateBloomParamsIfChanged, currentBloomFingerprint, BLOOM_PARAMS_SETTING_KEY } from "../src/utils/sync/bloomParams";
+import { FingerprintSet, FingerprintSetBuilder, FPRT_MAGIC } from "../src/utils/fingerprintSet";
+import {
+  migrateFilterFormatIfLegacy,
+  FILTER_FORMAT_SETTING_KEY,
+  CURRENT_FILTER_FORMAT,
+  resetFilterMigrationCheckForTesting
+} from "../src/utils/sync/filterMigration";
 import type { Env } from "../src/types";
 
-// Startup-only handling of a changed MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE, on a real SQLite DB.
+// Startup-only handling of legacy BLMZ Bloom filters migrating to FingerprintSet (FPRT).
 
 async function freshDb(name: string) {
-  // SystemSettingsModel keeps a process-wide cache keyed by setting name; each case here uses its own DB
   SystemSettingsModel.clearMemoryCache();
-  const dir = path.join(process.cwd(), "temp_test_data_bloom_params");
+  resetFilterMigrationCheckForTesting();
+  const dir = path.join(process.cwd(), "temp_test_data_filter_migration");
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${name}.sqlite`);
   for (const suffix of ["", "-wal", "-shm"]) fs.rmSync(file + suffix, { force: true });
@@ -47,83 +52,77 @@ const isReset = (s: any) =>
 const isIntact = (s: any) =>
   s.list.etag === '"e1"' && s.list.last_synced_at !== null && s.sys.etag === '"s1"' && s.p1 !== null;
 
-async function putListBloom(db: any, listId: number, n: number, p: number) {
-  const b = BloomFilter.create(n, p);
-  b.addPipePipe("example.com");
-  await new ListBloomModel(db).upsertListBloom(listId, b.toUint8Array().buffer as ArrayBuffer, 1);
+/** Inserts a fake legacy BLMZ buffer */
+async function putLegacyBloomChunk(db: any, listId: number) {
+  const legacyBuf = new Uint8Array(20);
+  const view = new DataView(legacyBuf.buffer);
+  view.setUint32(0, 0x5a4d4c42, true); // 'BLMZ'
+  await db.prepare("INSERT INTO list_blooms (list_id, chunk_index, bloom_filter_chunk, updated_at) VALUES (?, ?, ?, ?)")
+    .bind(listId, 0, legacyBuf.buffer as ArrayBuffer, 1)
+    .run();
 }
 
 async function main() {
   initNodeGlobals();
 
-  // helper math: same numbers the docs/analysis used
-  const f1m = currentBloomFingerprint({ MAX_SYNC_DOMAINS: 1000000 } as Env);
-  const f2m = currentBloomFingerprint({ MAX_SYNC_DOMAINS: 2000000 } as Env);
-  assert.strictEqual(f1m, "m=19170117;k=13");
-  assert.notStrictEqual(f1m, f2m);
-  assert.strictEqual(currentBloomFingerprint({} as Env), f1m, "defaults (1M, 0.0001) when the variables are absent");
-  console.log("✓ fingerprint follows MAX_SYNC_DOMAINS / BLOOM_FALSE_POSITIVE_RATE, defaults match the sync code");
-
-  // 1. existing install built with 1M, admin now sets 2M, no fingerprint remembered yet -> detected from stored header
+  // 1. Existing install with legacy BLMZ data: startup detects it and triggers rebuild
   {
     const { db, listId } = await freshDb("case1");
-    await putListBloom(db, listId, 1000000, 0.0001);
-    const env = { DB: db, MAX_SYNC_DOMAINS: 2000000 } as unknown as Env;
-    const r = await migrateBloomParamsIfChanged(env);
-    assert.strictEqual(r.outcome, "reset");
+    await putLegacyBloomChunk(db, listId);
+    const env = { DB: db } as unknown as Env;
+    const r = await migrateFilterFormatIfLegacy(env);
+    assert.strictEqual(r.migrated, true);
+    assert.strictEqual(r.outcome, "migrated");
     const s = await snapshot(db);
-    assert.ok(isReset(s), `state must be reset: ${JSON.stringify(s)}`);
-    assert.strictEqual(s.p2, (await snapshot(db)).p2);
-    assert.notStrictEqual(s.p2, null, "profile without lists must be left alone");
-    assert.strictEqual(await new SystemSettingsModel(db).get(BLOOM_PARAMS_SETTING_KEY), f2m);
-    console.log("✓ 1M -> 2M detected from stored Bloom headers: system lists, profile lists and profiles reset, fingerprint saved");
+    assert.ok(isReset(s), `State must be reset: ${JSON.stringify(s)}`);
+    assert.notStrictEqual(s.p2, null, "Profile without lists must be left intact");
+    assert.strictEqual(await new SystemSettingsModel(db).get(FILTER_FORMAT_SETTING_KEY), CURRENT_FILTER_FORMAT);
+    console.log("✓ Legacy BLMZ chunk detected: lists, system_lists, and profiles reset, filter_format saved");
 
-    // 2. next boot with the same settings: nothing happens, even if state was refilled in the meantime
+    // 2. Next boot: setting matches, no-op even if lists were resynced
     const now = Math.floor(Date.now() / 1000);
     await db.prepare("UPDATE lists SET etag = '\"e1\"', last_synced_at = ?").bind(now).run();
     await db.prepare("UPDATE system_lists SET etag = '\"s1\"', last_synced_at = ?").bind(now).run();
     await db.prepare("UPDATE profiles SET list_updated_at = ?").bind(now).run();
-    const r2 = await migrateBloomParamsIfChanged(env);
+    resetFilterMigrationCheckForTesting();
+    const r2 = await migrateFilterFormatIfLegacy(env);
+    assert.strictEqual(r2.migrated, false);
     assert.strictEqual(r2.outcome, "unchanged");
-    assert.ok(isIntact(await snapshot(db)), "unchanged settings must not touch the sync state");
-    console.log("✓ same settings on the next start: no reset (cost = one settings read)");
-
-    // 3. changing only the false positive rate resets again
-    const env3 = { DB: db, MAX_SYNC_DOMAINS: 2000000, BLOOM_FALSE_POSITIVE_RATE: 0.0000001 } as unknown as Env;
-    const r3 = await migrateBloomParamsIfChanged(env3);
-    assert.strictEqual(r3.outcome, "reset");
-    assert.ok(isReset(await snapshot(db)));
-    assert.strictEqual(await new SystemSettingsModel(db).get(BLOOM_PARAMS_SETTING_KEY), currentBloomFingerprint(env3));
-    console.log("✓ changing BLOOM_FALSE_POSITIVE_RATE alone resets again");
+    assert.ok(isIntact(await snapshot(db)), "Unchanged setting must not touch sync state");
+    console.log("✓ Subsequent boot with current filter_format: unchanged, no reset");
+    db.rawDb?.close();
   }
 
-  // 4. first start of a brand new install (no Blooms stored): just remember, do not reset
+  // 3. Clean install with no legacy blooms: records format without reset
   {
-    const { db } = await freshDb("case4");
-    const r = await migrateBloomParamsIfChanged({ DB: db, MAX_SYNC_DOMAINS: 2000000 } as unknown as Env);
-    assert.strictEqual(r.outcome, "initialized");
+    const { db } = await freshDb("case2");
+    const env = { DB: db } as unknown as Env;
+    const r = await migrateFilterFormatIfLegacy(env);
+    assert.strictEqual(r.migrated, false);
+    assert.strictEqual(r.outcome, "none_needed");
     assert.ok(isIntact(await snapshot(db)));
-    console.log("✓ nothing stored yet: fingerprint recorded, no reset");
+    assert.strictEqual(await new SystemSettingsModel(db).get(FILTER_FORMAT_SETTING_KEY), CURRENT_FILTER_FORMAT);
+    console.log("✓ Clean install: recorded filter_format, no reset");
+    db.rawDb?.close();
   }
 
-  // 5. upgrading an install whose stored Blooms already match the current settings: no pointless rebuild
-  {
-    const { db, listId } = await freshDb("case5");
-    await putListBloom(db, listId, 2000000, 0.0001);
-    const r = await migrateBloomParamsIfChanged({ DB: db, MAX_SYNC_DOMAINS: 2000000 } as unknown as Env);
-    assert.strictEqual(r.outcome, "initialized");
-    assert.ok(isIntact(await snapshot(db)));
-    console.log("✓ stored Blooms already match: recorded, no reset");
-  }
+  // 4. Header validation
+  assert.strictEqual(FingerprintSet.isCurrentVersion(new Uint8Array(20)), false);
+  assert.strictEqual(FingerprintSet.isCurrentVersion(null), false);
+  const builder = new FingerprintSetBuilder();
+  builder.add("example.com");
+  const set = await builder.build();
+  const bin = set.toUint8Array();
+  assert.strictEqual(FingerprintSet.isCurrentVersion(bin), true);
+  console.log("✓ FingerprintSet header validation verified");
 
-  // 6. header parsing never mistakes unknown formats for a mismatch
-  assert.strictEqual(BloomFilter.readHeaderParams(new Uint8Array(20)), null);
-  assert.strictEqual(BloomFilter.readHeaderParams(null), null);
-  const b = BloomFilter.create(2000000, 0.0001);
-  assert.deepStrictEqual(BloomFilter.readHeaderParams(b.toUint8Array().slice(0, 20)), BloomFilter.computeParams(2000000, 0.0001));
-  console.log("✓ readHeaderParams: round trip, null for unknown formats");
-
-  fs.rmSync(path.join(process.cwd(), "temp_test_data_bloom_params"), { recursive: true, force: true });
-  console.log("\nALL BLOOM PARAMS MIGRATION TESTS PASSED");
+  try {
+    fs.rmSync(path.join(process.cwd(), "temp_test_data_filter_migration"), { recursive: true, force: true });
+  } catch {}
+  console.log("\nALL FILTER FORMAT MIGRATION TESTS PASSED!");
 }
-main().then(() => process.exit(0)).catch((e) => { console.error("FAILED:", e.message || e); process.exit(1); });
+
+main().then(() => process.exit(0)).catch((e) => {
+  console.error("FAILED:", e.message || e);
+  process.exit(1);
+});
