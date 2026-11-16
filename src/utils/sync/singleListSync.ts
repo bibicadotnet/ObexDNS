@@ -11,7 +11,6 @@ import { AdGuardRuleKind, AdGuardPayload, ParsedAdGuardRule } from "../../lib/ad
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
 import { customListsManager } from "../../lib/filtering/customListsManager";
 import { syncSingleSystemList } from "./systemListSync";
-import { logMemoryUsage } from "../memory";
 
 const DEFAULT_MAX_LIST_BYTES = 25 * 1024 * 1024; // 25 MB default limit
 
@@ -162,10 +161,8 @@ export async function syncSingleList(
       console.warn(`[Sync] Profile ${profileId}: list #${list.id} truncated with ${count} rules. Warning: ${syncError}`);
     }
 
-    logMemoryUsage(`SyncList:BeforeBuild listId=${list.id}`);
     // Build the sorted fingerprint set asynchronously (with event loop yields)
     const listFilter = await filterBuilder.build();
-    logMemoryUsage(`SyncList:AfterBuild listId=${list.id}`);
 
     const saveOps: Promise<any>[] = [];
     if (!listFilter.isEmpty()) {
@@ -178,7 +175,6 @@ export async function syncSingleList(
     }
     await Promise.all(saveOps);
     customListsManager.invalidate(list.id);
-    logMemoryUsage(`SyncList:AfterSave listId=${list.id}`);
     if (!syncError) {
       console.log(
         `[Sync] Profile ${profileId}: successfully updated list #${list.id} with ${count} rules.`
