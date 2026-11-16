@@ -25,6 +25,7 @@ export const pipelineConfig = {
 
     // Initialize/update memory cache limits from env
     pipelineCache.initFromEnv(env);
+    customListsManager.initFromEnv(env);
 
     // Ensure system shared lists are active in memory before building/checking config
     if (env.DB) {

@@ -202,7 +202,7 @@ async function purgeTags(env: Env, tags: string[]): Promise<void> {
   }
 }
 
-export const PROFILE_CACHE_KEY_PREFIX = "profile_v8";
+export const PROFILE_CACHE_KEY_PREFIX = "profile_v9";
 
 export const pipelineCache = {
   /**
@@ -270,6 +270,7 @@ export const pipelineCache = {
         const cache = (caches as any).default;
         const tasks: Promise<any>[] = [
           cacheUtils.delete(cache, `${PROFILE_CACHE_KEY_PREFIX}:${profileId}`),
+          cacheUtils.delete(cache, `profile_v8:${profileId}`),
           cacheUtils.delete(cache, `profile_v7:${profileId}`),
           cacheUtils.delete(cache, `profile_v6:${profileId}`)
         ];

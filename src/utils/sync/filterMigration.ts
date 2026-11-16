@@ -37,30 +37,6 @@ export async function migrateFilterFormatIfLegacy(env: Env): Promise<FilterMigra
     return { migrated: false, outcome: "none_needed" };
   }
 
-  // Drop obsolete profile bloom/adguard tables to reclaim disk space
-  try {
-    const dropSqls = [
-      "DROP TABLE IF EXISTS profile_blooms",
-      "DROP TABLE IF EXISTS profile_blooms_staging",
-      "DROP TABLE IF EXISTS profile_adguard_rules",
-      "DROP TABLE IF EXISTS profile_adguard_rules_staging"
-    ];
-    for (const sql of dropSqls) {
-      await env.DB.prepare(sql).bind().run().catch(() => {});
-    }
-  } catch {}
-
-  // Always purge any leftover legacy BLMZ chunks so they don't cause deserialization errors
-  try {
-    const purgeSqls = [
-      "DELETE FROM system_list_blooms WHERE system_list_id IN (SELECT system_list_id FROM system_list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
-      "DELETE FROM list_blooms WHERE list_id IN (SELECT list_id FROM list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')"
-    ];
-    for (const sql of purgeSqls) {
-      await env.DB.prepare(sql).bind().run().catch(() => {});
-    }
-  } catch {}
-
   const settings = new SystemSettingsModel(env.DB);
 
   try {
@@ -88,6 +64,17 @@ export async function migrateFilterFormatIfLegacy(env: Env): Promise<FilterMigra
       } catch (e) {
         // Table may be empty or error
       }
+    }
+
+    // Drop obsolete profile bloom/adguard tables to reclaim disk space (chỉ chạy trong tiến trình migrate)
+    const dropSqls = [
+      "DROP TABLE IF EXISTS profile_blooms",
+      "DROP TABLE IF EXISTS profile_blooms_staging",
+      "DROP TABLE IF EXISTS profile_adguard_rules",
+      "DROP TABLE IF EXISTS profile_adguard_rules_staging"
+    ];
+    for (const sql of dropSqls) {
+      await env.DB.prepare(sql).bind().run().catch(() => {});
     }
 
     if (!hasLegacy && stored === null) {
