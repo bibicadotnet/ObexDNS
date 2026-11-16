@@ -84,11 +84,13 @@ export const pipelineConfig = {
           if (filterRes) {
             track('load_filter_l2_cache');
             const buffer = await filterRes.arrayBuffer();
-            try {
-              filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
-              filterMemoryMap.set(profileId, { filter, bloom: filter, ts: Date.now(), byteLength: filter.byteLength });
-            } catch (e) {
-              console.warn(`[Config] Failed to deserialize cached filter for profile ${profileId}, ignoring:`, e);
+            if (FingerprintSet.isCurrentVersion(buffer)) {
+              try {
+                filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
+                filterMemoryMap.set(profileId, { filter, bloom: filter, ts: Date.now(), byteLength: filter.byteLength });
+              } catch (e: any) {
+                console.warn(`[Config] Failed to deserialize cached filter for profile ${profileId}, ignoring:`, e?.message || e);
+              }
             }
           }
         } catch {
@@ -103,25 +105,27 @@ export const pipelineConfig = {
           const buffer = await filterModel.getProfileFilter(profileId);
           if (buffer) {
             track('load_filter_d1_fallback');
-            try {
-              filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
-              filterMemoryMap.set(profileId, { filter, bloom: filter, ts: Date.now(), byteLength: filter.byteLength });
-              if (cache) {
-                const filterRes = new Response(buffer, {
-                  headers: {
-                    "Content-Type": "application/octet-stream",
-                    "Cache-Control": "public, max-age=604800",
-                    "Cache-Tag": `filter-${profileId}`
-                  }
-                });
-                ctx.waitUntil(cache.put(filterInternalUrl, filterRes));
+            if (FingerprintSet.isCurrentVersion(buffer)) {
+              try {
+                filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
+                filterMemoryMap.set(profileId, { filter, bloom: filter, ts: Date.now(), byteLength: filter.byteLength });
+                if (cache) {
+                  const filterRes = new Response(buffer, {
+                    headers: {
+                      "Content-Type": "application/octet-stream",
+                      "Cache-Control": "public, max-age=604800",
+                      "Cache-Tag": `filter-${profileId}`
+                    }
+                  });
+                  ctx.waitUntil(cache.put(filterInternalUrl, filterRes));
+                }
+              } catch (e: any) {
+                console.warn(`[Config] D1 filter buffer invalid for profile ${profileId}, skipping:`, e?.message || e);
               }
-            } catch (e) {
-              console.warn(`[Config] D1 filter buffer invalid for profile ${profileId}, skipping:`, e);
             }
           }
-        } catch (e) {
-          console.error(`[Config] D1 Filter fallback fetch failed for profile ${profileId}:`, e);
+        } catch (e: any) {
+          console.error(`[Config] D1 Filter fallback fetch failed for profile ${profileId}:`, e?.message || e);
         }
       }
 
@@ -180,10 +184,15 @@ export const pipelineConfig = {
       if (buffer) {
         track('load_filter_l3_d1');
         const uint8 = new Uint8Array(buffer);
-        try {
-          filter = FingerprintSet.fromUint8Array(uint8);
-        } catch (e) {
-          console.warn(`[Config] Legacy or invalid filter data for profile ${profileId}, will be rebuilt on next sync:`, e);
+        if (FingerprintSet.isCurrentVersion(uint8)) {
+          try {
+            filter = FingerprintSet.fromUint8Array(uint8);
+          } catch (e: any) {
+            console.warn(`[Config] Corrupt filter data for profile ${profileId}, will be rebuilt on next sync:`, e?.message || e);
+            filter = undefined;
+          }
+        } else {
+          // Legacy BLMZ format - will be rebuilt into FPRT on next sync
           filter = undefined;
         }
       }

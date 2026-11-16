@@ -162,14 +162,19 @@ class SystemListsManager {
           try {
             const bloomBuf = await model.getSystemListFilter(list.id);
             if (bloomBuf) {
-              bloom = FingerprintSet.fromUint8Array(new Uint8Array(bloomBuf));
-              if (bloom.isEmpty()) {
+              if (FingerprintSet.isCurrentVersion(bloomBuf)) {
+                bloom = FingerprintSet.fromUint8Array(new Uint8Array(bloomBuf));
+                if (bloom.isEmpty()) {
+                  bloom = null;
+                }
+              } else {
+                // Legacy BLMZ format - will be populated once this system list syncs
                 bloom = null;
               }
             }
-          } catch (e) {
+          } catch (e: any) {
             loadFailed = true;
-            console.error(`[SystemListsManager] Failed to load Bloom for system list #${list.id}:`, e);
+            console.error(`[SystemListsManager] Failed to load Bloom for system list #${list.id}:`, e?.message || e);
           }
 
           try {
@@ -177,9 +182,9 @@ class SystemListsManager {
             if (adguardPayload) {
               adguard = new AdGuardProfileEngine(adguardPayload);
             }
-          } catch (e) {
+          } catch (e: any) {
             loadFailed = true;
-            console.error(`[SystemListsManager] Failed to load AdGuard rules for system list #${list.id}:`, e);
+            console.error(`[SystemListsManager] Failed to load AdGuard rules for system list #${list.id}:`, e?.message || e);
           }
 
           newItems.set(list.id, {

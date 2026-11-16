@@ -53,7 +53,7 @@ export async function combineAndPromote(
     ]);
 
     const saveOps: Promise<any>[] = [];
-    if (buf) {
+    if (buf && FingerprintSet.isCurrentVersion(buf)) {
       try {
         const parsed = FingerprintSet.fromUint8Array(new Uint8Array(buf));
         let finalBuf = buf;
@@ -63,9 +63,11 @@ export async function combineAndPromote(
           finalBuf = parsed.truncate(maxProfileDomains).toUint8Array().buffer as ArrayBuffer;
         }
         saveOps.push(profileFilterModel.upsertProfileFilter(profileId, finalBuf, now));
-      } catch (err) {
-        console.warn(`[Sync] List #${single.id} has invalid/legacy filter format, preserving existing profile filter:`, err);
+      } catch (err: any) {
+        console.warn(`[Sync] List #${single.id} has invalid filter format:`, err?.message || err);
       }
+    } else if (buf) {
+      console.warn(`[Sync] List #${single.id} is in legacy filter format, preserving existing profile filter until synced.`);
     } else {
       saveOps.push(profileFilterModel.clearProfileFilters(profileId));
     }
@@ -90,10 +92,14 @@ export async function combineAndPromote(
       try {
         const buf = await listFilterModel.getListFilter(list.id);
         if (buf) {
-          sets.push(FingerprintSet.fromUint8Array(new Uint8Array(buf)));
+          if (FingerprintSet.isCurrentVersion(buf)) {
+            sets.push(FingerprintSet.fromUint8Array(new Uint8Array(buf)));
+          } else {
+            hasInvalidOrLegacyList = true;
+          }
         }
-      } catch (err) {
-        console.error(`[Sync] Failed to load filter for list #${list.id}:`, err);
+      } catch (err: any) {
+        console.error(`[Sync] Failed to load filter for list #${list.id}:`, err?.message || err);
         hasInvalidOrLegacyList = true;
       }
 

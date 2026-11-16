@@ -37,6 +37,18 @@ export async function migrateFilterFormatIfLegacy(env: Env): Promise<FilterMigra
     return { migrated: false, outcome: "none_needed" };
   }
 
+  // Always purge any leftover legacy BLMZ chunks so they don't cause deserialization errors
+  try {
+    const purgeSqls = [
+      "DELETE FROM system_list_blooms WHERE system_list_id IN (SELECT system_list_id FROM system_list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
+      "DELETE FROM list_blooms WHERE list_id IN (SELECT list_id FROM list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
+      "DELETE FROM profile_blooms WHERE profile_id IN (SELECT profile_id FROM profile_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')"
+    ];
+    for (const sql of purgeSqls) {
+      await env.DB.prepare(sql).bind().run().catch(() => {});
+    }
+  } catch {}
+
   const settings = new SystemSettingsModel(env.DB);
 
   try {
@@ -80,6 +92,10 @@ export async function migrateFilterFormatIfLegacy(env: Env): Promise<FilterMigra
       );
 
       const statements = [
+        // Purge legacy BLMZ chunks from filter tables so they don't cause deserialization errors
+        "DELETE FROM system_list_blooms WHERE system_list_id IN (SELECT system_list_id FROM system_list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
+        "DELETE FROM list_blooms WHERE list_id IN (SELECT list_id FROM list_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
+        "DELETE FROM profile_blooms WHERE profile_id IN (SELECT profile_id FROM profile_blooms WHERE chunk_index = 0 AND substr(bloom_filter_chunk, 1, 4) != X'46505254')",
         // Reset system lists so they are re-downloaded and rebuilt
         "UPDATE system_lists SET etag = NULL, last_modified = NULL, last_synced_at = NULL",
         // Reset profile custom lists

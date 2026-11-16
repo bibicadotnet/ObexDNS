@@ -98,11 +98,11 @@ export async function handleProfileListsRequest(
 
       // ── 阶段 2：Fingerprint 过滤器双态前缀检查 ────────────────────────────────────
       let filter: FingerprintSet | null = null;
-      if (buffer) {
+      if (buffer && FingerprintSet.isCurrentVersion(buffer)) {
         try {
           filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
-        } catch (err) {
-          console.error(`[Lists] Failed to deserialize Fingerprint Filter for list #${listId}:`, err);
+        } catch (err: any) {
+          console.error(`[Lists] Failed to deserialize Fingerprint Filter for list #${listId}:`, err?.message || err);
         }
       }
 
