@@ -154,17 +154,17 @@ Configure these variables in `.env` (Serverfull) or `wrangler.toml` (Cloudflare 
 - **Format in `.env.serverfull`**: JSON string.
 - **Default**: Curated default subscriptions including OISD Big (`https://big.oisd.nl`), OISD NSFW, AdGuard Base, and StevenBlack hosts.
 
-### `BLOOM_FALSE_POSITIVE_RATE`
+### `BLOOM_FALSE_POSITIVE_RATE` / `FILTER_FALSE_POSITIVE_RATE` (deprecated)
 - **Supported in**: Serverless & Serverfull
-- **Default (`wrangler.toml`)**: `0.0001` (1 in 10,000)
-- **Default (`.env.serverfull`)**: `0.0001`
-- **Description**: Configures bitset size calculation for Bloom filters. The lower threshold (0.0001) minimizes false positives and eliminates CPU spikes during rule evaluation.
+- **Default**: ignored
+- **Description**: Deprecated. ObexDNS now stores each list as a deterministic, sorted 64-bit fingerprint table (FingerprintSet) instead of a probabilistic Bloom filter, so there is no tunable false-positive rate. The only residual "false positive" is the 64-bit hash collision floor (~1e-13 for millions of domains), which is not user-configurable. Any value set here is ignored; the setting is kept only for backward compatibility and will be removed in a future release.
 
-### `MAX_SYNC_DOMAINS`, `MAX_LIST_DOMAINS` & `MAX_LIST_BYTES`
+### `MAX_LIST_DOMAINS` & `MAX_LIST_BYTES`
 - **Supported in**: Serverless & Serverfull
-- **Defaults**: `MAX_SYNC_DOMAINS=1000000` (1 million total), `MAX_LIST_DOMAINS=500000` (500k per list), & `MAX_LIST_BYTES=20971520` (20 MB per list).
-- **Description**: Safety boundaries to prevent unbounded memory allocation and excessive network downloads during external filter fetching. If a list exceeds `MAX_LIST_BYTES`, it is safely parsed up to the limit and marked with a truncation warning in sync status.
-- **Changing the Bloom settings**: `MAX_SYNC_DOMAINS` and `BLOOM_FALSE_POSITIVE_RATE` together set the Bloom size. When either changes, the next server start detects it once, re-downloads system lists immediately and rebuilds profile lists one list per scheduled sync (existing Blooms keep filtering meanwhile). No manual action is required.
+- **Defaults**: `MAX_LIST_DOMAINS=500000` (500k per list) & `MAX_LIST_BYTES=20971520` (20 MB per list).
+- **Description**: Safety boundaries to prevent unbounded memory allocation and excessive network downloads during external filter fetching. If a list exceeds `MAX_LIST_BYTES`, it is safely parsed up to the limit and marked with a truncation warning in sync status. Each list is stored as a sorted 64-bit fingerprint table (8 bytes per domain), so memory/disk usage scales with the number of domains rather than a fixed Bloom allocation.
+
+> `MAX_SYNC_DOMAINS` (the former total-domain cap used to size the combined profile Bloom) is deprecated and ignored — filtering is now per-list, so only the per-list limits above apply.
 
 ### `BLOOM_MEM_TTL` & `SYNC_TIMEOUT_MS`
 - **Defaults**: `BLOOM_MEM_TTL=600000` (10 minutes in-memory cache) & `SYNC_TIMEOUT_MS=30000` (30s download timeout).

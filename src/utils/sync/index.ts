@@ -5,7 +5,6 @@ export {
   syncNextListForProfile,
   syncAllListsForProfile,
   syncSingleListForProfile,
-  rebuildProfileFilter,
   isProfileSyncing,
   _resetInFlightSyncsForTesting,
 } from "./orchestrator";

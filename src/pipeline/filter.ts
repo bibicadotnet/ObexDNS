@@ -7,8 +7,7 @@
 
 import { Context, DNSQuery, ResolutionResult, ProfileSettings, Rule } from "../types";
 import { DNSFilter } from "../lib/filtering";
-import { FingerprintSet } from "../utils/fingerprintSet";
-import { AdGuardProfileEngine } from "../lib/adguard";
+import { RewriteAction } from "../lib/adguard/types";
 import { systemListsManager } from "../lib/filtering/systemListsManager";
 import { customListsManager, CustomListEntry } from "../lib/filtering/customListsManager";
 import { pipelineResolver } from "./resolver";
@@ -20,9 +19,7 @@ export const pipelineFilter = {
     context: Context,
     settings: ProfileSettings,
     rules: Rule[],
-    bloom: FingerprintSet | undefined,
     track: (name: string) => void,
-    adguard?: AdGuardProfileEngine,
     enabledSystemListIds?: number[],
     enabledCustomListIds?: number[]
   ): Promise<ResolutionResult | null> {
@@ -84,11 +81,6 @@ export const pipelineFilter = {
     track('local_rules');
 
     // ── 阶段 2：白名单例外 (@@) (Profile 自定义 + System 共享 + Custom 列表) ──
-    // 2.1 Profile 自定义例外 (nếu có adguard engine riêng)
-    if (adguard?.testException(domainLower)) {
-      track('adguard_whitelist');
-      return pipelineResolver.resolve(request, query, context, settings, "PASS", "External List: Exception");
-    }
     // 2.2 System 共享例外
     if (enabledSystemListIds && enabledSystemListIds.length > 0) {
       for (const sysId of enabledSystemListIds) {
@@ -110,8 +102,8 @@ export const pipelineFilter = {
     }
 
     // ── 阶段 3：DNS 重写 ($dnsrewrite) (Profile 自定义 + System 共享 + Custom 列表) ─
-    let rewrite = adguard?.matchRewrite(domainLower);
-    let rewriteLabel = "External List: DNS Rewrite";
+    let rewrite: RewriteAction | undefined;
+    let rewriteLabel = "";
     if (!rewrite && enabledSystemListIds && enabledSystemListIds.length > 0) {
       for (const sysId of enabledSystemListIds) {
         const sysAdguard = systemListsManager.getAdguard(sysId);
@@ -209,35 +201,7 @@ export const pipelineFilter = {
       }
     }
 
-    // Tương thích ngược: nếu vẫn có bloom gộp trực tiếp
-    if (bloom) {
-      let currentDomain = domainLower;
-      let isSelf = true;
-      while (currentDomain) {
-        if (isSelf) {
-          if (bloom.test(currentDomain) || bloom.testPipePipe(currentDomain)) {
-            track('bloom_check');
-            return pipelineResolver.block(request, query, context, settings, "BLOCK", `External List: ${currentDomain}`);
-          }
-          isSelf = false;
-        } else {
-          if (bloom.testPipePipe(currentDomain)) {
-            track('bloom_check');
-            return pipelineResolver.block(request, query, context, settings, "BLOCK", `External List: ||${currentDomain}`);
-          }
-        }
-        const firstDot = currentDomain.indexOf('.');
-        if (firstDot === -1) break;
-        currentDomain = currentDomain.substring(firstDot + 1);
-      }
-      track('bloom_check');
-    }
-
     // ── 阶段 5：外部列表正则与复杂通配符池 (Regex / Wildcard Pool) ─────────
-    if (adguard?.matchPattern(domainLower)) {
-      track('adguard_pattern');
-      return pipelineResolver.block(request, query, context, settings, "BLOCK", "External List: Pattern");
-    }
     if (enabledSystemListIds && enabledSystemListIds.length > 0) {
       for (const sysId of enabledSystemListIds) {
         const sysAdguard = systemListsManager.getAdguard(sysId);

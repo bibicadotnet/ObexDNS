@@ -34,6 +34,12 @@ export interface FetchListOptions {
   retryDelayMs?: number;
   /** Max HTTP 3xx redirects followed per request (default 5) */
   maxRedirects?: number;
+  /** Fast-path callback called before parseAdGuardLine. If returns true, the line is fully handled (skip parseAdGuardLine + onDomain callback). */
+  fastPath?: (line: string) => boolean;
+  /** Yield batch size for fast-path lines (default 5000). */
+  fastPathYieldBatch?: number;
+  /** Yield sleep in ms for fast-path lines (default 10). */
+  fastPathYieldSleep?: number;
 }
 
 /**
@@ -294,6 +300,9 @@ export async function fetchListContent(
       let title: string | null = null;
       let description: string | null = null;
       let titleLinesLeft = TITLE_SCAN_LINES;
+      let fastPathCount = 0;
+      const fastPathYieldBatch = options?.fastPathYieldBatch ?? 5000;
+      const fastPathYieldSleep = options?.fastPathYieldSleep ?? 10;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -329,13 +338,28 @@ export async function fetchListContent(
               if (description === null) description = extractListDescription(line);
             }
 
-            const rule = parseAdGuardLine(line);
-            if (rule && rule.kind !== AdGuardRuleKind.COMMENT && rule.kind !== AdGuardRuleKind.UNSUPPORTED) {
-              const res = onDomain(rule);
-              if (res instanceof Promise) {
-                await res;
+            // Fast path: try to handle simple BLOOM_DOMAIN lines without parseAdGuardLine
+            let fastHandled = false;
+            if (options?.fastPath) {
+              fastHandled = options.fastPath(line);
+              if (fastHandled) {
+                fastPathCount++;
+                if (fastPathCount >= fastPathYieldBatch) {
+                  fastPathCount = 0;
+                  await new Promise<void>((resolve) => setTimeout(resolve, fastPathYieldSleep));
+                }
               }
-              count++;
+            }
+
+            if (!fastHandled) {
+              const rule = parseAdGuardLine(line);
+              if (rule && rule.kind !== AdGuardRuleKind.COMMENT && rule.kind !== AdGuardRuleKind.UNSUPPORTED) {
+                const res = onDomain(rule);
+                if (res instanceof Promise) {
+                  await res;
+                }
+                count++;
+              }
             }
           }
 
@@ -350,13 +374,19 @@ export async function fetchListContent(
         if (line.charCodeAt(line.length - 1) === 13) {
           line = line.slice(0, -1);
         }
-        const rule = parseAdGuardLine(line);
-        if (rule && rule.kind !== AdGuardRuleKind.COMMENT && rule.kind !== AdGuardRuleKind.UNSUPPORTED) {
-          const res = onDomain(rule);
-          if (res instanceof Promise) {
-            await res;
+        let fastHandled = false;
+        if (options?.fastPath) {
+          fastHandled = options.fastPath(line);
+        }
+        if (!fastHandled) {
+          const rule = parseAdGuardLine(line);
+          if (rule && rule.kind !== AdGuardRuleKind.COMMENT && rule.kind !== AdGuardRuleKind.UNSUPPORTED) {
+            const res = onDomain(rule);
+            if (res instanceof Promise) {
+              await res;
+            }
+            count++;
           }
-          count++;
         }
       }
 

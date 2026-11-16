@@ -171,7 +171,9 @@ export async function handleProfileListsRequest(
         blocked: matched !== null,
         whitelisted: false,
         matchedEntry: matched,
-        falsePositiveRate: matched && filter ? ((Number(env.FILTER_FALSE_POSITIVE_RATE) || Number(env.BLOOM_FALSE_POSITIVE_RATE)) || 1e-13) : 0,
+        // FingerprintSet is deterministic; the only residual "false positive" is the 64-bit hash
+        // collision floor (~1e-13), which is not tunable. Regex/exception matches are exact (0).
+        falsePositiveRate: matched && filter ? 1e-13 : 0,
         enabled: !!list.enabled,
         synced: true
       }), { headers: { 'Content-Type': 'application/json' } });

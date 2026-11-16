@@ -33,6 +33,7 @@ class CustomListsManager {
   private generations: Map<number, number> = new Map();
   private dbErrorBackoffs: Map<number, number> = new Map();
   private ttlMs: number = 300000; // 5 minutes default TTL
+  private lastEnv: any = null;
 
   constructor() {
     const memBytes = getEnvNumber("FILTER_MEM_BYTES", getEnvNumber("BLOOM_MEM_BYTES", 32 * 1024 * 1024));
@@ -45,7 +46,8 @@ class CustomListsManager {
    * Initializes or updates memory limits and TTL from environment variables (Cloudflare or Serverfull).
    */
   initFromEnv(env: any): void {
-    if (!env) return;
+    if (!env || env === this.lastEnv) return;
+    this.lastEnv = env;
     const memBytes = Number(env.FILTER_MEM_BYTES) || Number(env.BLOOM_MEM_BYTES);
     if (Number.isFinite(memBytes) && memBytes > 0) {
       this.cache.setMaxBytes(memBytes);

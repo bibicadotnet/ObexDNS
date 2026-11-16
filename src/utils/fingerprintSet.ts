@@ -134,20 +134,6 @@ export class FingerprintSet {
   }
 
   /**
-   * Returns a truncated copy containing at most maxCount items.
-   *
-   * NOTE: Because fingerprints are stored in ascending sorted 64-bit hash order,
-   * truncating via slice(0, maxCount) discards domain hashes above the cutoff.
-   * Since the 64-bit hash function uniformly distributes domain names across the
-   * integer space, this acts as an unbiased pseudo-random uniform sample across
-   * all domains, rather than prioritizing or dropping by list source or alphabetical name.
-   */
-  truncate(maxCount: number): FingerprintSet {
-    if (this.length <= maxCount) return this;
-    return new FingerprintSet(this.data.slice(0, maxCount));
-  }
-
-  /**
    * Builds an in-memory prefix index for fast binary search range clamping.
    * Target ~4 to 8 entries per bucket for N >= 64K.
    */
@@ -465,9 +451,54 @@ export class FingerprintSetBuilder {
     this.totalCount++;
   }
 
-  addHash(fp: bigint): void {
+  /**
+   * Hash domain chars directly from a source string at [start, end) with inline lowercasing.
+   * Avoids creating an intermediate domain string — used by the sync fast-path.
+   */
+  addFromLine(line: string, start: number, end: number): void {
     this.ensureCapacity();
-    this.currentBlock![this.currentOffset++] = fp;
+    let h1 = FNV_SEED_1;
+    let h2 = HASH_SEED_2;
+    for (let i = start; i < end; i++) {
+      let c = line.charCodeAt(i);
+      // Inline lowercase: A-Z (65-90) → a-z (97-122)
+      if (c >= 65 && c <= 90) c += 32;
+      h1 = Math.imul(h1 ^ (c & 0xff), FNV_PRIME_1);
+      h2 = Math.imul(h2 ^ ((c >>> 8) ^ (c & 0xff)), HASH_PRIME_2);
+    }
+    h1 = h1 >>> 0;
+    let h2_mixed = h2 ^ (h2 >>> 16);
+    h2_mixed = Math.imul(h2_mixed, HASH_PRIME_2);
+    h2_mixed = (h2_mixed ^ (h2_mixed >>> 13)) >>> 0;
+    const idx = this.currentOffset * 2;
+    this.currentBlock32![idx] = h2_mixed;
+    this.currentBlock32![idx + 1] = h1;
+    this.currentOffset++;
+    this.totalCount++;
+  }
+
+  /**
+   * Hash domain chars from [start, end) with pre-computed "||" prefix seed and inline lowercasing.
+   * Avoids creating an intermediate domain string — used by the sync fast-path.
+   */
+  addPipePipeFromLine(line: string, start: number, end: number): void {
+    this.ensureCapacity();
+    let h1 = SEED_PIPE_1;
+    let h2 = SEED_PIPE_2;
+    for (let i = start; i < end; i++) {
+      let c = line.charCodeAt(i);
+      if (c >= 65 && c <= 90) c += 32;
+      h1 = Math.imul(h1 ^ (c & 0xff), FNV_PRIME_1);
+      h2 = Math.imul(h2 ^ ((c >>> 8) ^ (c & 0xff)), HASH_PRIME_2);
+    }
+    h1 = h1 >>> 0;
+    let h2_mixed = h2 ^ (h2 >>> 16);
+    h2_mixed = Math.imul(h2_mixed, HASH_PRIME_2);
+    h2_mixed = (h2_mixed ^ (h2_mixed >>> 13)) >>> 0;
+    const idx = this.currentOffset * 2;
+    this.currentBlock32![idx] = h2_mixed;
+    this.currentBlock32![idx + 1] = h1;
+    this.currentOffset++;
     this.totalCount++;
   }
 

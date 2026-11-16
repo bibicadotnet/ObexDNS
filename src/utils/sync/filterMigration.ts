@@ -2,8 +2,9 @@
  * @file filterMigration.ts
  * @description One-time, startup-only migration from legacy Bloom filters (BLMZ) to FingerprintSet (FPRT).
  *
- * When upgrading from older versions, stored filters in system_list_blooms, list_blooms,
- * and profile_blooms may contain legacy Bloom filter chunks.
+ * When upgrading from older versions, stored filters in system_list_blooms and list_blooms
+ * may contain legacy Bloom filter chunks. (The profile-level profile_blooms table was dropped
+ * in migration 0067 and is no longer referenced here.)
  *
  * This migration runs once:
  * 1. Checks system_settings for 'filter_format' = 'FPRT_v1'. If present, does nothing.

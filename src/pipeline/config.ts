@@ -2,11 +2,9 @@ import { Context, ProfileSettings, Rule } from "../types";
 import { ProfileModel } from "../models/profile";
 import { RuleModel } from "../models/rule";
 import { ListModel } from "../models/list";
-import { FingerprintSet } from "../utils/fingerprintSet";
 import { cacheUtils } from "../utils/cache";
 import { configCache, pipelineCache, PROFILE_CACHE_KEY_PREFIX } from "./cache";
 import { DEFAULT_FAIL_OPEN_UPSTREAM } from "../constants/presets";
-import { AdGuardProfileEngine } from "../lib/adguard";
 import { systemListsManager } from "../lib/filtering/systemListsManager";
 import { customListsManager } from "../lib/filtering/customListsManager";
 import { isServerfullEnv } from "../utils/serverfullEnv";
@@ -15,9 +13,6 @@ export const pipelineConfig = {
   async load(context: Context, track: (name: string) => void): Promise<{
     settings: ProfileSettings;
     rules: Rule[];
-    bloom?: FingerprintSet;
-    filter?: FingerprintSet;
-    adguard?: AdGuardProfileEngine;
     enabledSystemListIds?: number[];
     enabledCustomListIds?: number[];
   } | null> {
@@ -43,7 +38,7 @@ export const pipelineConfig = {
         log_retention_days: 0,
         ecs: { enabled: true, use_client_ip: true }
       };
-      return { settings: defaultSettings, rules: [], bloom: undefined, filter: undefined, adguard: undefined, enabledSystemListIds: [], enabledCustomListIds: [] };
+      return { settings: defaultSettings, rules: [], enabledSystemListIds: [], enabledCustomListIds: [] };
     }
 
     // 1. 检查 L1 Memory (Isolate Global)
@@ -61,9 +56,6 @@ export const pipelineConfig = {
       }
       return {
         ...cachedConfig,
-        bloom: undefined,
-        filter: undefined,
-        adguard: undefined,
         enabledSystemListIds: cachedConfig.enabledSystemListIds || [],
         enabledCustomListIds
       };
@@ -85,9 +77,6 @@ export const pipelineConfig = {
       configCache.set(profileId, { ...apiCached, timestamp: Date.now() });
       return {
         ...apiCached,
-        bloom: undefined,
-        filter: undefined,
-        adguard: undefined,
         enabledSystemListIds: apiCached.enabledSystemListIds || [],
         enabledCustomListIds
       };
@@ -111,9 +100,6 @@ export const pipelineConfig = {
           console.warn(`[Config] Profile ${profileId} not in D1, using stale memory config.`);
           return {
             ...cachedConfig,
-            bloom: undefined,
-            filter: undefined,
-            adguard: undefined,
             enabledSystemListIds: cachedConfig.enabledSystemListIds || [],
             enabledCustomListIds: cachedConfig.enabledCustomListIds || []
           };
@@ -126,7 +112,7 @@ export const pipelineConfig = {
           log_retention_days: 0,
           ecs: { enabled: true, use_client_ip: true }
         };
-        return { settings: fallbackSettings, rules: [], bloom: undefined, filter: undefined, adguard: undefined, enabledSystemListIds: [], enabledCustomListIds: [] };
+        return { settings: fallbackSettings, rules: [], enabledSystemListIds: [], enabledCustomListIds: [] };
       }
       
       const settings = JSON.parse(profile.settings);
@@ -160,9 +146,6 @@ export const pipelineConfig = {
       track('load_config_full_sync');
       return {
         ...config,
-        bloom: undefined,
-        filter: undefined,
-        adguard: undefined,
         enabledSystemListIds,
         enabledCustomListIds
       };
@@ -173,9 +156,6 @@ export const pipelineConfig = {
         console.warn(`[Config] Serving stale config from memory for profile ${profileId}`);
         return {
           ...cachedConfig,
-          bloom: undefined,
-          filter: undefined,
-          adguard: undefined,
           enabledSystemListIds: cachedConfig.enabledSystemListIds || [],
           enabledCustomListIds: cachedConfig.enabledCustomListIds || []
         };
@@ -189,7 +169,7 @@ export const pipelineConfig = {
         log_retention_days: 0,
         ecs: { enabled: true, use_client_ip: true }
       };
-      return { settings: fallbackSettings, rules: [], bloom: undefined, filter: undefined, adguard: undefined, enabledSystemListIds: [], enabledCustomListIds: [] };
+      return { settings: fallbackSettings, rules: [], enabledSystemListIds: [], enabledCustomListIds: [] };
     }
   }
 };

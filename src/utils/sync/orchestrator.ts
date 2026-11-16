@@ -3,13 +3,10 @@ import { ProfileModel } from "../../models/profile";
 import { ListModel } from "../../models/list";
 import { ListFilterModel } from "../../models/listFilter";
 import { syncSingleList } from "./singleListSync";
-import { FingerprintSet } from "../fingerprintSet";
-import { AdguardRulesModel } from "../../models/adguardRules";
-import { systemListsManager } from "../../lib/filtering/systemListsManager";
 import { pipelineCache } from "../../pipeline/cache";
 
 interface InFlightSync {
-  type: "all" | "next" | "single" | "rebuild";
+  type: "all" | "next" | "single";
   listId?: number;
   promise: Promise<void>;
 }
@@ -22,46 +19,6 @@ export function isProfileSyncing(profileId: string): boolean {
 
 export function _resetInFlightSyncsForTesting(): void {
   inFlightSyncs.clear();
-}
-
-/**
- * True when a stored filter (list or profile) is not in the current FingerprintSet format (e.g. legacy Bloom).
- */
-function filterFormatMismatch(head: Uint8Array | null): boolean {
-  if (!head) return false;
-  return !FingerprintSet.isCurrentVersion(head);
-}
-
-/**
- * Lists whose stored filter is in legacy Bloom or incompatible format are re-downloaded
- * so they can be merged into the new FingerprintSet.
- */
-async function rebuildMismatchedLists(
-  profileId: string,
-  env: Env,
-  listModel: ListModel,
-  listFilterModel: ListFilterModel,
-  opts: { excludeListId?: number; skipSyncedAfter?: number } = {}
-): Promise<number> {
-  if (env?.DB) await systemListsManager.ensureLoaded(env.DB, false, env);
-  const lists = (await listModel.getLists(profileId)).filter(
-    (l) => !!l.enabled && !systemListsManager.isSystemUrl(l.url)
-  );
-  let rebuilt = 0;
-  for (const list of lists) {
-    if (opts.excludeListId !== undefined && list.id === opts.excludeListId) continue;
-    if (opts.skipSyncedAfter !== undefined && (list.last_synced_at ?? 0) > opts.skipSyncedAfter) continue;
-    const head = await listFilterModel.getListFilterHeader(list.id);
-    if (!filterFormatMismatch(head)) continue;
-    console.log(`[Sync] Profile ${profileId}: list #${list.id} has legacy filter format; downloading it again.`);
-    try {
-      await syncSingleList(profileId, list, env, listModel, listFilterModel, Math.floor(Date.now() / 1000), true);
-      rebuilt++;
-    } catch (e) {
-      console.error(`[Sync] Rebuild of list #${list.id} failed:`, e);
-    }
-  }
-  return rebuilt;
 }
 
 /**
@@ -340,15 +297,4 @@ async function _executeSyncSingleListForProfile(
   } catch (e) {
     console.error(`[Sync] Critical failure in single list sync for Profile ${profileId}, list ${listId}:`, e);
   }
-}
-
-/**
- * 快速重构并合并 Profile 的过滤器。
- */
-export async function rebuildProfileFilter(
-  profileId: string,
-  env: Env,
-  ctx: ExecutionContext
-): Promise<void> {
-  await pipelineCache.clear(profileId, false, env);
 }

@@ -1,16 +1,11 @@
 import { Env, ProfileSettings, Rule } from "../types";
-import { FingerprintSet } from "../utils/fingerprintSet";
 import { cacheUtils } from "../utils/cache";
 import { isServerfullEnv } from "../utils/serverfullEnv";
-import { AdGuardProfileEngine, AdGuardPayload } from "../lib/adguard";
 
 export interface ConfigCacheEntry {
   settings: ProfileSettings;
   rules: Rule[];
   timestamp: number;
-  adguard?: AdGuardPayload | null;
-  hasBloom?: boolean;
-  hasFilter?: boolean;
   enabledSystemListIds?: number[];
   enabledCustomListIds?: number[];
 }
@@ -130,14 +125,6 @@ export class ByteCappedMap<K, V extends { byteLength?: number }> extends Map<K, 
   }
 }
 
-export interface FilterMemoryEntry {
-  filter: FingerprintSet;
-  ts: number;
-  byteLength: number;
-  // Backward compatibility getter/alias
-  bloom?: FingerprintSet;
-}
-
 function getEnvNumber(key: string, defaultVal: number): number {
   if (typeof process !== "undefined" && process?.env && process.env[key]) {
     const val = Number(process.env[key]);
@@ -146,21 +133,9 @@ function getEnvNumber(key: string, defaultVal: number): number {
   return defaultVal;
 }
 
-// --- L1 Memory Cache (Isolate 全局，字节预算限制) ---
-// Bảng lọc có ngân sách RAM mặc định 32 MiB (FILTER_MEM_BYTES)
-export const filterMemoryMap = new ByteCappedMap<string, FilterMemoryEntry>(
-  getEnvNumber("FILTER_MEM_BYTES", getEnvNumber("BLOOM_MEM_BYTES", 32 * 1024 * 1024))
-);
-export const bloomMemoryMap = filterMemoryMap;
-
 // 基础配置体积较小，允许缓存 200 个 Profile (CONFIG_CACHE_LIMIT)
 export const configCache = new SizeCappedMap<string, ConfigCacheEntry>(
   getEnvNumber("CONFIG_CACHE_LIMIT", 200)
-);
-
-// AdGuard 扩展规则引擎内存缓存 (L1 内存缓存，限制最多 20 个 Profile, ADGUARD_CACHE_LIMIT)
-export const adguardMemoryMap = new SizeCappedMap<string, { engine: AdGuardProfileEngine; ts: number }>(
-  getEnvNumber("ADGUARD_CACHE_LIMIT", 20)
 );
 
 // DNS 缓存限制最多 500 条记录 (DNS_CACHE_LIMIT)
@@ -204,20 +179,18 @@ async function purgeTags(env: Env, tags: string[]): Promise<void> {
 
 export const PROFILE_CACHE_KEY_PREFIX = "profile_v9";
 
+let lastPipelineCacheEnv: Env | undefined;
+
 export const pipelineCache = {
   /**
    * Cập nhật giới hạn dung lượng cache động từ env (hỗ trợ cả Workers và Serverfull).
    */
   initFromEnv(env?: Env): void {
-    if (!env) return;
-    const filterBytes = Number(env.FILTER_MEM_BYTES) || Number(env.BLOOM_MEM_BYTES);
-    if (filterBytes && filterBytes > 0) filterMemoryMap.setMaxBytes(filterBytes);
+    if (!env || env === lastPipelineCacheEnv) return;
+    lastPipelineCacheEnv = env;
 
     const configLimit = Number(env.CONFIG_CACHE_LIMIT);
     if (configLimit && configLimit > 0) configCache.setMaxEntries(configLimit);
-
-    const adguardLimit = Number(env.ADGUARD_CACHE_LIMIT);
-    if (adguardLimit && adguardLimit > 0) adguardMemoryMap.setMaxEntries(adguardLimit);
 
     const dnsLimit = Number(env.DNS_CACHE_LIMIT);
     if (dnsLimit && dnsLimit > 0) dnsCache.setMaxEntries(dnsLimit);
@@ -251,10 +224,6 @@ export const pipelineCache = {
 
     // 清理 L1 (内存)
     configCache.delete(profileId);
-    adguardMemoryMap.delete(profileId);
-    if (clearFilter) {
-      filterMemoryMap.delete(profileId);
-    }
     profileKeyMemoryMap.clear();
     defaultProfileMemoryCache = null;
     for (const key of dnsCache.keys()) {

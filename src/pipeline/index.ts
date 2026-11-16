@@ -67,9 +67,7 @@ export const pipeline = {
       context,
       config.settings,
       config.rules,
-      config.bloom,
       track,
-      config.adguard,
       config.enabledSystemListIds,
       config.enabledCustomListIds
     );

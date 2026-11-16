@@ -3,7 +3,6 @@ import { Profile, ProfileSettings } from "../types";
 import { generateId, generateZBase32Token } from "../lib/auth";
 
 export interface ProfileWithFilter extends Profile {
-  list_bloom?: string;
   list_updated_at?: number;
 }
 export type ProfileWithBloom = ProfileWithFilter;

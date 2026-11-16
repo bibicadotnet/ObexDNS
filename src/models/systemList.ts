@@ -148,7 +148,10 @@ export class SystemListModel {
 
     if (results.length === 1) {
       const chunk = results[0].bloom_filter_chunk;
-      return chunk instanceof ArrayBuffer ? chunk : ((chunk as any).buffer || chunk);
+      if (chunk instanceof ArrayBuffer) return chunk;
+      // D1 may return a Uint8Array (possibly a sub-view); normalize to a standalone
+      // ArrayBuffer that respects byteOffset/length instead of the full backing buffer.
+      return new Uint8Array(chunk).buffer;
     }
 
     const totalLength = results.reduce((acc, row) => {

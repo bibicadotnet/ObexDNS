@@ -133,9 +133,7 @@ async function runOptimizationsTests() {
     } as any;
 
     const mockEnv = {
-      DB: mockDb,
-      MAX_SYNC_DOMAINS: 10000,
-      BLOOM_FALSE_POSITIVE_RATE: 0.0001
+      DB: mockDb
     } as any;
 
     const mockCtx = {

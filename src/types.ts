@@ -11,14 +11,11 @@ export interface Env {
   ACCESS_TOKEN_EXPIRATION_MINUTES?: string | number;
   SESSION_GEO_DISTANCE_KM?: string | number;
   PREAUTH_TTL_SECONDS?: string | number;
-  BLOOM_MEM_TTL?: string | number;
   FILTER_MEM_TTL?: string | number;
   FILTER_MEM_BYTES?: string | number;
-  BLOOM_MEM_BYTES?: string | number;
   MAX_PROFILE_CUSTOM_DOMAINS?: string | number;
   CONFIG_MEM_TTL?: string | number;
   CONFIG_CACHE_LIMIT?: string | number;
-  ADGUARD_CACHE_LIMIT?: string | number;
   DNS_CACHE_LIMIT?: string | number;
   PROFILE_KEY_CACHE_LIMIT?: string | number;
   MEMORY_CACHE_LIMIT?: string | number;
@@ -31,8 +28,6 @@ export interface Env {
   PRESET_ECH_FRONTING_DOMAINS?: string;
   DEFAULT_PROFILE_FILTER_URLS?: string;
   SYSTEM_FILTER_URLS?: string;
-  BLOOM_FALSE_POSITIVE_RATE?: string | number;
-  FILTER_FALSE_POSITIVE_RATE?: string | number;
   THROTTLE_ACTIVE_SEC?: string | number;
   SYNC_PROFILE_INTERVAL_SEC?: string | number;
   SYNC_SYSTEM_INTERVAL_SEC?: string | number;
@@ -61,7 +56,6 @@ export interface Env {
   PIN_LOCK_WINDOW_SEC?: string | number;
   WEBAUTHN_TIMEOUT_MS?: string | number;
   TURNSTILE_SECRET_KEY?: string;
-  MAX_SYNC_DOMAINS?: string | number;
   MAX_LIST_DOMAINS?: string | number;
   MAX_LIST_BYTES?: string | number;
   MAX_LOG_RETENTION_DAYS?: string | number;
@@ -156,7 +150,6 @@ export interface Profile {
   settings: string;
   created_at: number;
   updated_at: number;
-  list_bloom?: string;
   list_updated_at?: number;
 }
 

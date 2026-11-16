@@ -71,9 +71,9 @@ export interface ListCheckResult {
   matchedEntry?: string | null;
   /** False when the list has not finished syncing, so no filter exists yet. */
   synced: boolean;
-  /** Configured bloom false-positive rate, so the UI can qualify a match. */
+  /** 64-bit fingerprint collision floor (~1e-13) when matched via the fingerprint set; 0 for deterministic regex/exception matches. */
   falsePositiveRate?: number;
-  /** Whether the list is currently active. A disabled list still has a bloom. */
+  /** Whether the list is currently active. A disabled list still keeps its stored filter. */
   enabled?: boolean;
 }
 

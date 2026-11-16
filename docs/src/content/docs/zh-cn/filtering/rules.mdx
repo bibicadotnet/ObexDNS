@@ -154,16 +154,17 @@ flowchart TD
 - **`.env.serverfull` 格式**：JSON 字符串。
 - **默认值**：内置精选过滤源，包括 OISD Big (`https://big.oisd.nl`)、OISD NSFW、AdGuard Base 及 StevenBlack hosts。
 
-### `BLOOM_FALSE_POSITIVE_RATE`
+### `BLOOM_FALSE_POSITIVE_RATE` / `FILTER_FALSE_POSITIVE_RATE`（已废弃）
 - **支持模式**：Serverless & Serverfull
-- **默认值**：`0.0001`（万分之一）
-- **说明**：布隆过滤器的误报率设计阈值。极低的万分之一阈值在最小化内存开销的同时彻底压低了二次验证频率。
+- **默认值**：已忽略
+- **说明**：已废弃。ObexDNS 现将每个列表存储为确定性的、排序后的 64 位指纹表（FingerprintSet），而非概率型布隆过滤器，因此不再有可调的误报率。唯一的残余“误报”是 64 位哈希碰撞下限（百万级域名约 1e-13），不可由用户配置。此处设置的任何值都会被忽略；该配置仅为向后兼容保留，将在未来版本移除。
 
-### `MAX_SYNC_DOMAINS`、`MAX_LIST_DOMAINS` & `MAX_LIST_BYTES`
+### `MAX_LIST_DOMAINS` & `MAX_LIST_BYTES`
 - **支持模式**：Serverless & Serverfull
-- **默认值**：`MAX_SYNC_DOMAINS=1000000`（总计 100 万条上限），`MAX_LIST_DOMAINS=500000`（单列表 50 万条上限），`MAX_LIST_BYTES=20971520`（单列表 20 MB 上限）。
-- **说明**：安全保护边界，防止抓取过大规则源时发生无节制内存占用与大流量耗尽。若外部列表超出 `MAX_LIST_BYTES`，系统将安全截断至上限并于列表同步状态明确标注警告，杜绝静默丢失。
-- **修改布隆参数**：`MAX_SYNC_DOMAINS` 与 `BLOOM_FALSE_POSITIVE_RATE` 共同决定布隆过滤器大小。任一参数变化后，下次启动时会自动检测一次：立即重新下载系统列表，并在后续定时同步中逐个重建各 Profile 的列表（期间旧布隆过滤器继续生效），无需手动操作。
+- **默认值**：`MAX_LIST_DOMAINS=500000`（单列表 50 万条上限），`MAX_LIST_BYTES=20971520`（单列表 20 MB 上限）。
+- **说明**：安全保护边界，防止抓取过大规则源时发生无节制内存占用与大流量耗尽。若外部列表超出 `MAX_LIST_BYTES`，系统将安全截断至上限并于列表同步状态明确标注警告，杜绝静默丢失。每个列表以排序后的 64 位指纹表（每域名 8 字节）存储，内存/磁盘占用随域名数量线性增长，而非固定的布隆分配。
+
+> `MAX_SYNC_DOMAINS`（曾用于设定合并 Profile 布隆大小的总域名上限）已废弃并被忽略——过滤现已按列表独立进行，仅上述单列表限制生效。
 
 ### `BLOOM_MEM_TTL` & `SYNC_TIMEOUT_MS`
 - **默认值**：`BLOOM_MEM_TTL=600000`（内存缓存 10 分钟），`SYNC_TIMEOUT_MS=30000`（规则下载超时 30 秒）。

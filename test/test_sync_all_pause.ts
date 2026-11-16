@@ -19,7 +19,7 @@ const stmt = (sql: string, args: any[] = []): any => ({
   __exec: () => { const r: any = sqlite.prepare(sql).run(...args.map(toArg)); return { success: true, meta: { changes: Number(r.changes) } }; },
 });
 const DB: any = { prepare: (s: string) => stmt(s), batch: async (l: any[]) => l.map((x) => x.__exec()), exec: async (s: string) => sqlite.exec(s) };
-const env: any = { DB, MAX_SYNC_DOMAINS: 10000, BLOOM_FALSE_POSITIVE_RATE: 0.001, MAX_LIST_DOMAINS: 10000, SYNC_YIELD_SLEEP_MS: 1, LIST_FETCH_MAX_RETRIES: 0 };
+const env: any = { DB, MAX_LIST_DOMAINS: 10000, SYNC_YIELD_SLEEP_MS: 1, LIST_FETCH_MAX_RETRIES: 0 };
 const ctx: any = { waitUntil: (p: any) => p?.catch?.(() => {}), passThroughOnException() {} };
 
 const tables = (sqlite.prepare("select name from sqlite_master where type='table'").all() as any[]).map((t) => t.name);

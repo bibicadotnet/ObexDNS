@@ -215,8 +215,8 @@ export async function handleScheduled(
 
     // ── SYNC ──────────────────────────────────────────────────────────────────
     // Processes ONE list for a single stale profile per trigger.
-    // The profile's active Bloom Filter is NOT updated until all its lists are
-    // done (A/B pattern): staging accumulates incrementally, active stays intact.
+    // Each list's FingerprintSet is stored independently (per-list filtering);
+    // the profile stays in getSyncTargets until all its lists finish syncing.
     // Idle periods are throttled to SYNC_IDLE_INTERVAL_SEC (default 1800s = 30 min) to eliminate redundant D1 polls.
     try {
       const lastIdleSyncKey = "cron:last_idle_sync_check";

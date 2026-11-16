@@ -87,6 +87,102 @@ export async function syncSingleList(
   const isFilterCurrent = existingFilterHead ? FingerprintSet.isCurrentVersion(existingFilterHead) : hasLocalData;
   const useCacheHeaders = !force && isFilterCurrent && Boolean(list.etag || list.last_modified) && list.description != null;
 
+  // Fast-path: hash simple ||domain^ and plain domain lines directly without parseAdGuardLine
+  const fastPath = (line: string): boolean => {
+    if (line.length === 0) return true; // skip empty
+
+    const first = line.charCodeAt(0);
+
+    // Skip comments: '!' (33), '#' (35), '[' (91) — no need for parser
+    if (first === 33 || first === 35 || first === 91) return true;
+
+    // Skip exceptions: '@@' (64, 64) — need parser for adguardPayload
+    if (first === 64 && line.charCodeAt(1) === 64) return false;
+
+    // Skip regex: '/' (47) — need parser
+    if (first === 47) return false;
+
+    // Skip cosmetic: '##' — need parser to mark as UNSUPPORTED
+    if (first === 35 && line.charCodeAt(1) === 35) return false;
+    // Also check for '#@#' and '#?#'
+    if (line.includes('##') || line.includes('#@#') || line.includes('#?#')) return false;
+
+    if (count >= maxListDomains) {
+      domainLimitHit = true;
+      return true; // handled (skip)
+    }
+
+    // ||domain^ fast path
+    if (first === 124 && line.charCodeAt(1) === 124) {
+      // Check for $, *, #, /, \ in the rest — if found, need parser
+      let end = line.length;
+      let hasSpecial = false;
+      for (let j = 2; j < line.length; j++) {
+        const c = line.charCodeAt(j);
+        if (c === 94) { end = j; break; }  // '^'
+        if (c === 36 || c === 42 || c === 35 || c === 47 || c === 92) { hasSpecial = true; break; }
+      }
+      if (!hasSpecial && end > 2) {
+        filterBuilder.addPipePipeFromLine(line, 2, end);
+        count++;
+        return true;
+      }
+      return false; // complex || rule — need parser
+    }
+
+    // Single pipe | — rare, let parser handle
+    if (first === 124) return false;
+
+    // Hosts format: digit + space + domain (e.g., "0.0.0.0 example.com")
+    if (first >= 48 && first <= 57) {
+      let spaceIdx = -1;
+      for (let j = 0; j < line.length; j++) {
+        if (line.charCodeAt(j) === 32) { spaceIdx = j; break; }
+      }
+      if (spaceIdx === -1) return false; // no space — might be plain domain starting with digit
+      // Check if prefix is IP-like (has dots and digits only)
+      let isIpLike = true;
+      for (let j = 0; j < spaceIdx; j++) {
+        const c = line.charCodeAt(j);
+        if (c !== 46 && (c < 48 || c > 57) && c !== 58) { isIpLike = false; break; }
+      }
+      if (isIpLike && spaceIdx > 6) {
+        // Find domain end (next whitespace or \r or end)
+        let dEnd = line.length;
+        for (let j = spaceIdx + 1; j < line.length; j++) {
+          const c = line.charCodeAt(j);
+          if (c === 32 || c === 13) { dEnd = j; break; }
+        }
+        if (dEnd > spaceIdx + 1) {
+          // Check for localhost/0.0.0.0/127.0.0.1 — skip those
+          const d = line.substring(spaceIdx + 1, dEnd).toLowerCase();
+          if (d !== 'localhost' && d !== '0.0.0.0' && d !== '127.0.0.1') {
+            filterBuilder.addFromLine(line, spaceIdx + 1, dEnd);
+            count++;
+          }
+          return true;
+        }
+      }
+      // Not hosts format — fall through to plain domain check
+    }
+
+    // Plain domain fast path
+    let end = line.length;
+    let hasSpecial = false;
+    for (let j = 0; j < line.length; j++) {
+      const c = line.charCodeAt(j);
+      if (c === 94 || c === 36) { end = j; break; }  // '^' or '$'
+      if (c === 42 || c === 35 || c === 47 || c === 92 || c === 124) { hasSpecial = true; break; }
+    }
+    if (!hasSpecial && end > 0) {
+      filterBuilder.addFromLine(line, 0, end);
+      count++;
+      return true;
+    }
+
+    return false; // complex — need parser
+  };
+
   const { error: fetchError, truncated, notModified, etag, lastModified, title, description } = await fetchListContent(
     list.url,
     maxListBytes,
@@ -138,7 +234,10 @@ export async function syncSingleList(
     },
     {
       ...(useCacheHeaders ? { etag: list.etag, lastModified: list.last_modified } : {}),
-      ...getListFetchTuning(env)
+      ...getListFetchTuning(env),
+      fastPath,
+      fastPathYieldBatch: yieldBatchSize,
+      fastPathYieldSleep: yieldSleepMs
     }
   );
 

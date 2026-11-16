@@ -60,7 +60,10 @@ export class ListFilterModel {
 
     if (results.length === 1) {
       const chunk = results[0].bloom_filter_chunk;
-      return chunk instanceof ArrayBuffer ? chunk : ((chunk as any).buffer || chunk);
+      if (chunk instanceof ArrayBuffer) return chunk;
+      // D1 may return a Uint8Array (possibly a sub-view); normalize to a standalone
+      // ArrayBuffer that respects byteOffset/length instead of the full backing buffer.
+      return new Uint8Array(chunk).buffer;
     }
 
     const totalLength = results.reduce((acc, row) => {
@@ -86,45 +89,5 @@ export class ListFilterModel {
       .bind(listId)
       .run();
     return result.success;
-  }
-
-  async getActiveListFiltersForProfile(profileId: string): Promise<ArrayBuffer[]> {
-    const { results } = await this.db.prepare(`
-      SELECT lb.list_id, lb.bloom_filter_chunk
-      FROM list_blooms lb
-      JOIN lists l ON lb.list_id = l.id
-      WHERE l.profile_id = ? AND l.enabled = 1
-      ORDER BY lb.list_id ASC, lb.chunk_index ASC
-    `)
-      .bind(profileId)
-      .all<{ list_id: number; bloom_filter_chunk: ArrayBuffer }>();
-
-    if (!results || results.length === 0) return [];
-
-    const groups = new Map<number, ArrayBuffer[]>();
-    for (const row of results) {
-      if (!groups.has(row.list_id)) {
-        groups.set(row.list_id, []);
-      }
-      groups.get(row.list_id)!.push(row.bloom_filter_chunk);
-    }
-
-    const filters: ArrayBuffer[] = [];
-    for (const [, chunks] of groups.entries()) {
-      const totalLength = chunks.reduce((acc, chunk) => {
-        const len = chunk.byteLength ?? (chunk as any).length;
-        return acc + len;
-      }, 0);
-      const combined = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        const chunkArr = new Uint8Array(chunk);
-        combined.set(chunkArr, offset);
-        offset += chunkArr.length;
-      }
-      filters.push(combined.buffer as ArrayBuffer);
-    }
-
-    return filters;
   }
 }

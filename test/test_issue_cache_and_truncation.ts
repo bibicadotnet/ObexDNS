@@ -1,47 +1,25 @@
 /// <reference types="node" />
 import assert from "node:assert";
-import { pipelineCache, PROFILE_CACHE_KEY_PREFIX } from "../src/pipeline/cache";
-import { pipelineConfig } from "../src/pipeline/config";
 import { fetchListContent } from "../src/utils/listFetcher";
 import { syncSingleList } from "../src/utils/sync/singleListSync";
-import { cacheUtils } from "../src/utils/cache";
-import { FingerprintSet, FingerprintSetBuilder, hashDomain, hashDomainWithPipePipe } from "../src/utils/fingerprintSet";
-import type { Context, Env } from "../src/types";
+import { FingerprintSetBuilder, hashDomain, hashDomainWithPipePipe } from "../src/utils/fingerprintSet";
+import type { Env } from "../src/types";
 
-// Mock Cache API
-class MockCache {
-  public store = new Map<string, Response>();
-  public deleted: string[] = [];
-
-  async put(url: string, response: Response): Promise<void> {
-    this.store.set(url, response.clone());
-  }
-
-  async match(url: string): Promise<Response | undefined> {
-    const res = this.store.get(url);
-    return res ? res.clone() : undefined;
-  }
-
-  async delete(url: string): Promise<boolean> {
-    this.deleted.push(url);
-    return this.store.delete(url);
-  }
-}
-
+// Verifies fetchListContent truncation / transient-525 retry / 304 handling and the
+// zero-allocation addPipePipe hash equivalence with add("||" + domain).
+// (The former L2 "filter-bin" + hasFilter rehydration section was removed: the combined
+//  profile Bloom L2 cache was retired together with the 32-bit Bloom -> 64-bit FingerprintSet migration.)
 async function runIssueVerificationTests() {
   console.log(">>> [TEST] Running Issue Reproduction & Fix Verification Tests...\n");
 
-  const originalCaches = (globalThis as any).caches;
   const originalFetch = globalThis.fetch;
-  const mockCache = new MockCache();
-  (globalThis as any).caches = { default: mockCache };
 
   try {
     // =========================================================================
     // 1. Verify fetchListContent truncation and MAX_LIST_BYTES behavior
     // =========================================================================
     console.log("1. Testing fetchListContent truncation detection...");
-    
+
     // Create a mock list stream with 100 domains (~2.5 KB)
     const domainLines: string[] = [];
     for (let i = 0; i < 100; i++) {
@@ -195,116 +173,7 @@ async function runIssueVerificationTests() {
     assert.strictEqual(receivedConditionalHeaders["If-None-Match"], '"etag-v123"');
     console.log("   ✓ HTTP 304 Not Modified conditional request verified with 0 parsing overhead.");
 
-    // =========================================================================
-    // 2. Verify L2 Cache consistency and Bloom rehydration
-    // =========================================================================
-    console.log("3. Testing L2 Cache versioning & Filter loading...");
-
-    const profileId = "prof_cache_sync_test";
-    const profileCacheKey = `${PROFILE_CACHE_KEY_PREFIX}:${profileId}`;
-    const filterUrl = cacheUtils.generateCacheUrl(`filter-bin:${profileId}`);
-
-    // Create a real small FingerprintSet filter
-    const builder = new FingerprintSetBuilder();
-    builder.add("blocked-test.com");
-    builder.addPipePipe("blocked-test.com");
-    const filter = await builder.build();
-    const filterBuffer = filter.toUint8Array().buffer;
-
-    let d1BloomReadCount = 0;
-    const mockD1: any = {
-      prepare: (sql: string) => {
-        const stmt = {
-          first: async () => {
-            if (sql.includes("FROM profiles WHERE id =")) {
-              return { id: profileId, settings: JSON.stringify({ upstream: ["1.1.1.1"] }), list_updated_at: 100 };
-            }
-            if (sql.includes("FROM rules WHERE profile_id =")) {
-              return null;
-            }
-            if (sql.includes("FROM profile_adguard_rules WHERE profile_id =")) {
-              return null;
-            }
-            return null;
-          },
-          all: async () => {
-            if (sql.includes("FROM profile_blooms WHERE profile_id =")) {
-              d1BloomReadCount++;
-              return { results: [{ bloom_filter_chunk: filterBuffer }] };
-            }
-            return { results: [] };
-          },
-          run: async () => ({ success: true }),
-          raw: async () => []
-        };
-        return {
-          bind: (...args: any[]) => stmt,
-          ...stmt
-        };
-      }
-    };
-
-    const pendingTasks: Promise<any>[] = [];
-    const dummyCtx: any = {
-      waitUntil: (p: Promise<any>) => {
-        pendingTasks.push(p);
-        return p;
-      }
-    };
-
-    const context: Context = {
-      profileId,
-      env: { DB: mockD1, ASSETS: {} },
-      ctx: dummyCtx,
-      startTime: Date.now()
-    };
-
-    // Step A: Load config from D1 (simulating first query after blocklist added)
-    console.log("   - Performing first pipelineConfig.load (D1 load)...");
-    const loaded1 = await pipelineConfig.load(context, () => {});
-    await Promise.all(pendingTasks);
-    assert.ok(loaded1?.filter, "Filter should be loaded on initial D1 fetch");
-    assert.strictEqual(loaded1?.filter?.test("blocked-test.com"), true);
-    assert.strictEqual(d1BloomReadCount, 1);
-
-    // Verify L2 cache has profile_v8 and filter-bin
-    const cachedProfileInL2 = mockCache.store.get(cacheUtils.generateCacheUrl(profileCacheKey));
-    assert.ok(cachedProfileInL2, "Profile config should be stored under PROFILE_CACHE_KEY_PREFIX in L2 cache");
-    const cachedFilterInL2 = mockCache.store.get(filterUrl);
-    assert.ok(cachedFilterInL2, "Filter binary should be stored under filter-bin in L2 cache");
-    console.log("   ✓ L2 cache successfully stored profile_v8 and filter-bin binary.");
-
-    // Step B: Simulate clearing pipelineCache (e.g. on sync or rules change)
-    console.log("   - Calling pipelineCache.clear(profileId)...");
-    mockCache.deleted.length = 0;
-    await pipelineCache.clear(profileId, true, context.env);
-
-    // Verify that current version key was deleted from L2
-    assert(mockCache.deleted.includes(cacheUtils.generateCacheUrl(profileCacheKey)), "profile_v8 cache key must be deleted by clear()");
-    assert(mockCache.deleted.includes(filterUrl), "filter-bin cache key must be deleted by clear()");
-    console.log("   ✓ pipelineCache.clear successfully invalidated profile_v8 and filter-bin.");
-
-    // Step C: Verify fallback rehydration if L2 contains config with hasFilter=true but filter-bin is missing
-    console.log("   - Testing L2 fallback rehydration when Filter binary was evicted...");
-    // Put profile config back in L2 with hasFilter: true, but leave filter-bin empty
-    await cacheUtils.set(mockCache as any, profileCacheKey, {
-      settings: { upstream: ["1.1.1.1"] },
-      rules: [],
-      hasFilter: true,
-      hasBloom: true
-    }, 86400);
-    mockCache.store.delete(filterUrl); // simulate filter eviction
-
-    d1BloomReadCount = 0;
-    const loadedFallback = await pipelineConfig.load(context, () => {});
-    await Promise.all(pendingTasks);
-    assert.ok(loadedFallback?.filter, "Filter should be restored via D1 fallback when L2 has hasFilter=true");
-    assert.strictEqual(loadedFallback?.filter?.test("blocked-test.com"), true);
-    assert.strictEqual(d1BloomReadCount, 1, "D1 Filter should have been queried exactly once as fallback");
-    console.log("   ✓ Fallback gracefully rehydrated Filter from D1 and repopulated L2.");
-
   } finally {
-    (globalThis as any).caches = originalCaches;
     globalThis.fetch = originalFetch;
   }
 
