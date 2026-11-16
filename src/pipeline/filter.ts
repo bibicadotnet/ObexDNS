@@ -10,7 +10,7 @@ import { DNSFilter } from "../lib/filtering";
 import { FingerprintSet } from "../utils/fingerprintSet";
 import { AdGuardProfileEngine } from "../lib/adguard";
 import { systemListsManager } from "../lib/filtering/systemListsManager";
-import { customListsManager } from "../lib/filtering/customListsManager";
+import { customListsManager, CustomListEntry } from "../lib/filtering/customListsManager";
 import { pipelineResolver } from "./resolver";
 
 export const pipelineFilter = {
@@ -27,6 +27,15 @@ export const pipelineFilter = {
     enabledCustomListIds?: number[]
   ): Promise<ResolutionResult | null> {
     const domainLower = query.name.toLowerCase();
+
+    // Resolve enabled custom list entries once per query to prevent repetitive LRU Map churn
+    const customEntries: { id: number; entry: CustomListEntry }[] = [];
+    if (enabledCustomListIds && enabledCustomListIds.length > 0) {
+      for (const id of enabledCustomListIds) {
+        const entry = customListsManager.getEntry(id);
+        if (entry) customEntries.push({ id, entry });
+      }
+    }
 
     // ── 阶段 1：本地自定义规则 (Local Rules) ──────────────────────────────────
     // 1.1 本地白名单
@@ -91,12 +100,11 @@ export const pipelineFilter = {
       }
     }
     // 2.3 Custom 列表例外
-    if (enabledCustomListIds && enabledCustomListIds.length > 0) {
-      for (const listId of enabledCustomListIds) {
-        const customAdguard = customListsManager.getAdguard(listId);
-        if (customAdguard?.testException(domainLower)) {
+    if (customEntries.length > 0) {
+      for (const { id, entry } of customEntries) {
+        if (entry.engine?.testException(domainLower)) {
           track('adguard_whitelist');
-          return pipelineResolver.resolve(request, query, context, settings, "PASS", `Custom List #${listId}: Exception`);
+          return pipelineResolver.resolve(request, query, context, settings, "PASS", `Custom List #${id}: Exception`);
         }
       }
     }
@@ -115,13 +123,12 @@ export const pipelineFilter = {
         }
       }
     }
-    if (!rewrite && enabledCustomListIds && enabledCustomListIds.length > 0) {
-      for (const listId of enabledCustomListIds) {
-        const customAdguard = customListsManager.getAdguard(listId);
-        const r = customAdguard?.matchRewrite(domainLower);
+    if (!rewrite && customEntries.length > 0) {
+      for (const { id, entry } of customEntries) {
+        const r = entry.engine?.matchRewrite(domainLower);
         if (r) {
           rewrite = r;
-          rewriteLabel = `Custom List #${listId}: DNS Rewrite`;
+          rewriteLabel = `Custom List #${id}: DNS Rewrite`;
           break;
         }
       }
@@ -175,23 +182,23 @@ export const pipelineFilter = {
     }
 
     // 4.2 Tầng 2: Custom Filter Lists (Từng bộ lọc riêng của người dùng)
-    if (enabledCustomListIds && enabledCustomListIds.length > 0) {
-      for (const listId of enabledCustomListIds) {
-        const customFilter = customListsManager.getFilter(listId);
-        if (customFilter) {
+    if (customEntries.length > 0) {
+      for (const { id, entry } of customEntries) {
+        const customFilter = entry.filter;
+        if (customFilter && !customFilter.isEmpty()) {
           let currentDomain = domainLower;
           let isSelf = true;
           while (currentDomain) {
             if (isSelf) {
               if (customFilter.test(currentDomain) || customFilter.testPipePipe(currentDomain)) {
                 track('bloom_check');
-                return pipelineResolver.block(request, query, context, settings, "BLOCK", `Custom List #${listId}: ${currentDomain}`);
+                return pipelineResolver.block(request, query, context, settings, "BLOCK", `Custom List #${id}: ${currentDomain}`);
               }
               isSelf = false;
             } else {
               if (customFilter.testPipePipe(currentDomain)) {
                 track('bloom_check');
-                return pipelineResolver.block(request, query, context, settings, "BLOCK", `Custom List #${listId}: ||${currentDomain}`);
+                return pipelineResolver.block(request, query, context, settings, "BLOCK", `Custom List #${id}: ||${currentDomain}`);
               }
             }
             const firstDot = currentDomain.indexOf('.');
@@ -240,12 +247,11 @@ export const pipelineFilter = {
         }
       }
     }
-    if (enabledCustomListIds && enabledCustomListIds.length > 0) {
-      for (const listId of enabledCustomListIds) {
-        const customAdguard = customListsManager.getAdguard(listId);
-        if (customAdguard?.matchPattern(domainLower)) {
+    if (customEntries.length > 0) {
+      for (const { id, entry } of customEntries) {
+        if (entry.engine?.matchPattern(domainLower)) {
           track('adguard_pattern');
-          return pipelineResolver.block(request, query, context, settings, "BLOCK", `Custom List #${listId}: Pattern`);
+          return pipelineResolver.block(request, query, context, settings, "BLOCK", `Custom List #${id}: Pattern`);
         }
       }
     }

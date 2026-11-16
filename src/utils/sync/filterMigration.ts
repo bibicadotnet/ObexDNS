@@ -66,17 +66,6 @@ export async function migrateFilterFormatIfLegacy(env: Env): Promise<FilterMigra
       }
     }
 
-    // Drop obsolete profile bloom/adguard tables to reclaim disk space (chỉ chạy trong tiến trình migrate)
-    const dropSqls = [
-      "DROP TABLE IF EXISTS profile_blooms",
-      "DROP TABLE IF EXISTS profile_blooms_staging",
-      "DROP TABLE IF EXISTS profile_adguard_rules",
-      "DROP TABLE IF EXISTS profile_adguard_rules_staging"
-    ];
-    for (const sql of dropSqls) {
-      await env.DB.prepare(sql).bind().run().catch(() => {});
-    }
-
     if (!hasLegacy && stored === null) {
       // Clean install or already using FPRT
       await settings.set(FILTER_FORMAT_SETTING_KEY, CURRENT_FILTER_FORMAT);

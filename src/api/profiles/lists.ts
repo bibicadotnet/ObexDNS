@@ -220,7 +220,7 @@ export async function handleProfileListsRequest(
     await systemListsManager.ensureLoaded(env.DB, false, env);
     const isSystemList = systemListsManager.isSystemUrl(list.url);
 
-    // If enabling a system list that was never synced before, trigger immediate system sync
+    // If enabling a list that was never synced before, trigger immediate sync
     if (body.enabled) {
       if (isSystemList) {
         const sysId = systemListsManager.getIdByUrl(list.url);
@@ -235,6 +235,10 @@ export async function handleProfileListsRequest(
             );
           }
         }
+      } else if (!list.last_synced_at) {
+        ctx.waitUntil(
+          syncSingleListForProfile(profileId, listId, env, ctx, false)
+        );
       }
     }
 
@@ -415,6 +419,12 @@ export async function handleProfileListsRequest(
 
     if (!id || !Number.isInteger(id) || id <= 0) {
       return new Response("Invalid or missing list id", { status: 400 });
+    }
+
+    // IDOR protection: Verify the list actually belongs to this profile before deleting
+    const existingList = await listModel.getListById(id, profileId);
+    if (!existingList) {
+      return new Response("List Not Found", { status: 404 });
     }
 
     await listModel.deleteList(id, profileId);

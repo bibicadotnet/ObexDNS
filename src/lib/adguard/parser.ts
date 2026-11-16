@@ -88,7 +88,7 @@ export function parseAdGuardLine(line: string): ParsedAdGuardRule | null {
       let target = trimmed.substring(2);
       const caretIdx = target.indexOf("^");
       if (caretIdx !== -1) target = target.substring(0, caretIdx);
-      target = target.trim().toLowerCase();
+      target = target.replace(/\\/g, "").trim().toLowerCase();
       if (target) {
         return {
           kind: AdGuardRuleKind.BLOOM_DOMAIN,
@@ -154,7 +154,7 @@ export function parseAdGuardLine(line: string): ParsedAdGuardRule | null {
     const dollarIdx = target.indexOf("$");
     if (dollarIdx !== -1) target = target.substring(0, dollarIdx);
 
-    target = target.trim().toLowerCase();
+    target = target.replace(/\\/g, "").trim().toLowerCase();
     if (!target) return null;
 
     if (target.includes("*")) {

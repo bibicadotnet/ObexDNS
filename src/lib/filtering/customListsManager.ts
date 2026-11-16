@@ -9,7 +9,7 @@ import { D1Database } from "@cloudflare/workers-types";
 import { ListFilterModel } from "../../models/listFilter";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { FingerprintSet } from "../../utils/fingerprintSet";
-import { AdGuardProfileEngine } from "../adguard";
+import { AdGuardProfileEngine, AdGuardPayload } from "../adguard";
 import { ByteCappedMap } from "../../pipeline/cache";
 
 export interface CustomListEntry {
@@ -30,6 +30,7 @@ function getEnvNumber(key: string, defaultVal: number): number {
 class CustomListsManager {
   private cache: ByteCappedMap<number, CustomListEntry>;
   private inFlightLoads: Map<number, Promise<void>> = new Map();
+  private generations: Map<number, number> = new Map();
   private ttlMs: number = 300000; // 5 minutes default TTL
 
   constructor() {
@@ -54,41 +55,35 @@ class CustomListsManager {
     }
   }
 
-  getFilter(listId: number): FingerprintSet | null {
+  getEntry(listId: number): CustomListEntry | null {
     const entry = this.cache.get(listId);
     if (!entry) return null;
     if (this.ttlMs > 0 && Date.now() - entry.ts > this.ttlMs) {
       this.cache.delete(listId);
       return null;
     }
-    return entry.filter;
+    return entry;
+  }
+
+  getFilter(listId: number): FingerprintSet | null {
+    return this.getEntry(listId)?.filter || null;
   }
 
   getAdguard(listId: number): AdGuardProfileEngine | null {
-    const entry = this.cache.get(listId);
-    if (!entry) return null;
-    if (this.ttlMs > 0 && Date.now() - entry.ts > this.ttlMs) {
-      this.cache.delete(listId);
-      return null;
-    }
-    return entry.engine;
+    return this.getEntry(listId)?.engine || null;
   }
 
   hasFilter(listId: number): boolean {
-    const entry = this.cache.get(listId);
-    if (!entry) return false;
-    if (this.ttlMs > 0 && Date.now() - entry.ts > this.ttlMs) {
-      this.cache.delete(listId);
-      return false;
-    }
-    return true;
+    return this.getEntry(listId) !== null;
   }
 
   invalidate(listId: number): void {
+    this.generations.set(listId, (this.generations.get(listId) || 0) + 1);
     this.cache.delete(listId);
   }
 
   clear(): void {
+    this.generations.clear();
     this.cache.clear();
   }
 
@@ -105,15 +100,39 @@ class CustomListsManager {
       return inFlight;
     }
 
+    const currentGen = (this.generations.get(listId) || 0) + 1;
+    this.generations.set(listId, currentGen);
+
     const loadPromise = (async () => {
       try {
         const listFilterModel = new ListFilterModel(db);
         const adguardRulesModel = new AdguardRulesModel(db);
 
-        const [filterBuf, rulesPayload] = await Promise.all([
-          listFilterModel.getListFilter(listId).catch(() => null),
-          adguardRulesModel.getListRules(listId).catch(() => null)
-        ]);
+        let filterBuf: ArrayBuffer | null = null;
+        let rulesPayload: AdGuardPayload | null = null;
+        let dbFailed = false;
+
+        try {
+          const [fRes, rRes] = await Promise.all([
+            listFilterModel.getListFilter(listId),
+            adguardRulesModel.getListRules(listId)
+          ]);
+          filterBuf = fRes;
+          rulesPayload = rRes;
+        } catch (dbErr: any) {
+          dbFailed = true;
+          console.warn(`[CustomListsManager] Failed to read database for list #${listId} (skipping cache):`, dbErr?.message || dbErr);
+        }
+
+        // Check if load was invalidated while waiting for DB I/O
+        if (this.generations.get(listId) !== currentGen) {
+          return;
+        }
+
+        // Transient DB error: do NOT negative-cache, so next query retries
+        if (dbFailed) {
+          return;
+        }
 
         let filter: FingerprintSet | null = null;
         let byteLength = 0;
@@ -127,7 +146,7 @@ class CustomListsManager {
           }
         }
 
-        // Negative caching: if list has no plain domain rules or filter is empty/invalid,
+        // Negative caching: if DB query succeeded but returned no domain filter,
         // use an empty FingerprintSet (0 byteLength) so we don't spam SQLite on every DNS packet
         if (!filter) {
           filter = new FingerprintSet(new BigUint64Array(0));
@@ -138,6 +157,12 @@ class CustomListsManager {
         if (rulesPayload) {
           try {
             engine = new AdGuardProfileEngine(rulesPayload);
+            // Account for AdGuard rule memory in byteLength:
+            // ~160B per exception, ~200B per rewrite, ~300B per regex pattern
+            const exceptionsBytes = (rulesPayload.exceptions?.length || 0) * 160;
+            const rewritesBytes = Object.keys(rulesPayload.rewrites || {}).length * 200;
+            const patternsBytes = (rulesPayload.patterns?.length || 0) * 300;
+            byteLength += (exceptionsBytes + rewritesBytes + patternsBytes);
           } catch (e: any) {
             console.warn(`[CustomListsManager] Failed to instantiate AdGuard engine for list #${listId}:`, e?.message || e);
           }

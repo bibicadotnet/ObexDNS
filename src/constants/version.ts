@@ -7,7 +7,7 @@
  * Current system version of DNS Worker (x.y.z).
  * Synchronized with package.json.
  */
-export const APP_VERSION = '1.2.7';
+export const APP_VERSION = '1.3.23';
 
 /**
  * Resolves the real system version string (x.y.z).
