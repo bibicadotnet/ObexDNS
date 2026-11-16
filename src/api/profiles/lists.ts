@@ -58,30 +58,58 @@ export async function handleProfileListsRequest(
       const list = await listModel.getListById(listId, profileId);
       if (!list) return new Response("List Not Found", { status: 404 });
 
-      let buffer: ArrayBuffer | null = null;
-      let adguardPayload: any = null;
+      let filter: FingerprintSet | null = null;
+      let adguardEngine: AdGuardProfileEngine | null = null;
 
       await systemListsManager.ensureLoaded(env.DB, false, env);
-      if (systemListsManager.isSystemUrl(list.url)) {
+      const isSystemList = systemListsManager.isSystemUrl(list.url);
+
+      if (isSystemList) {
         const sysId = systemListsManager.getIdByUrl(list.url);
         if (sysId) {
-          const sysModel = new SystemListModel(env.DB);
-          buffer = await sysModel.getSystemListFilter(sysId);
-          adguardPayload = await sysModel.getSystemListAdguard(sysId);
+          filter = systemListsManager.getBloom(sysId);
+          adguardEngine = systemListsManager.getAdguard(sysId);
         }
       } else {
-        buffer = await new ListFilterModel(env.DB).getListFilter(listId);
-        const adguardRulesModel = env.DB ? new AdguardRulesModel(env.DB) : null;
-        adguardPayload = adguardRulesModel ? await adguardRulesModel.getListRules(listId) : null;
+        filter = customListsManager.getFilter(listId);
+        adguardEngine = customListsManager.getAdguard(listId);
       }
 
-      if (!buffer && !adguardPayload) {
+      // If not present in memory cache, load from DB
+      if (!filter && !adguardEngine) {
+        let buffer: ArrayBuffer | null = null;
+        let adguardPayload: any = null;
+
+        if (isSystemList) {
+          const sysId = systemListsManager.getIdByUrl(list.url);
+          if (sysId) {
+            const sysModel = new SystemListModel(env.DB);
+            buffer = await sysModel.getSystemListFilter(sysId);
+            adguardPayload = await sysModel.getSystemListAdguard(sysId);
+          }
+        } else {
+          buffer = await new ListFilterModel(env.DB).getListFilter(listId);
+          const adguardRulesModel = env.DB ? new AdguardRulesModel(env.DB) : null;
+          adguardPayload = adguardRulesModel ? await adguardRulesModel.getListRules(listId) : null;
+        }
+
+        if (buffer && FingerprintSet.isCurrentVersion(buffer)) {
+          try {
+            filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
+          } catch (err: any) {
+            console.error(`[Lists] Failed to deserialize Fingerprint Filter for list #${listId}:`, err?.message || err);
+          }
+        }
+        if (adguardPayload) {
+          adguardEngine = new AdGuardProfileEngine(adguardPayload);
+        }
+      }
+
+      if (!filter && !adguardEngine) {
         return new Response(JSON.stringify({ domain, blocked: false, synced: false }), {
           headers: { 'Content-Type': 'application/json' }
         });
       }
-
-      const adguardEngine = adguardPayload ? new AdGuardProfileEngine(adguardPayload) : null;
 
       // ── 阶段 1：AdGuard 白名单例外 (@@) ──────────────────────────────────────
       const exceptionMatch = adguardEngine?.findException(domain);
@@ -98,15 +126,6 @@ export async function handleProfileListsRequest(
       }
 
       // ── 阶段 2：Fingerprint 过滤器双态前缀检查 ────────────────────────────────────
-      let filter: FingerprintSet | null = null;
-      if (buffer && FingerprintSet.isCurrentVersion(buffer)) {
-        try {
-          filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
-        } catch (err: any) {
-          console.error(`[Lists] Failed to deserialize Fingerprint Filter for list #${listId}:`, err?.message || err);
-        }
-      }
-
       let currentDomain = domain;
       let isSelf = true;
       let matched: string | null = null;
@@ -382,7 +401,26 @@ export async function handleProfileListsRequest(
   }
 
   if (request.method === 'DELETE') {
-    const { id } = await request.json() as { id: number };
+    let id: number | undefined;
+    if (pathParts.length >= 5 && pathParts[4]) {
+      const parsed = Number(pathParts[4]);
+      if (Number.isInteger(parsed) && parsed > 0) {
+        id = parsed;
+      }
+    }
+    if (!id) {
+      try {
+        const body = await request.json() as { id?: number };
+        if (body && typeof body.id === 'number') {
+          id = body.id;
+        }
+      } catch {}
+    }
+
+    if (!id || !Number.isInteger(id) || id <= 0) {
+      return new Response("Invalid or missing list id", { status: 400 });
+    }
+
     await listModel.deleteList(id, profileId);
     if (env.DB) {
       const listFilterModel = new ListFilterModel(env.DB);

@@ -397,24 +397,17 @@ async function mergeTwoSortedBigUint64(a: BigUint64Array, b: BigUint64Array): Pr
 }
 
 /**
- * Builder for FingerprintSet using lazy, chunked allocation.
+ * Builder for FingerprintSet using zero-allocation 32-bit streaming blocks.
  */
 export class FingerprintSetBuilder {
   private blocks: BigUint64Array[] = [];
   private currentBlock: BigUint64Array | null = null;
+  private currentBlock32: Uint32Array | null = null;
   private currentCapacity: number = 0;
   private currentOffset: number = 0;
   private totalCount: number = 0;
 
-  add(domain: string): void {
-    this.addHash(hashDomain(domain));
-  }
-
-  addPipePipe(domain: string): void {
-    this.addHash(hashDomainWithPipePipe(domain));
-  }
-
-  addHash(fp: bigint): void {
+  private ensureCapacity(): void {
     if (!this.currentBlock || this.currentOffset >= this.currentCapacity) {
       if (this.currentBlock) {
         this.blocks.push(this.currentBlock.subarray(0, this.currentOffset));
@@ -422,10 +415,59 @@ export class FingerprintSetBuilder {
       // First block starts small (INITIAL_BLOCK_SIZE), subsequent blocks use CHUNK_SIZE
       const nextCap = this.totalCount === 0 ? INITIAL_BLOCK_SIZE : CHUNK_SIZE;
       this.currentBlock = new BigUint64Array(nextCap);
+      this.currentBlock32 = new Uint32Array(this.currentBlock.buffer, this.currentBlock.byteOffset, nextCap * 2);
       this.currentCapacity = nextCap;
       this.currentOffset = 0;
     }
-    this.currentBlock[this.currentOffset++] = fp;
+  }
+
+  add(domain: string): void {
+    this.ensureCapacity();
+    let h1 = FNV_SEED_1;
+    let h2 = HASH_SEED_2;
+    const len = domain.length;
+    for (let i = 0; i < len; i++) {
+      const c = domain.charCodeAt(i);
+      h1 = Math.imul(h1 ^ (c & 0xff), FNV_PRIME_1);
+      h2 = Math.imul(h2 ^ ((c >>> 8) ^ (c & 0xff)), HASH_PRIME_2);
+    }
+    h1 = h1 >>> 0;
+    let h2_mixed = h2 ^ (h2 >>> 16);
+    h2_mixed = Math.imul(h2_mixed, HASH_PRIME_2);
+    h2_mixed = (h2_mixed ^ (h2_mixed >>> 13)) >>> 0;
+
+    const idx = this.currentOffset * 2;
+    this.currentBlock32![idx] = h2_mixed;
+    this.currentBlock32![idx + 1] = h1;
+    this.currentOffset++;
+    this.totalCount++;
+  }
+
+  addPipePipe(domain: string): void {
+    this.ensureCapacity();
+    let h1 = SEED_PIPE_1;
+    let h2 = SEED_PIPE_2;
+    const len = domain.length;
+    for (let i = 0; i < len; i++) {
+      const c = domain.charCodeAt(i);
+      h1 = Math.imul(h1 ^ (c & 0xff), FNV_PRIME_1);
+      h2 = Math.imul(h2 ^ ((c >>> 8) ^ (c & 0xff)), HASH_PRIME_2);
+    }
+    h1 = h1 >>> 0;
+    let h2_mixed = h2 ^ (h2 >>> 16);
+    h2_mixed = Math.imul(h2_mixed, HASH_PRIME_2);
+    h2_mixed = (h2_mixed ^ (h2_mixed >>> 13)) >>> 0;
+
+    const idx = this.currentOffset * 2;
+    this.currentBlock32![idx] = h2_mixed;
+    this.currentBlock32![idx + 1] = h1;
+    this.currentOffset++;
+    this.totalCount++;
+  }
+
+  addHash(fp: bigint): void {
+    this.ensureCapacity();
+    this.currentBlock![this.currentOffset++] = fp;
     this.totalCount++;
   }
 
@@ -434,7 +476,7 @@ export class FingerprintSetBuilder {
   }
 
   /**
-   * Sorts and merges slices, deduplicating elements even if there is only 1 block.
+   * Assembles, sorts and deduplicates elements into a single FingerprintSet.
    */
   async build(): Promise<FingerprintSet> {
     if (this.totalCount === 0) {
@@ -445,7 +487,11 @@ export class FingerprintSetBuilder {
     if (this.currentBlock && this.currentOffset > 0) {
       allBlocks.push(this.currentBlock.subarray(0, this.currentOffset));
     }
+    this.currentBlock = null;
+    this.currentBlock32 = null;
+    this.blocks = [];
 
+    // Single block fast path
     if (allBlocks.length === 1) {
       const block = allBlocks[0];
       block.sort();
@@ -455,30 +501,34 @@ export class FingerprintSetBuilder {
           block[outIdx++] = block[i];
         }
       }
-      const trimmed = block.slice(0, outIdx);
-      return new FingerprintSet(trimmed);
+      return new FingerprintSet(outIdx === block.length ? block : block.subarray(0, outIdx));
     }
 
-    for (let i = 0; i < allBlocks.length; i++) {
-      allBlocks[i].sort();
-      if (allBlocks.length > 1) {
-        await yieldLoop();
+    // Allocate single contiguous destination array for all blocks
+    const full = new BigUint64Array(this.totalCount);
+    let offset = 0;
+    for (const b of allBlocks) {
+      full.set(b, offset);
+      offset += b.length;
+    }
+    allBlocks.length = 0;
+
+    await yieldLoop();
+
+    // Fast in-place C++ pdqsort / TimSort
+    full.sort();
+
+    await yieldLoop();
+
+    // Deduplicate in-place in a single linear pass
+    let outIdx = 0;
+    for (let i = 0; i < full.length; i++) {
+      if (outIdx === 0 || full[i] !== full[outIdx - 1]) {
+        full[outIdx++] = full[i];
       }
     }
 
-    let queue: BigUint64Array[] = allBlocks;
-    while (queue.length > 1) {
-      const nextQueue: BigUint64Array[] = [];
-      for (let i = 0; i < queue.length; i += 2) {
-        if (i + 1 < queue.length) {
-          nextQueue.push(await mergeTwoSortedBigUint64(queue[i], queue[i + 1]));
-        } else {
-          nextQueue.push(queue[i]);
-        }
-      }
-      queue = nextQueue;
-    }
-
-    return new FingerprintSet(queue[0]);
+    const finalData = outIdx === full.length ? full : full.subarray(0, outIdx);
+    return new FingerprintSet(finalData);
   }
 }

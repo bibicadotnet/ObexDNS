@@ -100,6 +100,16 @@ class CustomListsManager {
           }
         }
 
+        // Negative caching: nếu list không có domain rules hoặc filter rỗng/lỗi,
+        // lưu một FingerprintSet rỗng (0 byte) để tránh lặp lại truy vấn SQLite trên mỗi query DNS.
+        if (!this.filterCache.has(listId)) {
+          this.filterCache.set(listId, {
+            filter: new FingerprintSet(new BigUint64Array(0)),
+            byteLength: 0,
+            ts: Date.now()
+          });
+        }
+
         if (rulesPayload) {
           try {
             const engine = new AdGuardProfileEngine(rulesPayload);
