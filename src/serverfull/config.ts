@@ -227,6 +227,7 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
       ? Number(process.env.INACTIVITY_USER_DAYS)
       : 90,
     THROTTLE_ACTIVE_SEC: process.env.THROTTLE_ACTIVE_SEC || 3600,
+    ACTIVE_DNS_CACHE_TTL: Number(process.env.ACTIVE_DNS_CACHE_TTL) || 60,
     SYNC_PROFILE_INTERVAL_SEC: process.env.SYNC_PROFILE_INTERVAL_SEC || 86400,
     SYNC_SYSTEM_INTERVAL_SEC: process.env.SYNC_SYSTEM_INTERVAL_SEC || 21600,
     MAX_PROFILE_CUSTOM_DOMAINS: process.env.MAX_PROFILE_CUSTOM_DOMAINS,

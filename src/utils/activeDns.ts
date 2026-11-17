@@ -127,7 +127,7 @@ export async function recordActiveConnection(
 
     // Hot path (runs for every DNS query): skip when this IP is already recorded for this profile
     // with more than half of the TTL left.
-    const ttl = Number(env.ACTIVE_DNS_CACHE_TTL) || DEFAULT_ACTIVE_DNS_TTL;
+    const ttl = Number(env?.ACTIVE_DNS_CACHE_TTL) || DEFAULT_ACTIVE_DNS_TTL;
     const ipKey = `active_dns:${clientIp}`;
     const e = ipMem.get(ipKey);
     if (e && e.value === profileId && e.expires - Date.now() > (ttl * 1000) / 2) return;
@@ -158,7 +158,7 @@ export async function touchProfileAndUserActivity(
   profileId: string,
   cache?: Cache | null
 ): Promise<void> {
-  if (!profileId || !env.DB) return;
+  if (!profileId || !env?.DB) return;
 
   try {
     const nowSec = Math.floor(Date.now() / 1000);

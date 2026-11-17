@@ -131,6 +131,7 @@ SESSION_LAST_ACTIVE_UPDATE_INTERVAL=60
 AUTH_CACHE_TTL_SEC=30
 # Throttle interval for updating profile "last active" status (in seconds)
 THROTTLE_ACTIVE_SEC=3600
+ACTIVE_DNS_CACHE_TTL=60
 # Minimum interval between automated blocklist profile syncs (in seconds)
 SYNC_PROFILE_INTERVAL_SEC=86400
 # Maximum log rows deleted per cron cleanup run across all profiles (prevents write quota exhaustion)
