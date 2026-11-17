@@ -68,7 +68,7 @@
   },
   "auth": {
     "keepLoggedIn": "Keep me logged in for {{days}} days",
-    "login": "Login to DNS Worker",
+    "login": "Login to {{appName}}",
     "signup": "Create an account to start",
     "welcomeBack": "Welcome back, please enter your credentials",
     "protectInternet": "Protect your first hop on the internet",
@@ -205,7 +205,7 @@
   },
   "setup": {
     "title": "Setup Guide",
-    "subtitle": "Configure your devices to use DNS Worker and master your internet security.",
+    "subtitle": "Configure your devices to use {{appName}} and master your internet security.",
     "regionOptimization": "Region Optimization (Windows)",
     "otherRegion": "Other Region",
     "copied": "Copied to clipboard",
@@ -214,7 +214,7 @@
     "connected": "Connected",
     "notConnected": "Not Connected",
     "profileMatch": "Filtering through this profile.",
-    "profileMismatch": "Using DNS Worker, but Profile ID mismatch.",
+    "profileMismatch": "Using {{appName}}, but Profile ID mismatch.",
     "verifyNotDetected": "No DNS query from this browser reached this server. Check the configuration below, then verify again.",
     "verifyIpFallback": "Could not run the exact check on this address; showing the last profile seen from your IP (less precise).",
     "verifyHint": "Click to verify after configuration.",
@@ -282,7 +282,7 @@
     "dynamicFromDomainV6": "Dynamic IPv6 (from {{domain}})",
     "linux": "Linux",
     "linuxTitle": "Linux (Cloudflared DoH Proxy)",
-    "linuxDesc": "Run a local DNS proxy to forward queries to DNS Worker via DoH.",
+    "linuxDesc": "Run a local DNS proxy to forward queries to {{appName}} via DoH.",
     "linuxStep1": "Run this script to install cloudflared and setup systemd service (listening on 127.0.0.1:53).",
     "linuxStep2": "Change your system DNS to 127.0.0.1.",
     "routeros": "MikroTik",
@@ -682,7 +682,7 @@
     "e2eeUnlockRecovery": "Unlock with Recovery Key",
     "securityTitle": "Security & Access",
     "rotateKeyTitle": "Access URL",
-    "rotateKeyDesc": "Generate a new access URL for this profile. Any devices currently using the old URL will immediately lose their connection to DNS Worker and will need to be reconfigured with the new URL.",
+    "rotateKeyDesc": "Generate a new access URL for this profile. Any devices currently using the old URL will immediately lose their connection to {{appName}} and will need to be reconfigured with the new URL.",
     "rotateKeyBtn": "Rotate URL",
     "copied": "Copied to clipboard",
     "nameUpdateFailed": "Failed to update profile name"
@@ -1001,7 +1001,7 @@
     "pendingMigrationsList": "Pending schema migration files:"
   },
   "intro": {
-    "item1Title": "DNS Worker Protective DNS",
+    "item1Title": "{{appName}} Protective DNS",
     "item1Desc": "Cloudflare Workers & D1 based DNS resolver, optimized for speed and security.",
     "item2Title": "DoH Privacy",
     "item2Desc": "Prevent hijacking and enhance privacy via DNS over HTTPS (RFC 8484) encryption.",
@@ -1025,8 +1025,8 @@
     "item11Desc": "Seamlessly adapts to Cloudflare D1, Turso distributed cloud SQLite, and local file storage, relieving single-tier quota limits."
   },
   "deploymentGuide": {
-    "title": "DNS Worker Setup & Deployment Guide",
-    "subtitle": "Your instance is not fully configured yet. Please complete the setup below to start using DNS Worker.",
+    "title": "{{appName}} Setup & Deployment Guide",
+    "subtitle": "Your instance is not fully configured yet. Please complete the setup below to start using {{appName}}.",
     "dbStatus": "D1 Database Binding (env.DB)",
     "jwtStatus": "JWT Secret Key (env.JWT_SECRET)",
     "configured": "Configured",
@@ -1043,7 +1043,7 @@
     "stepDbCommand2": "[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"dns_worker_db\"\ndatabase_id = \"<YOUR_D1_DATABASE_ID>\"\nmigrations_dir = \"migrations\"",
     "stepDbDashDesc": "1. Go to Cloudflare Dashboard -> Workers & Pages -> D1. Click \"Create Database\" and name it 'dns_worker_db'.\n2. Go to your Worker -> Settings -> Variables -> D1 Database Bindings -> Add Binding.\n3. Set Binding name to 'DB', and select 'dns_worker_db' as D1 database. Click Save.\n4. Go to your D1 database -> Console, copy and execute the SQL tables schema script from the migrations folder to set up database structure.",
     "stepJwtTitle": "2. Set JWT Secret Key",
-    "stepJwtDesc": "DNS Worker requires a JWT secret for signing session tokens and API security. Configure it as a Cloudflare Secret:",
+    "stepJwtDesc": "{{appName}} requires a JWT secret for signing session tokens and API security. Configure it as a Cloudflare Secret:",
     "stepJwtCommand1": "wrangler secret put JWT_SECRET",
     "stepJwtDashDesc": "1. Go to your Worker -> Settings -> Variables -> Environment Variables -> Add Variable.\n2. Set Name to 'JWT_SECRET', choose type 'Secret', and enter a secure random string (e.g. 64 hex characters) as Value.\n3. Save and Deploy.",
     "stepJwtDesc2": "Cloudflare Dashboard",
@@ -1055,7 +1055,7 @@
     "jwtGeneratorTitle": "Secure JWT_SECRET Generator",
     "jwtGeneratorDesc": "Use this cryptographically secure key generator to generate a random 64-character alphanumeric secret for your env.JWT_SECRET.",
     "regenerate": "Regenerate",
-    "serverfullTitle": "DNS Worker Serverfull Setup & Deployment Guide",
+    "serverfullTitle": "{{appName}} Serverfull Setup & Deployment Guide",
     "serverfullSubtitle": "Your instance is running in Serverfull (Standalone) mode. Follow the steps below to initialize database and configure environment parameters.",
     "serverfullDbStatus": "SQLite Database (Persistent Data Dir)",
     "serverfullDbConfigured": "Ready & Initialized",
@@ -1077,6 +1077,6 @@
   },
   "meta": {
     "defaultDesc": "Secure, fast, and customizable DNS resolution for all your devices. Based on Cloudflare Workers. Open-source and privacy-focused.",
-    "setupDesc": "Configure your devices to use DNS Worker."
+    "setupDesc": "Configure your devices to use {{appName}}."
   }
 }

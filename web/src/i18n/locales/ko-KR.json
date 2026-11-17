@@ -67,7 +67,7 @@
     "system": "시스템 설정 적용"
   },
   "auth": {
-    "login": "DNS Worker 로그인",
+    "login": "{{appName}} 로그인",
     "signup": "계정을 생성하여 시작하기",
     "welcomeBack": "다시 오신 것을 환영합니다, 자격 증명을 입력하세요",
     "protectInternet": "인터넷의 첫 번째 단계를 보호합니다",
@@ -205,7 +205,7 @@
   },
   "setup": {
     "title": "설치 가이드",
-    "subtitle": "장치를 설정하여 DNS Worker로 인터넷 보안을 관리하세요.",
+    "subtitle": "장치를 설정하여 {{appName}}로 인터넷 보안을 관리하세요.",
     "regionOptimization": "접속 지역 최적화 (Windows)",
     "otherRegion": "기타 지역",
     "copied": "클립보드에 복사됨",
@@ -214,7 +214,7 @@
     "connected": "연결됨",
     "notConnected": "미연결",
     "profileMatch": "이 설정으로 필터링되고 있습니다.",
-    "profileMismatch": "DNS Worker를 사용 중이지만 설정 ID가 일치하지 않습니다.",
+    "profileMismatch": "{{appName}}를 사용 중이지만 설정 ID가 일치하지 않습니다.",
     "verifyNotDetected": "이 브라우저의 DNS 쿼리가 이 서버에 도달하지 않았습니다. 아래 설정을 확인한 후 다시 확인하세요.",
     "verifyIpFallback": "이 주소에서는 정확한 확인을 할 수 없어, 현재 IP에서 마지막으로 확인된 프로필을 표시합니다(정확도 낮음).",
     "verifyHint": "아래 설정을 완료한 후 버튼을 클릭하여 확인하세요.",
@@ -282,7 +282,7 @@
     "dynamicFromDomainV6": "동적 IPv6 (다음에서 가져옴 \"{{domain}}\")",
     "linux": "Linux",
     "linuxTitle": "Linux (Cloudflared DoH 프록시)",
-    "linuxDesc": "로컬에서 가벼운 DNS 프록시를 실행하여 DoH를 통해 요청을 암호화하고 DNS Worker로 전달합니다.",
+    "linuxDesc": "로컬에서 가벼운 DNS 프록시를 실행하여 DoH를 통해 요청을 암호화하고 {{appName}}로 전달합니다.",
     "linuxStep1": "다음 스크립트를 실행하여 cloudflared를 설치하고 systemd 서비스를 생성합니다 (127.0.0.1:53 감시).",
     "linuxStep2": "시스템 DNS를 127.0.0.1로 변경합니다.",
     "routeros": "MikroTik",
@@ -672,7 +672,7 @@
     "e2eeUnlockRecovery": "복구 키로 잠금 해제",
     "securityTitle": "보안 및 액세스",
     "rotateKeyTitle": "액세스 URL",
-    "rotateKeyDesc": "이 프로필의 새 액세스 URL을 생성합니다. 이전 URL을 사용하는 모든 기기는 즉시 DNS Worker와의 연결이 끊어지며 새 URL로 재구성해야 합니다.",
+    "rotateKeyDesc": "이 프로필의 새 액세스 URL을 생성합니다. 이전 URL을 사용하는 모든 기기는 즉시 {{appName}}와의 연결이 끊어지며 새 URL로 재구성해야 합니다.",
     "rotateKeyBtn": "URL 순환 교체",
     "copied": "클립보드에 복사됨",
     "nameUpdateFailed": "업데이트 실패"
@@ -987,7 +987,7 @@
     "pendingMigrationsList": "대기 중인 스키마 마이그레이션 파일:"
   },
   "intro": {
-    "item1Title": "DNS Worker 보호 DNS",
+    "item1Title": "{{appName}} 보호 DNS",
     "item1Desc": "속도와 보안을 위해 설계된 Cloudflare Workers & D1 기반의 DNS 리졸버입니다.",
     "item2Title": "DoH 개인정보 보호",
     "item2Desc": "DNS over HTTPS (RFC 8484) 암호화 터널을 통해 통신사의 위변조를 방지하고 개인정보를 보호합니다.",
@@ -1011,8 +1011,8 @@
     "item11Desc": "Cloudflare D1, Turso 분산 클라우드 SQLite 및 로컬 파일 데이터베이스를 지원하여 무료 티어 사용량 제한을 유연하게 해결합니다."
   },
   "deploymentGuide": {
-    "title": "DNS Worker 설정 및 배포 가이드",
-    "subtitle": "인스턴스가 아직 완전히 구성되지 않았습니다. DNS Worker를 활성화하려면 아래 단계를 완료하세요.",
+    "title": "{{appName}} 설정 및 배포 가이드",
+    "subtitle": "인스턴스가 아직 완전히 구성되지 않았습니다. {{appName}}를 활성화하려면 아래 단계를 완료하세요.",
     "dbStatus": "D1 데이터베이스 바인딩 (env.DB)",
     "jwtStatus": "JWT 비밀 키 (env.JWT_SECRET)",
     "configured": "구성됨",
@@ -1029,7 +1029,7 @@
     "stepDbCommand2": "[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"dns_worker_db\"\ndatabase_id = \"<사용자의_D1_DATABASE_ID>\"\nmigrations_dir = \"migrations\"",
     "stepDbDashDesc": "1. Cloudflare 대시보드 -> Workers & Pages -> D1 -> 데이터베이스 생성 -> 이름을 'dns_worker_db'로 입력합니다.\n2. Worker -> 설정 -> 변수 -> D1 데이터베이스 바인딩 -> 바인딩 추가를 클릭합니다.\n3. 바인딩 이름을 'DB'로 설정하고 D1 데이터베이스에서 'dns_worker_db'를 선택한 후 저장합니다.\n4. D1 데이터베이스 -> 콘솔로 이동하여 migrations 폴더의 SQL 스키마 스크립트를 복사해 실행하여 테이블을 구성합니다.",
     "stepJwtTitle": "2. JWT 비밀 키 설정",
-    "stepJwtDesc": "DNS Worker는 세션 토큰 서명을 위해 JWT 비밀 키가 필요합니다. Cloudflare 비밀 변수로 구성하세요:",
+    "stepJwtDesc": "{{appName}}는 세션 토큰 서명을 위해 JWT 비밀 키가 필요합니다. Cloudflare 비밀 변수로 구성하세요:",
     "stepJwtCommand1": "wrangler secret put JWT_SECRET",
     "stepJwtDashDesc": "1. Worker -> 설정 -> 변수 -> 환경 변수 -> 변수 추가를 클릭합니다.\n2. 이름을 'JWT_SECRET'으로 설정하고 유형을 '비밀(Secret)'로 선택한 뒤 안전한 무작위 문자열을 입력합니다.\n3. 저장하고 배포합니다.",
     "stepJwtDesc2": "Cloudflare 대시보드",
@@ -1041,7 +1041,7 @@
     "jwtGeneratorTitle": "안전한 JWT_SECRET 생성기",
     "jwtGeneratorDesc": "이 암호학적으로 안전한 키 생성기를 사용하여 env.JWT_SECRET에 사용할 임의의 64자 영숫자 암호를 생성하십시오.",
     "regenerate": "재생성",
-    "serverfullTitle": "DNS Worker Serverfull 배포 및 초기화 가이드",
+    "serverfullTitle": "{{appName}} Serverfull 배포 및 초기화 가이드",
     "serverfullSubtitle": "현재 Serverfull (독립 실행형) 모드로 실행 중입니다. 데이터베이스 초기화 및 환경 설정을 위해 다음 단계를 따르세요.",
     "serverfullDbStatus": "SQLite 데이터베이스 (로컬 데이터 디렉터리)",
     "serverfullDbConfigured": "초기화 완료 및 준비됨",
@@ -1063,6 +1063,6 @@
   },
   "meta": {
     "defaultDesc": "모든 기기에 안전하고 빠르며 사용자 정의 가능한 DNS 확인을 제공합니다. Cloudflare Workers 기반의 오픈 소스 및 개인 정보 보호 중심.",
-    "setupDesc": "DNS Worker를 사용하도록 기기를 구성합니다."
+    "setupDesc": "{{appName}}를 사용하도록 기기를 구성합니다."
   }
 }

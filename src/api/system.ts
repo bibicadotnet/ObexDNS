@@ -2,7 +2,7 @@ import { Env } from '../types';
 import { cacheUtils } from '../utils/cache';
 import { PROBE_NONCE_RE, getActiveProfileId, getVerifyProbe } from '../utils/activeDns';
 import { getPresetEchFrontingDomains } from '../utils/ech/constants';
-import { fetchGeoIP } from '../utils/geoip';
+import { fetchGeoIP, GeoIP } from '../utils/geoip';
 import { isPublicInternetIP, isIPv4, isIPv6 } from '../utils/validator';
 import { isServerfullEnv } from '../utils/serverfullEnv';
 import {
@@ -222,8 +222,54 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
     }
 
     try {
-      // If a specific public target IP was requested, query that IP;
-      // otherwise query without IP parameter so ipwho.is resolves the caller's / server's public egress IP.
+      let geo: GeoIP | null = null;
+      if (targetIp) {
+        geo = await fetchGeoIP(targetIp);
+      } else {
+        // Query server's public egress IP via primary provider ip-api.com
+        const res = await fetch('http://ip-api.com/json/?fields=status,country,countryCode,regionName,city,isp,org,as,timezone,query', {
+          signal: AbortSignal.timeout(3500)
+        });
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          if (data.status === 'success' && data.countryCode) {
+            geo = {
+              country: data.country,
+              country_code: data.countryCode,
+              region: data.regionName,
+              city: data.city,
+              isp: data.isp,
+              org: data.org,
+              as: data.as,
+              timezone: data.timezone
+            };
+          }
+        }
+      }
+
+      if (geo) {
+        const emoji =
+          geo.country_code && geo.country_code.length === 2
+            ? String.fromCodePoint(...geo.country_code.toUpperCase().split('').map((c) => 127397 + c.charCodeAt(0)))
+            : '';
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            ip: targetIp || (geo as any).query || 'server',
+            country: geo.country,
+            country_code: geo.country_code,
+            region: geo.region,
+            city: geo.city,
+            timezone: { id: geo.timezone },
+            connection: { org: geo.org || geo.isp, asn: geo.as },
+            flag: { emoji }
+          }),
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Secondary fallback: query ipwho.is if ip-api is unreachable
       const geoUrl = targetIp ? `https://ipwho.is/${encodeURIComponent(targetIp)}` : 'https://ipwho.is/';
       const geoRes = await fetch(geoUrl, {
         signal: AbortSignal.timeout(3500)

@@ -277,7 +277,26 @@ export async function getDomainGeoLocation(domain: string): Promise<string> {
     }
   }
 
-  // Query ipwho.is directly from frontend
+  // 1. Try backend /api/geoip first (supports in-memory caching and ip-api.com fallback if ipwho.is is DNS-blocked)
+  try {
+    const res = await fetch(`/api/geoip?ip=${encodeURIComponent(targetIp)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.country && data.country !== "Private Network") {
+        const parts: string[] = [];
+        if (data.city && data.city !== "Local") parts.push(data.city);
+        if (data.region && data.region !== data.city) parts.push(data.region);
+        if (data.country) parts.push(data.country);
+        const flag = data.flag?.emoji ? ` ${data.flag.emoji}` : "";
+        const loc = parts.join(", ");
+        if (loc) return `${loc}${flag}`;
+      }
+    }
+  } catch {
+    // Fallback to frontend direct query
+  }
+
+  // 2. Direct frontend query to ipwho.is
   try {
     const res = await fetch(`https://ipwho.is/${encodeURIComponent(targetIp)}`, {
       signal: AbortSignal.timeout(3500),
@@ -294,27 +313,7 @@ export async function getDomainGeoLocation(domain: string): Promise<string> {
         if (loc) return `${loc}${flag}`;
       }
     }
-  } catch {
-    // Fallback to backend /api/geoip
-  }
-
-  try {
-    const res = await fetch(`/api/geoip?ip=${encodeURIComponent(targetIp)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success) {
-        const parts: string[] = [];
-        if (data.city && data.city !== "Local") parts.push(data.city);
-        if (data.region && data.region !== data.city) parts.push(data.region);
-        if (data.country) parts.push(data.country);
-        const flag = data.flag?.emoji ? ` ${data.flag.emoji}` : "";
-        const loc = parts.join(", ");
-        if (loc) return `${loc}${flag}`;
-      }
-    }
-  } catch {
-    // Ignore error
-  }
+  } catch {}
 
   return "";
 }

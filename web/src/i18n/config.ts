@@ -46,6 +46,22 @@ export async function loadLocale(lang: string): Promise<boolean> {
   }
 }
 
+const getInitialAppName = (): string => {
+  const winConfig = typeof window !== "undefined" ? window.DNS_WORKER_CONFIG : undefined;
+  return winConfig?.appName || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_APP_NAME) || "DNS Worker";
+};
+
+export function updateI18nAppName(appName: string) {
+  if (!i18n.options.interpolation) {
+    i18n.options.interpolation = {};
+  }
+  i18n.options.interpolation.defaultVariables = {
+    ...i18n.options.interpolation.defaultVariables,
+    appName,
+  };
+  i18n.emit('languageChanged', i18n.language);
+}
+
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
@@ -59,6 +75,9 @@ i18n
     fallbackLng: 'en-US',
     interpolation: {
       escapeValue: false,
+      defaultVariables: {
+        appName: getInitialAppName(),
+      },
     },
   });
 

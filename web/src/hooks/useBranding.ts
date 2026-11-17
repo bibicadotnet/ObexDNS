@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getAuthConfig } from "../services/auth";
+import { updateI18nAppName } from "../i18n/config";
 
 export interface BrandingInfo {
   appName: string;
@@ -14,6 +15,7 @@ const listeners = new Set<(branding: BrandingInfo) => void>();
 
 function notify(branding: BrandingInfo) {
   cachedBranding = branding;
+  updateI18nAppName(branding.appName);
   for (const l of listeners) {
     l(branding);
   }

@@ -68,7 +68,7 @@
   },
   "auth": {
     "keepLoggedIn": "保持登入 {{days}} 天",
-    "login": "登入 DNS Worker",
+    "login": "登入 {{appName}}",
     "signup": "創建帳戶以開始",
     "welcomeBack": "歡迎回來，請輸入憑據",
     "protectInternet": "保護您的網際網路第一跳",
@@ -205,7 +205,7 @@
   },
   "setup": {
     "title": "安裝指南",
-    "subtitle": "配置裝置以使用 DNS Worker 主掌您的網際網路安全。",
+    "subtitle": "配置裝置以使用 {{appName}} 主掌您的網際網路安全。",
     "regionOptimization": "接入地區優化 (Windows)",
     "otherRegion": "其他地區",
     "copied": "已複製到剪貼簿",
@@ -214,7 +214,7 @@
     "connected": "連接正常",
     "notConnected": "或未連接",
     "profileMatch": "您正透過此配置進行過濾。",
-    "profileMismatch": "您正使用 DNS Worker，但配置 ID 不匹配。",
+    "profileMismatch": "您正使用 {{appName}}，但配置 ID 不匹配。",
     "verifyNotDetected": "此瀏覽器的 DNS 查詢未抵達本伺服器。請檢查下方設定後重新驗證。",
     "verifyIpFallback": "此位址無法進行精確檢測;目前顯示的是您的 IP 最近一次使用的設定檔(精度較低)。",
     "verifyHint": "完成下方配置後，點擊按鈕驗證。",
@@ -282,7 +282,7 @@
     "dynamicFromDomainV6": "動態 IPv6 (來自 \"{{domain}}\")",
     "linux": "Linux",
     "linuxTitle": "Linux (Cloudflared DoH 代理)",
-    "linuxDesc": "在本地執行輕量級 DNS 代理，透過 DoH 將解析請求加密轉發至 DNS Worker。",
+    "linuxDesc": "在本地執行輕量級 DNS 代理，透過 DoH 將解析請求加密轉發至 {{appName}}。",
     "linuxStep1": "執行以下腳本安裝 cloudflared 並建立 systemd 服務（監聽 127.0.0.1:53）。",
     "linuxStep2": "將系統 DNS 修改為 127.0.0.1。",
     "routeros": "MikroTik",
@@ -672,7 +672,7 @@
     "e2eeUnlockRecovery": "使用修復金鑰解鎖",
     "securityTitle": "安全與存取",
     "rotateKeyTitle": "存取憑據 (URL)",
-    "rotateKeyDesc": "為此設定檔重新產生新的存取 URL。目前使用舊 URL 的所有裝置將立即中斷與 DNS Worker 的連線，需使用新 URL 重新設定。",
+    "rotateKeyDesc": "為此設定檔重新產生新的存取 URL。目前使用舊 URL 的所有裝置將立即中斷與 {{appName}} 的連線，需使用新 URL 重新設定。",
     "rotateKeyBtn": "輪換存取憑據",
     "copied": "已複製到剪貼簿",
     "nameUpdateFailed": "更新失敗"
@@ -987,7 +987,7 @@
     "pendingMigrationsList": "待套用的架構遷移檔案："
   },
   "intro": {
-    "item1Title": "DNS Worker 保護性 DNS",
+    "item1Title": "{{appName}} 保護性 DNS",
     "item1Desc": "基於 Cloudflare Workers & D1 的 DNS 解析器，盡力提高速度與安全。",
     "item2Title": "DoH 隱私保護",
     "item2Desc": "透過 DNS over HTTPS (RFC 8484) 加密隧道防止劫持並增強隱私。",
@@ -1011,8 +1011,8 @@
     "item11Desc": "原生支援 Cloudflare D1、Turso 分布式雲原生 SQLite 及本地檔案儲存，從容應對免費配額限制。"
   },
   "deploymentGuide": {
-    "title": "DNS Worker 部署與配置指南",
-    "subtitle": "您的系統實例尚未完全配置。請按照以下步驟完成部署以啟用 DNS Worker。",
+    "title": "{{appName}} 部署與配置指南",
+    "subtitle": "您的系統實例尚未完全配置。請按照以下步驟完成部署以啟用 {{appName}}。",
     "dbStatus": "D1 資料庫綁定 (env.DB)",
     "jwtStatus": "JWT 金鑰 Secrets (env.JWT_SECRET)",
     "configured": "已配置",
@@ -1041,7 +1041,7 @@
     "jwtGeneratorTitle": "安全 JWT_SECRET 產生器",
     "jwtGeneratorDesc": "使用此加密安全的隨機數產生器產生 64 位元字元的隨機字母數字組合，用於 env.JWT_SECRET。",
     "regenerate": "重新產生",
-    "serverfullTitle": "DNS Worker Serverfull 部署與初始化指南",
+    "serverfullTitle": "{{appName}} Serverfull 部署與初始化指南",
     "serverfullSubtitle": "系統檢測到目前運行於 Serverfull (獨立服務) 模式。請依照以下步驟完成設定與狀態初始化。",
     "serverfullDbStatus": "SQLite 資料庫 (本機資料目錄)",
     "serverfullDbConfigured": "已初始化就緒",
@@ -1063,6 +1063,6 @@
   },
   "meta": {
     "defaultDesc": "為您的所有裝置提供安全、快速且可自訂的 DNS 解析。基於 Cloudflare Workers 構建，開源且注重隱私。",
-    "setupDesc": "設定您的裝置以使用 DNS Worker。"
+    "setupDesc": "設定您的裝置以使用 {{appName}}。"
   }
 }

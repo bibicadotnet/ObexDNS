@@ -41,7 +41,7 @@ export function extractDomain(origin: string): string {
  * formatProfileLabel("DNS Worker", "iPhone") // "iPhone"
  * formatProfileLabel("Default (iPhone)", undefined) // "Default - iPhone" (legacy unpack)
  */
-export function formatProfileLabel(profileName?: string, accessPointName?: string): string {
+export function formatProfileLabel(profileName?: string, accessPointName?: string, appName?: string): string {
   let p = (profileName || '').trim();
   let ap = (accessPointName || '').trim();
 
@@ -54,8 +54,9 @@ export function formatProfileLabel(profileName?: string, accessPointName?: strin
     }
   }
 
-  const cleanP = p && p !== 'DNS Worker' ? p : '';
-  const cleanAp = ap && ap !== 'DNS Worker' ? ap : '';
+  const isDefaultName = (name: string) => name === 'DNS Worker' || Boolean(appName && name === appName);
+  const cleanP = p && !isDefaultName(p) ? p : '';
+  const cleanAp = ap && !isDefaultName(ap) ? ap : '';
 
   if (cleanP && cleanAp) {
     if (cleanP.toLowerCase() === cleanAp.toLowerCase()) {
@@ -104,13 +105,12 @@ export function generateMobileConfig(
   const cleanOrigin = rawOrigin.trim();
   const domain = extractDomain(cleanOrigin);
   const dohUrl = `${cleanOrigin}/${key}`;
-  const label = formatProfileLabel(pName, apName);
-  const payloadUUID = crypto.randomUUID();
-  const profileUUID = crypto.randomUUID();
-
   const brandName = (typeof profileKeyOrOptions === "object" && (profileKeyOrOptions as any)?.appName) ||
     (typeof window !== "undefined" ? window.DNS_WORKER_CONFIG?.appName : undefined) ||
     "DNS Worker";
+  const label = formatProfileLabel(pName, apName, brandName);
+  const payloadUUID = crypto.randomUUID();
+  const profileUUID = crypto.randomUUID();
 
   // Outer profile display name (visible in iOS Profiles / VPN & Management)
   const displayName = label

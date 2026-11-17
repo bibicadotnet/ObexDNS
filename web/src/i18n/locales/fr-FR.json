@@ -67,7 +67,7 @@
     "system": "Système"
   },
   "auth": {
-    "login": "Se connecter à DNS Worker",
+    "login": "Se connecter à {{appName}}",
     "signup": "Créer un compte pour commencer",
     "welcomeBack": "Bon retour ! Veuillez saisir vos identifiants",
     "protectInternet": "Protégez votre premier pas sur Internet",
@@ -205,7 +205,7 @@
   },
   "setup": {
     "title": "Guide d'installation",
-    "subtitle": "Configurez vos appareils pour gérer votre sécurité Internet avec DNS Worker.",
+    "subtitle": "Configurez vos appareils pour gérer votre sécurité Internet avec {{appName}}.",
     "regionOptimization": "Optimisation de la région de connexion (Windows)",
     "otherRegion": "Autres régions",
     "copied": "Copié dans le presse-papiers",
@@ -214,7 +214,7 @@
     "connected": "Connecté",
     "notConnected": "Non connecté",
     "profileMatch": "Le filtrage est actif pour ce profil.",
-    "profileMismatch": "Vous utilisez DNS Worker, mais l'ID du profil ne correspond pas.",
+    "profileMismatch": "Vous utilisez {{appName}}, mais l'ID du profil ne correspond pas.",
     "verifyNotDetected": "Aucune requête DNS de ce navigateur n'a atteint ce serveur. Vérifiez la configuration ci-dessous, puis relancez la vérification.",
     "verifyIpFallback": "La vérification exacte est impossible sur cette adresse ; affichage du dernier profil vu depuis votre IP (moins précis).",
     "verifyHint": "Terminez la configuration ci-dessous et cliquez sur le bouton pour vérifier.",
@@ -282,7 +282,7 @@
     "dynamicFromDomainV6": "Dynamique IPv6 (depuis \"{{domain}}\")",
     "linux": "Linux",
     "linuxTitle": "Linux (proxy DoH Cloudflared)",
-    "linuxDesc": "Exécutez un proxy DNS local léger pour envoyer les requêtes DNS chiffrées par DoH à DNS Worker.",
+    "linuxDesc": "Exécutez un proxy DNS local léger pour envoyer les requêtes DNS chiffrées par DoH à {{appName}}.",
     "linuxStep1": "Exécutez le script suivant pour installer cloudflared et créer un service systemd (écoute sur 127.0.0.1:53).",
     "linuxStep2": "Modifiez le DNS du système pour 127.0.0.1.",
     "routeros": "MikroTik",
@@ -672,7 +672,7 @@
     "e2eeUnlockRecovery": "Déverrouiller avec la clé de récupération",
     "securityTitle": "Sécurité et accès",
     "rotateKeyTitle": "URL d'accès",
-    "rotateKeyDesc": "Génère une nouvelle URL d'accès pour ce profil. Tous les appareils utilisant l'ancienne URL perdront immédiatement leur connexion à DNS Worker et devront être reconfigurés avec la nouvelle URL.",
+    "rotateKeyDesc": "Génère une nouvelle URL d'accès pour ce profil. Tous les appareils utilisant l'ancienne URL perdront immédiatement leur connexion à {{appName}} et devront être reconfigurés avec la nouvelle URL.",
     "rotateKeyBtn": "Faire pivoter l'URL",
     "copied": "Copié dans le presse-papiers",
     "nameUpdateFailed": "Échec de la mise à jour"
@@ -987,7 +987,7 @@
     "pendingMigrationsList": "Fichiers de migration de schéma en attente :"
   },
   "intro": {
-    "item1Title": "DNS Worker de protection",
+    "item1Title": "{{appName}} de protection",
     "item1Desc": "Un résolveur DNS basé sur Cloudflare Workers & D1, optimisé pour la vitesse et la sécurité.",
     "item2Title": "Confidentialité DoH",
     "item2Desc": "Évite l'interception DNS et protège votre confidentialité via des tunnels chiffrés DNS over HTTPS (RFC 8484).",
@@ -1011,8 +1011,8 @@
     "item11Desc": "Prend en charge Cloudflare D1, Turso SQLite distribué et le stockage de fichiers locaux pour surmonter les limites de quota."
   },
   "deploymentGuide": {
-    "title": "Guide de Configuration et Déploiement d'DNS Worker",
-    "subtitle": "Votre instance n'est pas encore entièrement configurée. Veuillez suivre les étapes ci-dessous pour activer DNS Worker.",
+    "title": "Guide de Configuration et Déploiement d'{{appName}}",
+    "subtitle": "Votre instance n'est pas encore entièrement configurée. Veuillez suivre les étapes ci-dessous pour activer {{appName}}.",
     "dbStatus": "Liaison de Base de Données D1 (env.DB)",
     "jwtStatus": "Clé Secrète JWT (env.JWT_SECRET)",
     "configured": "Configuré",
@@ -1029,7 +1029,7 @@
     "stepDbCommand2": "[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"dns_worker_db\"\ndatabase_id = \"<VOTRE_D1_DATABASE_ID>\"\nmigrations_dir = \"migrations\"",
     "stepDbDashDesc": "1. Allez sur le Tableau de Bord Cloudflare -> Workers & Pages -> D1 -> Créer une base de données -> Nommez-la 'dns_worker_db'.\n2. Allez dans votre Worker -> Paramètres -> Variables -> Liaisons de base de données D1 -> Ajouter une liaison.\n3. Définissez le nom de la liaison sur 'DB' et sélectionnez 'dns_worker_db'. Enregistrez.\n4. Allez dans votre base de données D1 -> Console, copiez et exécutez le script SQL du dossier migrations pour créer la structure des tables.",
     "stepJwtTitle": "2. Définir la Clé Secrète JWT",
-    "stepJwtDesc": "DNS Worker nécessite un secret JWT pour signer les jetons de session. Configurez-le en tant que Secret Cloudflare :",
+    "stepJwtDesc": "{{appName}} nécessite un secret JWT pour signer les jetons de session. Configurez-le en tant que Secret Cloudflare :",
     "stepJwtCommand1": "wrangler secret put JWT_SECRET",
     "stepJwtDashDesc": "1. Allez dans votre Worker -> Paramètres -> Variables -> Variables d'environnement -> Ajouter une variable.\n2. Définissez le nom sur 'JWT_SECRET', choisissez le type 'Secret' et entrez une chaîne aléatoire sécurisée.\n3. Enregistrez et déployez.",
     "stepJwtDesc2": "Tableau de Bord Cloudflare",
@@ -1041,7 +1041,7 @@
     "jwtGeneratorTitle": "Générateur Sécurisé de JWT_SECRET",
     "jwtGeneratorDesc": "Utilisez ce générateur de clé cryptographiquement sécurisé pour générer un secret alphanumérique aléatoire de 64 caractères pour votre env.JWT_SECRET.",
     "regenerate": "Régénérer",
-    "serverfullTitle": "Guide de déploiement et configuration DNS Worker Serverfull",
+    "serverfullTitle": "Guide de déploiement et configuration {{appName}} Serverfull",
     "serverfullSubtitle": "Votre instance s'exécute en mode Serverfull (autonome). Suivez ces étapes pour initialiser la base de données et configurer les paramètres.",
     "serverfullDbStatus": "Base de données SQLite (Répertoire de données local)",
     "serverfullDbConfigured": "Prêt et initialisé",
@@ -1063,6 +1063,6 @@
   },
   "meta": {
     "defaultDesc": "Résolution DNS sécurisée, rapide et personnalisable pour tous vos appareils. Basé sur Cloudflare Workers, open source et axé sur la confidentialité.",
-    "setupDesc": "Configurez vos appareils pour utiliser DNS Worker."
+    "setupDesc": "Configurez vos appareils pour utiliser {{appName}}."
   }
 }

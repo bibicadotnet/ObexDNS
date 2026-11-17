@@ -67,7 +67,7 @@
     "system": "システムに従う"
   },
   "auth": {
-    "login": "DNS Worker にログイン",
+    "login": "{{appName}} にログイン",
     "signup": "アカウント作成して開始",
     "welcomeBack": "おかえりなさい、認証情報を入力してください",
     "protectInternet": "インターネットの最初の一歩を保護します",
@@ -205,7 +205,7 @@
   },
   "setup": {
     "title": "インストールガイド",
-    "subtitle": "デバイスを設定し、DNS Worker でインターネットセキュリティを管理します。",
+    "subtitle": "デバイスを設定し、{{appName}} でインターネットセキュリティを管理します。",
     "regionOptimization": "接続地域の最適化 (Windows)",
     "otherRegion": "その他の地域",
     "copied": "クリップボードにコピーしました",
@@ -214,7 +214,7 @@
     "connected": "接続完了",
     "notConnected": "未接続",
     "profileMatch": "この設定でフィルタリングされています。",
-    "profileMismatch": "DNS Worker に接続されていますが、設定IDが一致しません。",
+    "profileMismatch": "{{appName}} に接続されていますが、設定IDが一致しません。",
     "verifyNotDetected": "このブラウザからの DNS クエリはこのサーバーに届いていません。下の設定を確認してから、もう一度検証してください。",
     "verifyIpFallback": "このアドレスでは正確な確認ができないため、お使いの IP から最後に確認されたプロファイルを表示しています(精度は低め)。",
     "verifyHint": "以下の設定を完了後、ボタンをクリックして接続を検証してください。",
@@ -282,7 +282,7 @@
     "dynamicFromDomainV6": "動的 IPv6 (以下から取得 \"{{domain}}\")",
     "linux": "Linux",
     "linuxTitle": "Linux (Cloudflared DoH プロキシ)",
-    "linuxDesc": "ローカルで軽量なDNSプロキシを実行し、DoH 経由でリクエストを暗号化して DNS Worker に転送します。",
+    "linuxDesc": "ローカルで軽量なDNSプロキシを実行し、DoH 経由でリクエストを暗号化して {{appName}} に転送します。",
     "linuxStep1": "以下のスクリプトを実行して cloudflared をインストールし、systemd サービスを作成します（127.0.0.1:53 を監視）。",
     "linuxStep2": "システムの DNS を 127.0.0.1 に変更します。",
     "routeros": "MikroTik",
@@ -987,7 +987,7 @@
     "pendingMigrationsList": "保留中のスキーママイグレーションファイル："
   },
   "intro": {
-    "item1Title": "DNS Worker 保護DNS",
+    "item1Title": "{{appName}} 保護DNS",
     "item1Desc": "速度とセキュリティを重視した Cloudflare Workers & D1 ベースの DNS リゾルバーです。",
     "item2Title": "DoH によるプライバシー保護",
     "item2Desc": "DNS over HTTPS (RFC 8484) による暗号化トンネルで、プロバイダーによる改ざんを防ぎプライバシーを保護します。",
@@ -1011,8 +1011,8 @@
     "item11Desc": "Cloudflare D1、Turso 分散クラウド SQLite、ローカルファイルストレージにネイティブ対応し、無料利用枠の制限を容易に回避します。"
   },
   "deploymentGuide": {
-    "title": "DNS Worker セットアップ＆デプロイガイド",
-    "subtitle": "インスタンスがまだ完全に構成されていません。以下の手順に従って、DNS Worker を有効にして下さい。",
+    "title": "{{appName}} セットアップ＆デプロイガイド",
+    "subtitle": "インスタンスがまだ完全に構成されていません。以下の手順に従って、{{appName}} を有効にして下さい。",
     "dbStatus": "D1 データベースバインディング (env.DB)",
     "jwtStatus": "JWT シークレットキー (env.JWT_SECRET)",
     "configured": "構成済み",
@@ -1029,7 +1029,7 @@
     "stepDbCommand2": "[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"dns_worker_db\"\ndatabase_id = \"<あなたの_D1_DATABASE_ID>\"\nmigrations_dir = \"migrations\"",
     "stepDbDashDesc": "1. Cloudflare ダッシュボード -> Workers & Pages -> D1 -> データベースの作成 -> 名前を 'dns_worker_db' に設定します。\n2. 該当する Worker -> 設定 -> 変数 -> D1 データベースバインディング -> バインディングの追加 をクリックします。\n3. バインディング名を 'DB' に設定し、D1 データベースで 'dns_worker_db' を選択して保存します。\n4. D1 データベース -> コンソール に進み、migrations フォルダ内の SQL マイグレーションスクリプトを貼り付けて実行し、テーブルを構築します。",
     "stepJwtTitle": "2. JWT シークレットキーの設定",
-    "stepJwtDesc": "DNS Worker はセッショントークンの署名用に JWT シークレットを必要とします。Cloudflare シークレットとして設定します：",
+    "stepJwtDesc": "{{appName}} はセッショントークンの署名用に JWT シークレットを必要とします。Cloudflare シークレットとして設定します：",
     "stepJwtCommand1": "wrangler secret put JWT_SECRET",
     "stepJwtDashDesc": "1. Worker -> 設定 -> 変数 -> 环境変数 -> 変数の追加 をクリックします。\n2. 変数名を 'JWT_SECRET'、タイプを 'シークレット (Secret)' に設定し、ランダムな安全な文字列を入力します。\n3. 保存してデプロイします。",
     "stepJwtDesc2": "Cloudflare ダッシュボード",
@@ -1041,7 +1041,7 @@
     "jwtGeneratorTitle": "安全な JWT_SECRET ジェネレーター",
     "jwtGeneratorDesc": "この暗号的に安全なキー生成器を使用して、env.JWT_SECRET 用のランダムな 64 文字の英数字シークレットを生成します。",
     "regenerate": "再生成",
-    "serverfullTitle": "DNS Worker Serverfull デプロイ＆初期化ガイド",
+    "serverfullTitle": "{{appName}} Serverfull デプロイ＆初期化ガイド",
     "serverfullSubtitle": "現在 Serverfull (スタンドアロン) モードで動作しています。以下の手順に従ってデータベースの初期化と設定を行ってください。",
     "serverfullDbStatus": "SQLite データベース (ローカルデータディレクトリ)",
     "serverfullDbConfigured": "初期化済み・準備完了",
@@ -1063,6 +1063,6 @@
   },
   "meta": {
     "defaultDesc": "すべてのデバイスに安全で高速、カスタマイズ可能なDNS解決を提供します。Cloudflare Workersベース、オープンソース、プライバシー重視。",
-    "setupDesc": "DNS Workerを使用するようにデバイスを設定します。"
+    "setupDesc": "{{appName}}を使用するようにデバイスを設定します。"
   }
 }

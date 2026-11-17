@@ -67,7 +67,7 @@
     "system": "Theo hệ thống"
   },
   "auth": {
-    "login": "Đăng nhập DNS Worker",
+    "login": "Đăng nhập {{appName}}",
     "signup": "Tạo tài khoản để bắt đầu",
     "welcomeBack": "Chào mừng trở lại, vui lòng nhập thông tin đăng nhập",
     "protectInternet": "Bảo vệ bước nhảy internet đầu tiên của bạn",
@@ -205,7 +205,7 @@
   },
   "setup": {
     "title": "Hướng dẫn cài đặt",
-    "subtitle": "Cấu hình thiết bị của bạn để sử dụng DNS Worker và làm chủ an ninh internet.",
+    "subtitle": "Cấu hình thiết bị của bạn để sử dụng {{appName}} và làm chủ an ninh internet.",
     "regionOptimization": "Tối ưu hóa vùng truy cập (Windows)",
     "otherRegion": "Các khu vực khác",
     "copied": "Đã sao chép vào bộ nhớ tạm",
@@ -214,7 +214,7 @@
     "connected": "Kết nối bình thường",
     "notConnected": "Hoặc chưa kết nối",
     "profileMatch": "Bạn đang lọc thông qua cấu hình này.",
-    "profileMismatch": "Bạn đang sử dụng DNS Worker, nhưng ID cấu hình không khớp.",
+    "profileMismatch": "Bạn đang sử dụng {{appName}}, nhưng ID cấu hình không khớp.",
     "verifyNotDetected": "Chưa có truy vấn DNS nào từ trình duyệt này đến máy chủ. Kiểm tra lại cấu hình bên dưới rồi xác minh lại.",
     "verifyIpFallback": "Không thể kiểm tra chính xác trên địa chỉ này; đang hiển thị profile gần nhất thấy từ IP của bạn (kém chính xác hơn).",
     "verifyHint": "Sau khi hoàn thành cấu hình bên dưới, nhấp vào nút để xác minh.",
@@ -282,7 +282,7 @@
     "dynamicFromDomainV6": "Động IPv6 (từ \"{{domain}}\")",
     "linux": "Linux",
     "linuxTitle": "Linux (Proxy Cloudflared DoH)",
-    "linuxDesc": "Chạy một proxy DNS nhẹ tại địa phương, mã hóa và chuyển tiếp các yêu cầu phân giải đến DNS Worker thông qua DoH.",
+    "linuxDesc": "Chạy một proxy DNS nhẹ tại địa phương, mã hóa và chuyển tiếp các yêu cầu phân giải đến {{appName}} thông qua DoH.",
     "linuxStep1": "Chạy đoạn mã sau để cài đặt cloudflared và tạo dịch vụ systemd (lắng nghe tại 127.0.0.1:53).",
     "linuxStep2": "Thay đổi DNS hệ thống thành 127.0.0.1.",
     "routeros": "MikroTik",
@@ -682,7 +682,7 @@
     "e2eeUnlockRecovery": "Mở khóa bằng khóa khôi phục",
     "securityTitle": "Bảo mật & Truy cập",
     "rotateKeyTitle": "URL truy cập",
-    "rotateKeyDesc": "Tạo URL truy cập mới cho hồ sơ này. Mọi thiết bị hiện đang sử dụng URL cũ sẽ mất kết nối ngay lập tức với DNS Worker và cần được định cấu hình lại bằng URL mới.",
+    "rotateKeyDesc": "Tạo URL truy cập mới cho hồ sơ này. Mọi thiết bị hiện đang sử dụng URL cũ sẽ mất kết nối ngay lập tức với {{appName}} và cần được định cấu hình lại bằng URL mới.",
     "rotateKeyBtn": "Xoay vòng URL",
     "copied": "Đã sao chép vào khay nhớ tạm",
     "nameUpdateFailed": "Cập nhật thất bại"
@@ -1001,7 +1001,7 @@
     "pendingMigrationsList": "Các tệp di chuyển lược đồ đang chờ xử lý:"
   },
   "intro": {
-    "item1Title": "DNS Worker Protective DNS",
+    "item1Title": "{{appName}} Protective DNS",
     "item1Desc": "Bộ phân giải DNS dựa trên Cloudflare Workers & D1, nỗ lực tối đa vì tốc độ và bảo mật.",
     "item2Title": "Bảo vệ quyền riêng tư DoH",
     "item2Desc": "Ngăn chặn việc bị chặn và tăng cường quyền riêng tư thông qua đường hầm mã hóa DNS over HTTPS (RFC 8484).",
@@ -1025,8 +1025,8 @@
     "item11Desc": "Hỗ trợ Cloudflare D1, Turso SQLite phân tán trên đám mây và lưu trữ tệp cục bộ, giúp vượt qua giới hạn dung lượng miễn phí."
   },
   "deploymentGuide": {
-    "title": "Hướng dẫn Thiết lập & Triển khai DNS Worker",
-    "subtitle": "Phiên bản của bạn chưa được cấu hình đầy đủ. Vui lòng hoàn thành các bước bên dưới để kích hoạt DNS Worker.",
+    "title": "Hướng dẫn Thiết lập & Triển khai {{appName}}",
+    "subtitle": "Phiên bản của bạn chưa được cấu hình đầy đủ. Vui lòng hoàn thành các bước bên dưới để kích hoạt {{appName}}.",
     "dbStatus": "Liên kết Cơ sở Dữ liệu D1 (env.DB)",
     "jwtStatus": "Khóa Bí mật JWT (env.JWT_SECRET)",
     "configured": "Đã cấu hình",
@@ -1043,7 +1043,7 @@
     "stepDbCommand2": "[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"dns_worker_db\"\ndatabase_id = \"<D1_DATABASE_ID_CỦA_BẠN>\"\nmigrations_dir = \"migrations\"",
     "stepDbDashDesc": "1. Truy cập Bảng điều khiển Cloudflare -> Workers & Pages -> D1 -> Tạo Cơ sở dữ liệu -> Đặt tên là 'dns_worker_db'.\n2. Truy cập Worker của bạn -> Cài đặt -> Biến -> Liên kết Cơ sở Dữ liệu D1 -> Thêm liên kết.\n3. Đặt tên liên kết là 'DB', và chọn cơ sở dữ liệu 'dns_worker_db'. Lưu.\n4. Truy cập Cơ sở dữ liệu D1 -> Bảng điều khiển, sao chép và chạy script SQL trong thư mục migrations để cấu trúc các bảng dữ liệu.",
     "stepJwtTitle": "2. Thiết lập Khóa Bí mật JWT",
-    "stepJwtDesc": "DNS Worker yêu cầu mã bí mật JWT để ký mã xác thực phiên làm việc. Hãy cấu hình nó làm Cloudflare Secret:",
+    "stepJwtDesc": "{{appName}} yêu cầu mã bí mật JWT để ký mã xác thực phiên làm việc. Hãy cấu hình nó làm Cloudflare Secret:",
     "stepJwtCommand1": "wrangler secret put JWT_SECRET",
     "stepJwtDashDesc": "1. Truy cập Worker của bạn -> Cài đặt -> Biến -> Biến Môi trường -> Thêm biến.\n2. Đặt tên là 'JWT_SECRET', chọn kiểu 'Secret', và điền một chuỗi ký tự ngẫu nhiên an toàn.\n3. Lưu và triển khai.",
     "stepJwtDesc2": "Bảng điều khiển Cloudflare",
@@ -1055,7 +1055,7 @@
     "jwtGeneratorTitle": "Bộ tạo JWT_SECRET An toàn",
     "jwtGeneratorDesc": "Sử dụng bộ tạo khóa an toàn mật mã này để tạo mã bí mật chữ số ngẫu nhiên gồm 64 ký tự cho env.JWT_SECRET.",
     "regenerate": "Tạo lại",
-    "serverfullTitle": "Hướng dẫn triển khai & khởi tạo DNS Worker Serverfull",
+    "serverfullTitle": "Hướng dẫn triển khai & khởi tạo {{appName}} Serverfull",
     "serverfullSubtitle": "Phiên bản của bạn đang chạy ở chế độ Serverfull (Độc lập). Thực hiện theo các bước sau để khởi tạo cơ sở dữ liệu và cấu hình môi trường.",
     "serverfullDbStatus": "Cơ sở dữ liệu SQLite (Thư mục dữ liệu cục bộ)",
     "serverfullDbConfigured": "Đã sẵn sàng & Khởi tạo",
@@ -1077,6 +1077,6 @@
   },
   "meta": {
     "defaultDesc": "Phân giải DNS an toàn, nhanh chóng và có thể tùy chỉnh cho tất cả các thiết bị của bạn. Dựa trên Cloudflare Workers, mã nguồn mở và tập trung vào quyền riêng tư.",
-    "setupDesc": "Định cấu hình thiết bị của bạn để sử dụng DNS Worker."
+    "setupDesc": "Định cấu hình thiết bị của bạn để sử dụng {{appName}}."
   }
 }
