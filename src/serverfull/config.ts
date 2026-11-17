@@ -212,7 +212,7 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     SESSION_GEO_DISTANCE_KM: process.env.SESSION_GEO_DISTANCE_KM || 50,
     PREAUTH_TTL_SECONDS: process.env.PREAUTH_TTL_SECONDS || 300,
     FILTER_MEM_TTL: process.env.FILTER_MEM_TTL || process.env.BLOOM_MEM_TTL || 600000,
-    FILTER_MEM_BYTES: Number(process.env.FILTER_MEM_BYTES || process.env.BLOOM_MEM_BYTES) || 32 * 1024 * 1024,
+    FILTER_MEM_BYTES: Number(process.env.FILTER_MEM_BYTES || process.env.BLOOM_MEM_BYTES) || 268435456,
     CONFIG_MEM_TTL: process.env.CONFIG_MEM_TTL || 300000,
     CONFIG_CACHE_LIMIT: Number(process.env.CONFIG_CACHE_LIMIT) || 200,
     DNS_CACHE_LIMIT: Number(process.env.DNS_CACHE_LIMIT) || 500,
@@ -231,11 +231,13 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     SYNC_PROFILE_INTERVAL_SEC: process.env.SYNC_PROFILE_INTERVAL_SEC || 86400,
     SYNC_SYSTEM_INTERVAL_SEC: process.env.SYNC_SYSTEM_INTERVAL_SEC || 21600,
     MAX_PROFILE_CUSTOM_DOMAINS: process.env.MAX_PROFILE_CUSTOM_DOMAINS,
-    MAX_LIST_DOMAINS: process.env.MAX_LIST_DOMAINS || 500000,
-    MAX_LIST_BYTES: process.env.MAX_LIST_BYTES || 26214400, // 25 MB
+    MAX_LIST_DOMAINS: Number(process.env.MAX_LIST_DOMAINS) || 2000000,
+    MAX_LIST_BYTES: Number(process.env.MAX_LIST_BYTES) || 104857600, // 100 MB
     MAX_LOG_RETENTION_DAYS: process.env.MAX_LOG_RETENTION_DAYS || 30,
     DEFAULT_LOG_RETENTION_DAYS: process.env.DEFAULT_LOG_RETENTION_DAYS || 7,
-    NORMAL_USER_MAX_LOG_RETENTION_DAYS: process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS || 7,
+    NORMAL_USER_MAX_LOG_RETENTION_DAYS: process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS !== undefined && process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS !== ''
+      ? Number(process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS)
+      : 1,
     NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS: process.env.NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS || 1,
     MAX_LOGS_PER_PROFILE: process.env.MAX_LOGS_PER_PROFILE || 500000,
     // Local disk has no write quota, so cleanup runs often and in large batches (D1/Workers keep 3600s / 1000 / 20000).
@@ -244,6 +246,7 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     LOG_CLEANUP_DAILY_BUDGET: process.env.LOG_CLEANUP_DAILY_BUDGET !== undefined && process.env.LOG_CLEANUP_DAILY_BUDGET !== ''
       ? process.env.LOG_CLEANUP_DAILY_BUDGET
       : 0, // 0 = no daily deletion limit
+    TRUSTED_PROXIES: process.env.TRUSTED_PROXIES || '',
     SERVERFULL_DEFAULT_PROFILE_KEY: defaultProfileKey,
     SERVERFULL_DB_PATH: dbPath,
     SERVERFULL_DOT_DOMAIN: dotDomain,
@@ -254,11 +257,11 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     SERVERFULL_ECH_ENABLED: echEnabled ? 'true' : 'false',
     SERVERFULL_ECH_CONFIG: echConfig,
     SERVERFULL_ECH_FRONTING_DOMAIN: echFrontingDomain,
-    APP_NAME: process.env.APP_NAME || 'DNS Worker',
-    APP_LOGO_URL: process.env.APP_LOGO_URL || '',
-    APP_FAVICON_URL: process.env.APP_FAVICON_URL || '',
+    APP_NAME: process.env.APP_NAME || 'DNS Shield',
+    APP_LOGO_URL: process.env.APP_LOGO_URL || 'https://img.bibica.net/CsXOg50M.png',
+    APP_FAVICON_URL: process.env.APP_FAVICON_URL || 'https://img.bibica.net/UsF6Oisg.png',
     GITHUB_CORNER_ENABLED: process.env.GITHUB_CORNER_ENABLED !== undefined ? process.env.GITHUB_CORNER_ENABLED : 'true',
-    GITHUB_CORNER_URL: process.env.GITHUB_CORNER_URL || process.env.GITHUB_URL || 'https://github.com/Obein/DNS-Worker'
+    GITHUB_CORNER_URL: process.env.GITHUB_CORNER_URL || process.env.GITHUB_URL || 'https://github.com/bibicadotnet/ObexDNS'
   };
 
   return { config, env };

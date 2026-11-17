@@ -569,7 +569,7 @@ export function initServerfullDb(
   }
 
   // Configure SQLite for high concurrency, zero-copy memory reads & integrity
-  const sqliteCacheKb = Number(process.env.SQLITE_CACHE_SIZE_KB) || 16000; // 16 MB default page cache
+  const sqliteCacheKb = Number(process.env.SQLITE_CACHE_SIZE_KB) || 32000; // 32 MB default page cache
   const sqliteMmapBytes = Number(process.env.SQLITE_MMAP_SIZE_BYTES) || 67108864; // 64 MB default mmap
   rawDb.exec('PRAGMA journal_mode = WAL;');
   rawDb.exec(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES};`); // trim the -wal file after checkpoints

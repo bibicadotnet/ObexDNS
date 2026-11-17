@@ -152,8 +152,8 @@ async function bootstrap(): Promise<void> {
   }
 
   // Cảnh báo cấu hình mâu thuẫn nếu MAX_LIST_DOMAINS * ~30 byte > MAX_LIST_BYTES
-  const maxListDomains = Number(process.env.MAX_LIST_DOMAINS) || 500000;
-  const maxListBytes = Number(process.env.MAX_LIST_BYTES) || 25 * 1024 * 1024;
+  const maxListDomains = Number(process.env.MAX_LIST_DOMAINS) || 2000000;
+  const maxListBytes = Number(process.env.MAX_LIST_BYTES) || 104857600; // 100 MB
   if (maxListDomains * 30 > maxListBytes) {
     console.warn(
       `[Config Warning] MAX_LIST_DOMAINS (${maxListDomains}) * ~30 bytes exceeds MAX_LIST_BYTES (${maxListBytes} bytes). ` +

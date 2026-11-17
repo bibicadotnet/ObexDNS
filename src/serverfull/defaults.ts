@@ -56,6 +56,12 @@ SERVERFULL_HTTPS_PORT=10443
 # Tắt dịch vụ HTTPS (true/false, mặc định: false).
 # SERVERFULL_DISABLE_HTTPS=false
 
+# Comma-separated list of trusted reverse proxy IP addresses or CIDR blocks (e.g. 127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16).
+# When running behind a reverse proxy (Nginx, Caddy, Cloudflare, Traefik), enables reading real client IP from CF-Connecting-IP, X-Forwarded-For, or X-Real-IP.
+# Danh sách địa chỉ IP hoặc dải mạng CIDR của reverse proxy tin cậy (ngăn cách bằng dấu phẩy).
+# Khi đặt sau proxy (Nginx, Caddy, Cloudflare, Traefik), cho phép lấy đúng IP thật của client qua các header chuyển tiếp.
+# TRUSTED_PROXIES=127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+
 # ------------------------------------------------------------------------------
 # 2. DNS-over-TLS (DoT) Domain & TLS Certificates / Tên miền DoT và chứng chỉ TLS
 # ------------------------------------------------------------------------------
@@ -65,11 +71,11 @@ SERVERFULL_HTTPS_PORT=10443
 
 # Absolute path to your TLS private key file in PEM format.
 # Đường dẫn tuyệt đối đến file khoá riêng (private key) TLS định dạng PEM.
-SERVERFULL_TLS_KEY_PATH=/etc/letsencrypt/live/dns.example.com/privkey.pem
+# SERVERFULL_TLS_KEY_PATH=/etc/letsencrypt/live/dns.example.com/privkey.pem
 
 # Absolute path to your TLS fullchain certificate file in PEM format.
 # Đường dẫn tuyệt đối đến file chứng chỉ (fullchain cert) TLS định dạng PEM.
-SERVERFULL_TLS_CERT_PATH=/etc/letsencrypt/live/dns.example.com/fullchain.pem
+# SERVERFULL_TLS_CERT_PATH=/etc/letsencrypt/live/dns.example.com/fullchain.pem
 
 # ------------------------------------------------------------------------------
 # 3. ECH, HTTP/3 & DNS-over-QUIC (DoQ) / Cấu hình ECH và mã hoá nâng cao
@@ -97,9 +103,9 @@ DATABASE_SERVICE=File
 # Đường dẫn lưu file SQLite cục bộ (Linux mặc định: /var/lib/dns-worker/dns_worker.sqlite).
 # SERVERFULL_DB_PATH=
 
-# SQLite in-memory page cache size in KiB (default: 16000 = 16 MiB; lower values reduce RAM usage).
-# Kích thước bộ nhớ đệm trang SQLite tính bằng KiB (mặc định: 16000 = 16 MiB; giảm xuống nếu RAM hạn chế).
-# SQLITE_CACHE_SIZE_KB=16000
+# SQLite in-memory page cache size in KiB (default: 32000 = 32 MiB; lower values reduce RAM usage).
+# Kích thước bộ nhớ đệm trang SQLite tính bằng KiB (mặc định: 32000 = 32 MiB; giảm xuống nếu RAM hạn chế).
+# SQLITE_CACHE_SIZE_KB=32000
 
 # SQLite memory-mapped I/O (mmap) size in bytes (default: 67108864 = 64 MiB; lower values reduce process RSS).
 # Dung lượng mmap cho đọc/ghi SQLite tính bằng byte (mặc định: 67108864 = 64 MiB; giảm xuống để hạ RSS RAM).
@@ -181,9 +187,9 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # ------------------------------------------------------------------------------
 # 8. In-Memory Cache Limits (L1 RAM) / Giới hạn bộ nhớ đệm RAM L1
 # ------------------------------------------------------------------------------
-# Maximum RAM budget in bytes for caching 64-bit domain filter tables (default: 33554432 = 32 MiB).
-# Ngân sách RAM tối đa cho cache bảng lọc tên miền 64-bit (byte, mặc định 32 MiB; VPS 1GB+ có thể nâng 64-128 MiB).
-# FILTER_MEM_BYTES=33554432
+# Maximum RAM budget in bytes for caching 64-bit domain filter tables (default: 268435456 = 256 MiB).
+# Ngân sách RAM tối đa cho cache bảng lọc tên miền 64-bit (byte, mặc định 256 MiB; VPS 1GB+ có thể nâng 256-512 MiB).
+# FILTER_MEM_BYTES=268435456
 
 # In-memory retention time for profile filter tables in milliseconds (default: 600000 = 10 minutes).
 # Thời gian lưu bảng lọc của profile trong RAM (mili giây, mặc định: 600000 = 10 phút).
@@ -216,17 +222,13 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # ------------------------------------------------------------------------------
 # 9. Blocklist Parsing & Capacity Limits / Giới hạn dung lượng và quy tắc bộ lọc
 # ------------------------------------------------------------------------------
-# Maximum number of domains processed from a single blocklist during sync (default: 500000).
-# Số lượng tên miền tối đa xử lý từ một danh sách chặn trong một lần đồng bộ (mặc định: 500000).
-# MAX_LIST_DOMAINS=500000
+# Maximum number of domains processed from a single blocklist during sync (default: 2000000).
+# Số lượng tên miền tối đa xử lý từ một danh sách chặn trong một lần đồng bộ (mặc định: 2000000).
+# MAX_LIST_DOMAINS=2000000
 
-# Maximum file size allowed for a downloaded filter list in bytes (default: 26214400 = 25 MB).
-# Dung lượng file tối đa cho phép khi tải về một danh sách bộ lọc (byte, mặc định: 25 MB = 26214400).
-# MAX_LIST_BYTES=26214400
-
-# Optional total domain ceiling for custom lists per profile (default: MAX_LIST_DOMAINS * MAX_CUSTOM_LISTS).
-# Giới hạn tổng số domain từ các custom list cho mỗi profile (tuỳ chọn, mặc định: 2500000).
-# MAX_PROFILE_CUSTOM_DOMAINS=2500000
+# Maximum file size allowed for a downloaded filter list in bytes (default: 104857600 = 100 MB).
+# Dung lượng file tối đa cho phép khi tải về một danh sách bộ lọc (byte, mặc định: 100 MB = 104857600).
+# MAX_LIST_BYTES=104857600
 
 # Maximum number of regex & wildcard rules kept from a single blocklist URL (default: 1000).
 # Số quy tắc regex & wildcard tối đa được giữ lại từ một danh sách bộ lọc (mặc định: 1000).
@@ -314,9 +316,9 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # Số ngày lưu log mặc định khi tạo mới profile cho tài khoản admin (mặc định: 7 ngày).
 # DEFAULT_LOG_RETENTION_DAYS=7
 
-# Hard cap on log retention days for regular user accounts (default: 7).
-# Mức trần số ngày lưu log cho tài khoản người dùng thông thường (mặc định: 7 ngày).
-# NORMAL_USER_MAX_LOG_RETENTION_DAYS=7
+# Hard cap on log retention days for regular user accounts (default: 1).
+# Mức trần số ngày lưu log cho tài khoản người dùng thông thường (mặc định: 1 ngày).
+# NORMAL_USER_MAX_LOG_RETENTION_DAYS=1
 
 # Default log retention days applied to newly created regular user profiles (default: 1).
 # Số ngày lưu log mặc định khi tạo mới profile cho người dùng thường (mặc định: 1 ngày).
@@ -427,25 +429,25 @@ PRESET_ECH_FRONTING_DOMAINS='["cloudflare-ech.com","crypto.cloudflare.com","one.
 # ------------------------------------------------------------------------------
 # 14. UI & Branding Customization / Tùy biến giao diện và thương hiệu
 # ------------------------------------------------------------------------------
-# Application name displayed in the top-left sidebar and browser title (default: "DNS Worker").
-# Tên ứng dụng hiển thị ở góc trên bên trái thanh điều hướng và tiêu đề trình duyệt (mặc định: "DNS Worker").
-# APP_NAME="DNS Worker"
+# Application name displayed in the top-left sidebar and browser title (default: "DNS Shield").
+# Tên ứng dụng hiển thị ở góc trên bên trái thanh điều hướng và tiêu đề trình duyệt (mặc định: "DNS Shield").
+# APP_NAME="DNS Shield"
 
-# Custom logo image URL for the sidebar and login screens (URL or path in public folder, e.g. /custom-logo.png).
-# Đường dẫn logo hiển thị ở thanh điều hướng và màn hình đăng nhập (để trống sẽ dùng logo mặc định).
-# APP_LOGO_URL=
+# Custom logo image URL for the sidebar and login screens (default: "https://img.bibica.net/CsXOg50M.png").
+# Đường dẫn logo hiển thị ở thanh điều hướng và màn hình đăng nhập (mặc định: "https://img.bibica.net/CsXOg50M.png").
+# APP_LOGO_URL="https://img.bibica.net/CsXOg50M.png"
 
-# Custom favicon URL for browser tabs (URL or path in public folder, e.g. /custom-favicon.ico).
-# Đường dẫn biểu tượng favicon trên tab trình duyệt (để trống sẽ dùng favicon mặc định).
-# APP_FAVICON_URL=
+# Custom favicon URL for browser tabs (default: "https://img.bibica.net/UsF6Oisg.png").
+# Đường dẫn biểu tượng favicon trên tab trình duyệt (mặc định: "https://img.bibica.net/UsF6Oisg.png").
+# APP_FAVICON_URL="https://img.bibica.net/UsF6Oisg.png"
 
 # Enable or disable the GitHub Corner ribbon in the bottom-right corner (default: true).
 # Bật hoặc tắt biểu tượng GitHub ở góc dưới bên phải giao diện (mặc định: true, đặt false để ẩn).
 # GITHUB_CORNER_ENABLED=true
 
-# Destination URL when clicking the GitHub ribbon (default: "https://github.com/Obein/DNS-Worker").
-# Đường dẫn khi bấm vào biểu tượng GitHub ở góc dưới bên phải (mặc định: "https://github.com/Obein/DNS-Worker").
-# GITHUB_CORNER_URL="https://github.com/Obein/DNS-Worker"
+# Destination URL when clicking the GitHub ribbon (default: "https://github.com/bibicadotnet/ObexDNS").
+# Đường dẫn khi bấm vào biểu tượng GitHub ở góc dưới bên phải (mặc định: "https://github.com/bibicadotnet/ObexDNS").
+# GITHUB_CORNER_URL="https://github.com/bibicadotnet/ObexDNS"
 `;
 
 /**
