@@ -83,6 +83,7 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     totpSetupError,
     turnstileStatus,
     turnstileRef,
+    hasVisibleWidget,
     isTurnstileEnabled,
     checkUsernameDuplicate,
     handleSignupUsernameSubmit,
@@ -201,6 +202,7 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
           onSubmit={handleSignupSubmit}
           isTurnstileEnabled={isTurnstileEnabled}
           turnstileRef={turnstileRef}
+          hasVisibleWidget={hasVisibleWidget}
           turnstileStatus={turnstileStatus}
         />
       )}

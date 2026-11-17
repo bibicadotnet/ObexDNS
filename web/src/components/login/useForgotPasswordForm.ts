@@ -65,6 +65,8 @@ export interface UseForgotPasswordFormReturn {
   isTurnstileEnabled: boolean | undefined;
   /** DOM ref to the Turnstile container element. */
   turnstileRef: React.RefObject<HTMLDivElement | null>;
+  /** Indicates if Turnstile has rendered a visible widget. */
+  hasVisibleWidget: boolean;
   /** Resolved Turnstile response token. */
   turnstileToken: string | null;
   /** Verification status of the Turnstile challenge. */
@@ -142,7 +144,8 @@ export const useForgotPasswordForm = ({
     turnstileToken,
     turnstileStatus,
     turnstileRef,
-    resetTurnstile
+    resetTurnstile,
+    hasVisibleWidget
   } = useTurnstile({
     siteKey: authConfig?.turnstile_site_key,
     enabled: isTurnstileEnabled,
@@ -332,6 +335,7 @@ export const useForgotPasswordForm = ({
     setError,
     isTurnstileEnabled,
     turnstileRef,
+    hasVisibleWidget,
     turnstileToken,
     turnstileStatus,
     initData,

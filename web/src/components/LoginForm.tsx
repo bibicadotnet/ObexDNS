@@ -69,6 +69,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     setError,
     turnstileStatus,
     turnstileRef,
+    hasVisibleWidget,
     isTurnstileEnabled,
     keepLoggedIn,
     setKeepLoggedIn,
@@ -167,6 +168,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           setUsername={setUsername}
           isTurnstileEnabled={isTurnstileEnabled}
           turnstileRef={turnstileRef}
+          hasVisibleWidget={hasVisibleWidget}
           loading={loading}
           turnstileStatus={turnstileStatus}
           onSubmit={handleStep1Submit}

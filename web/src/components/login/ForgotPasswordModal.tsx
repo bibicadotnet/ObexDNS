@@ -61,6 +61,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
     error,
     isTurnstileEnabled,
     turnstileRef,
+    hasVisibleWidget,
     turnstileToken,
     turnstileStatus,
     initData,
@@ -111,6 +112,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
             setUsername={setUsername}
             isTurnstileEnabled={isTurnstileEnabled}
             turnstileRef={turnstileRef}
+            hasVisibleWidget={hasVisibleWidget}
             turnstileStatus={turnstileStatus}
             turnstileToken={turnstileToken}
             loading={loading}

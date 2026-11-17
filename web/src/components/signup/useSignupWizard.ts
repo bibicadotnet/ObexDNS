@@ -91,7 +91,8 @@ export const useSignupWizard = ({
     turnstileToken,
     turnstileStatus,
     turnstileRef,
-    resetTurnstile
+    resetTurnstile,
+    hasVisibleWidget
   } = useTurnstile({
     siteKey: authConfig?.turnstile_site_key,
     enabled: isTurnstileEnabled,
@@ -304,6 +305,7 @@ export const useSignupWizard = ({
     totpSetupError,
     turnstileStatus,
     turnstileRef,
+    hasVisibleWidget,
     isTurnstileEnabled,
     checkUsernameDuplicate,
     handleSignupUsernameSubmit,

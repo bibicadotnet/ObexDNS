@@ -81,7 +81,8 @@ export const useLoginForm = ({
     turnstileToken,
     turnstileStatus,
     turnstileRef,
-    resetTurnstile
+    resetTurnstile,
+    hasVisibleWidget
   } = useTurnstile({
     siteKey: authConfig?.turnstile_site_key,
     enabled: isTurnstileEnabled,
@@ -239,6 +240,7 @@ export const useLoginForm = ({
     setError,
     turnstileStatus,
     turnstileRef,
+    hasVisibleWidget,
     isTurnstileEnabled,
     keepLoggedIn,
     setKeepLoggedIn,

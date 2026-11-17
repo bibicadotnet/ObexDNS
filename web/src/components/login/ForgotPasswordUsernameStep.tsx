@@ -14,6 +14,8 @@ export interface ForgotPasswordUsernameStepProps {
   isTurnstileEnabled: boolean | undefined;
   /** Ref pointing to the Turnstile container div. */
   turnstileRef: React.RefObject<HTMLDivElement | null>;
+  /** Indicates if Turnstile has rendered a visible widget (managed/challenge). */
+  hasVisibleWidget?: boolean;
   /** Turnstile verification status. */
   turnstileStatus: "idle" | "verifying" | "success" | "error";
   /** Resolved Turnstile response token. */
@@ -38,6 +40,7 @@ export const ForgotPasswordUsernameStep: React.FC<ForgotPasswordUsernameStepProp
   setUsername,
   isTurnstileEnabled,
   turnstileRef,
+  hasVisibleWidget,
   turnstileStatus,
   turnstileToken,
   loading,
@@ -72,8 +75,14 @@ export const ForgotPasswordUsernameStep: React.FC<ForgotPasswordUsernameStepProp
       </FormGroup>
 
       {isTurnstileEnabled && (
-        <div className="my-2 flex justify-center">
-          <div ref={turnstileRef} className="min-h-[65px]" />
+        <div
+          className={`flex justify-center transition-all duration-200 ${
+            hasVisibleWidget
+              ? "my-2 min-h-[65px]"
+              : "h-0 overflow-hidden [&:has(iframe:not([style*='height: 0px']))]:my-2 [&:has(iframe:not([style*='height: 0px']))]:min-h-[65px]"
+          }`}
+        >
+          <div ref={turnstileRef} />
         </div>
       )}
 

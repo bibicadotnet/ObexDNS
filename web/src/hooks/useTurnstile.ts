@@ -22,6 +22,7 @@ export interface UseTurnstileReturn {
   turnstileStatus: "idle" | "verifying" | "success" | "error";
   turnstileRef: React.RefObject<HTMLDivElement | null>;
   resetTurnstile: () => void;
+  hasVisibleWidget: boolean;
 }
 
 /**
@@ -40,10 +41,81 @@ export function useTurnstile({
   const [turnstileStatus, setTurnstileStatus] = useState<
     "idle" | "verifying" | "success" | "error"
   >("idle");
+  const [hasVisibleWidget, setHasVisibleWidget] = useState<boolean>(false);
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
 
   const { t } = useTranslation();
+
+  // Helper to dynamically check if the Turnstile iframe/container is actually visible
+  const checkVisibility = useCallback(() => {
+    const container = turnstileRef.current;
+    if (!container) {
+      setHasVisibleWidget(false);
+      return;
+    }
+
+    const iframe = container.querySelector("iframe");
+    if (!iframe) {
+      setHasVisibleWidget(false);
+      return;
+    }
+
+    const styleDisplay = iframe.style.display;
+    const styleVisibility = iframe.style.visibility;
+    if (styleDisplay === "none" || styleVisibility === "hidden") {
+      setHasVisibleWidget(false);
+      return;
+    }
+
+    const styleWidth = iframe.style.width;
+    const styleHeight = iframe.style.height;
+    if (
+      (styleWidth === "0px" || styleWidth === "0") &&
+      (styleHeight === "0px" || styleHeight === "0")
+    ) {
+      setHasVisibleWidget(false);
+      return;
+    }
+
+    const computed = window.getComputedStyle(iframe);
+    if (computed.display === "none" || computed.visibility === "hidden") {
+      setHasVisibleWidget(false);
+      return;
+    }
+
+    const rect = iframe.getBoundingClientRect();
+    const w = parseFloat(computed.width) || rect.width || parseFloat(styleWidth) || 0;
+    const h = parseFloat(computed.height) || rect.height || parseFloat(styleHeight) || 0;
+
+    if (w <= 1 && h <= 1) {
+      setHasVisibleWidget(false);
+      return;
+    }
+
+    setHasVisibleWidget(true);
+  }, []);
+
+  // Observe DOM changes inside turnstile container to detect when widget becomes visible or hidden
+  useEffect(() => {
+    const el = turnstileRef.current;
+    if (!el) return;
+
+    const observer = new MutationObserver(() => {
+      checkVisibility();
+    });
+
+    observer.observe(el, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class", "width", "height"]
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [checkVisibility]);
 
   // Store callbacks and t in refs so their identity changes never trigger widget re-mounts
   const onErrorRef = useRef(onError);
@@ -67,6 +139,7 @@ export function useTurnstile({
       }
       setTurnstileToken(null);
       setTurnstileStatus("idle");
+      setHasVisibleWidget(false);
       return;
     }
 
@@ -104,9 +177,16 @@ export function useTurnstile({
             )
           );
           setTurnstileToken(null);
+        },
+        "before-interactive-callback": () => {
+          setHasVisibleWidget(true);
+        },
+        "after-interactive-callback": () => {
+          checkVisibility();
         }
       });
       widgetIdRef.current = widgetId;
+      checkVisibility();
     } catch (e) {
       console.error("Turnstile render error:", e);
       setTurnstileStatus("error");
@@ -121,8 +201,9 @@ export function useTurnstile({
         }
         widgetIdRef.current = null;
       }
+      setHasVisibleWidget(false);
     };
-  }, [isActive, enabled, siteKey, turnstileReady]);
+  }, [isActive, enabled, siteKey, turnstileReady, checkVisibility]);
 
   const resetTurnstile = useCallback(() => {
     if (window.turnstile && widgetIdRef.current) {
@@ -134,6 +215,7 @@ export function useTurnstile({
     }
     setTurnstileToken(null);
     setTurnstileStatus("idle");
+    setHasVisibleWidget(false);
   }, []);
 
   return {
@@ -141,6 +223,7 @@ export function useTurnstile({
     setTurnstileToken,
     turnstileStatus,
     turnstileRef,
-    resetTurnstile
+    resetTurnstile,
+    hasVisibleWidget
   };
 }

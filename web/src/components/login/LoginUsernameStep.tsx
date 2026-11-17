@@ -14,6 +14,8 @@ export interface LoginUsernameStepProps {
   isTurnstileEnabled: boolean | undefined;
   /** Ref pointing to the Turnstile container div. */
   turnstileRef: React.RefObject<HTMLDivElement | null>;
+  /** Indicates if Turnstile has rendered a visible widget (managed/challenge). */
+  hasVisibleWidget?: boolean;
   /** Indicates if prelogin check is loading. */
   loading: boolean;
   /** The current state of Turnstile verification. */
@@ -34,6 +36,7 @@ export const LoginUsernameStep: React.FC<LoginUsernameStepProps> = ({
   setUsername,
   isTurnstileEnabled,
   turnstileRef,
+  hasVisibleWidget,
   loading,
   turnstileStatus,
   onSubmit
@@ -59,7 +62,13 @@ export const LoginUsernameStep: React.FC<LoginUsernameStepProps> = ({
       </FormGroup>
 
       {isTurnstileEnabled && (
-        <div className="py-2 flex justify-center min-h-16.25">
+        <div
+          className={`flex justify-center transition-all duration-200 ${
+            hasVisibleWidget
+              ? "py-2 min-h-16.25"
+              : "h-0 overflow-hidden [&:has(iframe:not([style*='height: 0px']))]:py-2 [&:has(iframe:not([style*='height: 0px']))]:min-h-16.25"
+          }`}
+        >
           <div ref={turnstileRef} />
         </div>
       )}
