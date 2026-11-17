@@ -24,10 +24,12 @@ function isIpAddress(str: string): boolean {
   return dotCount === 3;
 }
 
+const VALID_LABEL_REGEX = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
+
 /**
  * Extracts candidate apex / eTLD+1 domain for pattern indexing.
  * E.g. "*-ad.example.com" -> "example.com"
- * If the apex contains wildcards (e.g. "example.*"), returns undefined.
+ * If the apex contains wildcards, regex tokens, or invalid hostname characters (e.g. "example.*"), returns undefined.
  */
 export function extractApexDomain(pattern: string): string | undefined {
   const parts = pattern.toLowerCase().split(".").filter(Boolean);
@@ -35,13 +37,16 @@ export function extractApexDomain(pattern: string): string | undefined {
 
   const last = parts[parts.length - 1];
   const secondLast = parts[parts.length - 2];
-  if (last.includes("*") || secondLast.includes("*")) return undefined;
+  // TLD cannot be purely numeric (RFC 1123 / RFC 3696) or contain regex/wildcard tokens
+  if (!VALID_LABEL_REGEX.test(last) || /^\d+$/.test(last) || !VALID_LABEL_REGEX.test(secondLast)) {
+    return undefined;
+  }
 
   // Multi-part TLD heuristic (e.g. .co.uk, .com.cn, .edu.au)
   const commonSecondLevels = new Set(["co", "com", "net", "org", "edu", "gov", "ac"]);
   if (parts.length >= 3 && commonSecondLevels.has(secondLast) && last.length === 2) {
     const thirdLast = parts[parts.length - 3];
-    if (thirdLast.includes("*")) return undefined;
+    if (!VALID_LABEL_REGEX.test(thirdLast)) return undefined;
     return `${thirdLast}.${secondLast}.${last}`;
   }
 

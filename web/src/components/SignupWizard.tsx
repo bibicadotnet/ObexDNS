@@ -3,6 +3,7 @@ import { H3, Intent, Callout } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import LogoIcon from "../assets/obex_cat_eye_logo-256.webp";
+import { useBranding } from "../hooks/useBranding";
 import { SignupUsernameStep } from "./signup/SignupUsernameStep";
 import { SignupPasswordStep } from "./signup/SignupPasswordStep";
 import { SignupMfaStep } from "./signup/SignupMfaStep";
@@ -90,13 +91,15 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     handleSignupSubmit
   } = useSignupWizard({ authConfig, turnstileReady, onSuccess });
 
+  const { appName, appLogoUrl } = useBranding();
+
   if (authConfig && authConfig.has_users !== false && authConfig.registration_enabled === false) {
     return (
       <div className="space-y-6 text-center">
         <div className="flex flex-col items-center">
           <img
-            src={LogoIcon}
-            alt="DNS Worker Logo"
+            src={appLogoUrl || LogoIcon}
+            alt={`${appName} Logo`}
             className="w-20 h-20 object-contain"
           />
           <H3 className="font-bold tracking-tight text-2xl mt-4">
@@ -135,8 +138,8 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
           </button>
         )}
         <img
-          src={LogoIcon}
-          alt="DNS Worker Logo"
+          src={appLogoUrl || LogoIcon}
+          alt={`${appName} Logo`}
           className="w-20 h-20 object-contain"
         />
         <H3 className="font-bold tracking-tight text-2xl mt-4">

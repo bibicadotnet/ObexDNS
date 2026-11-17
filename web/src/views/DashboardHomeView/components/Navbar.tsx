@@ -6,6 +6,7 @@ import { LanguageSwitcher } from "../../../components/LanguageSwitcher";
 import { SessionLockButton } from "../../../components/SessionLockButton";
 import type { UserInfo } from "../../../types/auth";
 import LogoIcon from "../../../assets/obex_cat_eye_logo-256.webp";
+import { useBranding } from "../../../hooks/useBranding";
 
 /**
  * Properties for the Navbar component on the dashboard home (select profile) page.
@@ -23,6 +24,7 @@ interface NavbarProps {
  */
 export const Navbar: React.FC<NavbarProps> = ({ isMobile, navigate, handleLogout, currentUser }) => {
   const { t } = useTranslation();
+  const { appName, appLogoUrl } = useBranding();
   const currentDomain =
     typeof window !== "undefined"
       ? window.location.host || window.location.hostname
@@ -35,13 +37,13 @@ export const Navbar: React.FC<NavbarProps> = ({ isMobile, navigate, handleLogout
     >
       <div className="flex items-center gap-2.5">
         <img
-          src={LogoIcon}
-          alt="DNS Worker"
+          src={appLogoUrl || LogoIcon}
+          alt={appName}
           className="w-8 h-8 object-contain shrink-0"
         />
         <div className="flex flex-col justify-center">
           <span className="font-bold text-base leading-tight tracking-tight dark:text-white">
-            DNS Worker
+            {appName}
           </span>
           {currentDomain && (
             <span

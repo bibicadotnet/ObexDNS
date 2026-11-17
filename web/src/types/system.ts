@@ -12,6 +12,11 @@ export interface DnsWorkerConfig {
   mode?: DeploymentMode;
   databaseService?: string;
   isTurso?: boolean;
+  appName?: string;
+  appLogoUrl?: string;
+  appFaviconUrl?: string;
+  githubCornerEnabled?: boolean;
+  githubCornerUrl?: string;
 }
 
 declare global {

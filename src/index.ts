@@ -254,7 +254,12 @@ export default {
                isServerfull,
                databaseService: dbService,
                isTurso: dbService === 'Turso',
-               mode: isServerfull ? 'serverfull' : 'cloudflare'
+               mode: isServerfull ? 'serverfull' : 'cloudflare',
+               appName: env.APP_NAME || 'DNS Worker',
+               appLogoUrl: env.APP_LOGO_URL || '',
+               appFaviconUrl: env.APP_FAVICON_URL || '',
+               githubCornerEnabled: env.GITHUB_CORNER_ENABLED !== 'false' && env.GITHUB_CORNER_ENABLED !== false,
+               githubCornerUrl: env.GITHUB_CORNER_URL || 'https://github.com/Obein/DNS-Worker'
              });
           } catch (e) { }
           

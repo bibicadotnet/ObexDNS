@@ -5,6 +5,7 @@ import { RefreshCw, Terminal, Cloud } from "lucide-react";
 import { LanguageSwitcher } from "../../components/LanguageSwitcher";
 import { ScrollingIntro } from "../../components/ScrollingIntro";
 import LogoIcon from "../../assets/obex_cat_eye_logo-256.webp";
+import { useBranding } from "../../hooks/useBranding";
 import { CliGuide } from "./components/CliGuide";
 import { DashboardGuide } from "./components/DashboardGuide";
 import { JwtGenerator } from "./components/JwtGenerator";
@@ -21,6 +22,8 @@ export const DeploymentGuideView: React.FC = () => {
   // Read status injected from HTMLRewriter
   const isDbMissing = (window as any).DNS_WORKER_CONFIG?.isDbMissing ?? true;
   const isJwtSecretMissing = (window as any).DNS_WORKER_CONFIG?.isJwtSecretMissing ?? true;
+
+  const { appName, appLogoUrl } = useBranding();
 
   const handleRefresh = () => {
     window.location.reload();
@@ -81,7 +84,7 @@ export const DeploymentGuideView: React.FC = () => {
             {/* Brand Header (Fixed Top) */}
             <div className="flex items-center justify-between gap-4 mb-6 shrink-0">
               <div className="flex items-center gap-4">
-                <img src={LogoIcon} alt="DNS Worker Logo" className="w-10 h-10 object-contain rounded-xl shadow-lg shadow-blue-500/10" />
+                <img src={appLogoUrl || LogoIcon} alt={`${appName} Logo`} className="w-10 h-10 object-contain rounded-xl shadow-lg shadow-blue-500/10" />
                 <div>
                   <h1 className="text-xl font-extrabold text-gray-900 dark:text-zinc-50 tracking-tight m-0">DNS Worker</h1>
                   <p className="text-xs text-gray-500 dark:text-zinc-400 font-medium m-0 mt-0.5">Advanced Agentic DNS Server</p>

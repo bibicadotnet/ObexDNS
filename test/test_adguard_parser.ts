@@ -25,6 +25,15 @@ function runAdGuardParserTests(): void {
   assert.strictEqual(regexRule?.kind, AdGuardRuleKind.COMPLEX_PATTERN);
   assert.strictEqual(regexRule?.patternRegex, "^ad[0-9]+\\.google\\.com$");
   assert.strictEqual(regexRule?.apexIndex, "google.com");
+
+  // Regex with dynamic tokens in apex (e.g. hex lengths, day of week) must NOT produce pseudo-apex
+  const hexRegex = parseAdGuardLine("/^(a|c)\\.[0-9a-f]{56}\\.com$/");
+  assert.strictEqual(hexRegex?.kind, AdGuardRuleKind.COMPLEX_PATTERN);
+  assert.strictEqual(hexRegex?.apexIndex, undefined);
+
+  const dgaRegex = parseAdGuardLine("/^(mon|tue|wed|thu|fri|sat|sun)\\d{1,2}\\.\\w{2}\\d{1,6}\\w{4}\\.com$/");
+  assert.strictEqual(dgaRegex?.kind, AdGuardRuleKind.COMPLEX_PATTERN);
+  assert.strictEqual(dgaRegex?.apexIndex, undefined);
   console.log("   ✓ Regular expressions parsed and indexed.");
 
   // 3. Whitelist Exceptions (@@)

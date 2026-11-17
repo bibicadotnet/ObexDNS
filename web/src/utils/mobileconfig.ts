@@ -108,20 +108,24 @@ export function generateMobileConfig(
   const payloadUUID = crypto.randomUUID();
   const profileUUID = crypto.randomUUID();
 
+  const brandName = (typeof profileKeyOrOptions === "object" && (profileKeyOrOptions as any)?.appName) ||
+    (typeof window !== "undefined" ? window.DNS_WORKER_CONFIG?.appName : undefined) ||
+    "DNS Worker";
+
   // Outer profile display name (visible in iOS Profiles / VPN & Management)
   const displayName = label
-    ? `DNS Worker - ${domain} (${label})`
-    : `DNS Worker (${domain})`;
+    ? `${brandName} - ${domain} (${label})`
+    : `${brandName} (${domain})`;
 
   // Inner DoH DNS Settings payload name (visible in iOS DNS provider selection)
   const dohPayloadName = label
-    ? `DNS Worker DoH - ${domain} (${label})`
-    : `DNS Worker DoH - ${domain}`;
+    ? `${brandName} DoH - ${domain} (${label})`
+    : `${brandName} DoH - ${domain}`;
 
   // Human-readable descriptions with no nested parentheses
   const description = label
-    ? `DNS Worker DoH configuration profile for ${label} via ${domain}`
-    : `DNS Worker DoH configuration profile via ${domain}`;
+    ? `${brandName} DoH configuration profile for ${label} via ${domain}`
+    : `${brandName} DoH configuration profile via ${domain}`;
 
   const payloadDescription = label
     ? `Configures encrypted DNS over HTTPS (DoH) for ${label} via ${domain}`

@@ -191,6 +191,7 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
   };
 
   const env: Env = {
+    ...process.env,
     DB: null as any, // Set by db.ts or turso client
     DATABASE_SERVICE: databaseService,
     TURSO_DATABASE_URL: tursoDatabaseUrl,
@@ -252,7 +253,11 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     SERVERFULL_ECH_ENABLED: echEnabled ? 'true' : 'false',
     SERVERFULL_ECH_CONFIG: echConfig,
     SERVERFULL_ECH_FRONTING_DOMAIN: echFrontingDomain,
-    ...process.env
+    APP_NAME: process.env.APP_NAME || 'DNS Worker',
+    APP_LOGO_URL: process.env.APP_LOGO_URL || '',
+    APP_FAVICON_URL: process.env.APP_FAVICON_URL || '',
+    GITHUB_CORNER_ENABLED: process.env.GITHUB_CORNER_ENABLED !== undefined ? process.env.GITHUB_CORNER_ENABLED : 'true',
+    GITHUB_CORNER_URL: process.env.GITHUB_CORNER_URL || process.env.GITHUB_URL || 'https://github.com/Obein/DNS-Worker'
   };
 
   return { config, env };

@@ -19,6 +19,7 @@ import { clsx } from "clsx";
 import LogoIcon from "../assets/obex_cat_eye_logo-256.webp";
 import type { UserInfo } from "../types/auth";
 import { useUpstreamUpdate } from "../hooks/useUpstreamUpdate";
+import { useBranding } from "../hooks/useBranding";
 
 /**
  * Properties for the DesktopSidebar component.
@@ -63,6 +64,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 }) => {
   const { t } = useTranslation();
   const { hasUpdate, latestTag, appVersion, gitTag, gitCommit } = useUpstreamUpdate();
+  const { appName, appLogoUrl } = useBranding();
 
   return (
     <aside
@@ -73,15 +75,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     >
       <div className="h-14 flex items-center pl-3.5 pr-2 shrink-0">
         <img
-          src={LogoIcon}
-          alt="DNS Worker"
+          src={appLogoUrl || LogoIcon}
+          alt={appName}
           className="w-8 h-8 object-contain shrink-0"
         />
         {isSidebarOpen && (
           <div className="ml-2.5 flex flex-col justify-center min-w-0 flex-1">
             <div className="flex items-baseline gap-1.5 min-w-0">
               <span className="font-bold text-base leading-tight dark:text-white shrink-0">
-                DNS Worker
+                {appName}
               </span>
               <span
                 className="text-xs text-gray-500 dark:text-gray-400 font-mono leading-tight truncate shrink-0 inline-flex items-center"

@@ -88,6 +88,12 @@ export interface Env {
   TURSO_DATABASE_URL?: string;
   TURSO_URL?: string;
   TURSO_AUTH_TOKEN?: string;
+  // UI & Branding Customization
+  APP_NAME?: string;
+  APP_LOGO_URL?: string;
+  APP_FAVICON_URL?: string;
+  GITHUB_CORNER_ENABLED?: string | boolean;
+  GITHUB_CORNER_URL?: string;
   DATABASE_SERVICE?: 'D1' | 'Turso' | 'File' | string;
   [key: string]: any;
 }

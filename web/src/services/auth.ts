@@ -16,6 +16,11 @@ export interface AuthConfig {
   optional_session_expiration_days?: number;
   has_users?: boolean;
   registration_enabled?: boolean;
+  app_name?: string;
+  app_logo_url?: string;
+  app_favicon_url?: string;
+  github_corner_enabled?: boolean;
+  github_corner_url?: string;
 }
 
 export interface PreloginPayload {

@@ -3,6 +3,7 @@ import { H3, Intent, Callout, Button, Spinner } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { LogOut } from "lucide-react";
 import LogoIcon from "../assets/obex_cat_eye_logo-256.webp";
+import { useBranding } from "../hooks/useBranding";
 import { DigitInput, type DigitInputRef } from "./DigitInput";
 import { hashPin, hashChallenge } from "../utils/auth";
 import { unlockSession, getUnlockNonce, ApiError } from "../services";
@@ -176,6 +177,8 @@ export const LockScreenForm: React.FC<LockScreenFormProps> = ({
     localStorage.getItem("obex_username") ||
     "";
 
+  const { appName, appLogoUrl } = useBranding();
+
   return (
     <div
       className="flex flex-col items-center select-none"
@@ -184,8 +187,8 @@ export const LockScreenForm: React.FC<LockScreenFormProps> = ({
       {/* Logo & Header */}
       <div className="flex flex-col items-center mb-8">
         <img
-          src={LogoIcon}
-          alt="DNS Worker Logo"
+          src={appLogoUrl || LogoIcon}
+          alt={`${appName} Logo`}
           className="w-20 h-20 object-contain"
         />
         {displayUsername && (

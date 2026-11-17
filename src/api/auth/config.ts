@@ -13,20 +13,39 @@ export async function handleAuthConfigRequest(request: Request, env: Env): Promi
   // 公开配置接口
   if (url.pathname === '/api/auth/config' && request.method === 'GET') {
     const settingsModel = new SystemSettingsModel(env.DB);
-    const [siteKey, signupEnabled, loginEnabled, hasUsers, registrationEnabled] = await Promise.all([
+    const [siteKey, signupEnabled, loginEnabled, hasUsers, registrationEnabled, dbAppName, dbLogoUrl, dbFaviconUrl, dbGhEnabled, dbGhUrl] = await Promise.all([
       settingsModel.get('turnstile_site_key'),
       settingsModel.get('turnstile_enabled_signup'),
       settingsModel.get('turnstile_enabled_login'),
       userModel.isEmpty().then((empty) => !empty).catch(() => false),
-      settingsModel.get('registration_enabled')
+      settingsModel.get('registration_enabled'),
+      settingsModel.get('app_name'),
+      settingsModel.get('app_logo_url'),
+      settingsModel.get('app_favicon_url'),
+      settingsModel.get('github_corner_enabled'),
+      settingsModel.get('github_corner_url')
     ]);
+
+    const appName = dbAppName || env.APP_NAME || 'DNS Worker';
+    const appLogoUrl = dbLogoUrl || env.APP_LOGO_URL || '';
+    const appFaviconUrl = dbFaviconUrl || env.APP_FAVICON_URL || '';
+    const ghEnabled = dbGhEnabled !== null
+      ? dbGhEnabled !== 'false'
+      : (env.GITHUB_CORNER_ENABLED !== 'false' && env.GITHUB_CORNER_ENABLED !== false);
+    const ghUrl = dbGhUrl || env.GITHUB_CORNER_URL || 'https://github.com/Obein/DNS-Worker';
+
     return new Response(JSON.stringify({
       turnstile_site_key: siteKey,
       turnstile_enabled_signup: signupEnabled === 'true',
       turnstile_enabled_login: loginEnabled === 'true',
       optional_session_expiration_days: Number(env.OPTIONAL_SESSION_EXPIRATION_DAYS) || 7,
       has_users: hasUsers,
-      registration_enabled: registrationEnabled !== 'false'
+      registration_enabled: registrationEnabled !== 'false',
+      app_name: appName,
+      app_logo_url: appLogoUrl,
+      app_favicon_url: appFaviconUrl,
+      github_corner_enabled: ghEnabled,
+      github_corner_url: ghUrl
     }), {
       headers: {
         'Content-Type': 'application/json',

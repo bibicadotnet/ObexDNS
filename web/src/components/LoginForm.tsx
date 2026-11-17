@@ -3,6 +3,7 @@ import { H3, Intent, Callout, Dialog, Button, Classes } from "@blueprintjs/core"
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Copy, Check, ShieldAlert } from "lucide-react";
 import LogoIcon from "../assets/obex_cat_eye_logo-256.webp";
+import { useBranding } from "../hooks/useBranding";
 import { LoginUsernameStep } from "./login/LoginUsernameStep";
 import { LoginPasswordStep } from "./login/LoginPasswordStep";
 import { LoginMfaStep } from "./login/LoginMfaStep";
@@ -100,6 +101,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     }
   };
 
+  const { appName, appLogoUrl } = useBranding();
+
   return (
     <>
       <div className="flex flex-col items-center mb-8 relative">
@@ -114,8 +117,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           </button>
         )}
         <img
-          src={LogoIcon}
-          alt="DNS Worker Logo"
+          src={appLogoUrl || LogoIcon}
+          alt={`${appName} Logo`}
           className="w-20 h-20 object-contain"
         />
         <H3 className="font-bold tracking-tight text-2xl mt-4">

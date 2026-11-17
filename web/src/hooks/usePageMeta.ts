@@ -1,5 +1,6 @@
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useBranding } from "./useBranding";
 
 /**
  * Custom hook to generate localized page title and SEO meta description based on the current location.
@@ -7,6 +8,7 @@ import { useTranslation } from "react-i18next";
 export function usePageMeta() {
   const { t } = useTranslation();
   const location = useLocation();
+  const { appName } = useBranding();
 
   const getPageMeta = (path: string) => {
     let moduleName = "";
@@ -21,7 +23,7 @@ export function usePageMeta() {
       moduleName = t("common.account");
     } else if (path.endsWith("/setup")) {
       moduleName = t("nav.setup");
-      description = t("meta.setupDesc", "Configure your devices to use DNS Worker.");
+      description = t("meta.setupDesc", `Configure your devices to use ${appName}.`);
     } else if (path.endsWith("/filter")) {
       moduleName = t("nav.filter");
     } else if (path.endsWith("/rules")) {
@@ -34,7 +36,7 @@ export function usePageMeta() {
       moduleName = t("nav.logs");
     }
 
-    const title = moduleName ? `${moduleName} | DNS Worker` : "DNS Worker";
+    const title = moduleName ? `${moduleName} | ${appName}` : appName;
     return { title, description };
   };
 

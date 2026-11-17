@@ -250,3 +250,11 @@ NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS=1
 # Hard cap on log row count per profile. Acts as a circuit-breaker when write
 # rate temporarily exceeds cleanup rate (e.g. high-traffic profiles).
 MAX_LOGS_PER_PROFILE=500000
+
+# UI & Branding Customization / Tùy biến giao diện và thương hiệu
+# APP_NAME="DNS Worker"
+# APP_LOGO_URL=""
+# APP_FAVICON_URL=""
+# GITHUB_CORNER_ENABLED=true
+# GITHUB_CORNER_URL="https://github.com/Obein/DNS-Worker"
+

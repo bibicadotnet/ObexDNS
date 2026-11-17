@@ -12,6 +12,7 @@ import { ProfileRoutes } from "./routes/ProfileRoutes";
 import type { Profile } from "./services";
 import { useTheme } from "./hooks/useTheme";
 import { usePageMeta } from "./hooks/usePageMeta";
+import { useBranding } from "./hooks/useBranding";
 import { useAuth } from "./hooks/useAuth";
 import { useProfiles } from "./hooks/useProfiles";
 import { IdleSessionLock } from "./components/IdleSessionLock";
@@ -31,8 +32,9 @@ function App() {
   const toasterRef = useRef<OverlayToaster | null>(null);
   const { i18n } = useTranslation();
 
-  // Abstracted hooks for theme, page metadata/SEO, and authentication & profile state
+  // Abstracted hooks for theme, page metadata/SEO, branding, and authentication & profile state
   const { theme, setTheme } = useTheme();
+  const { appFaviconUrl } = useBranding();
   const pageMeta = usePageMeta();
   const {
     isLoggedIn,
@@ -104,6 +106,8 @@ function App() {
           <title>{pageMeta.title}</title>
           <meta name="description" content={pageMeta.description} />
           <html lang={i18n.language} />
+          {appFaviconUrl && <link rel="icon" href={appFaviconUrl} />}
+          {appFaviconUrl && <link rel="shortcut icon" href={appFaviconUrl} />}
         </Helmet>
         <GitHubCorner />
         <OverlayToaster position="bottom" ref={toasterRef} />
@@ -124,6 +128,8 @@ function App() {
         <title>{pageMeta.title}</title>
         <meta name="description" content={pageMeta.description} />
         <html lang={i18n.language} />
+        {appFaviconUrl && <link rel="icon" href={appFaviconUrl} />}
+        {appFaviconUrl && <link rel="shortcut icon" href={appFaviconUrl} />}
       </Helmet>
       <GitHubCorner />
       <OverlayToaster position="bottom" ref={toasterRef} />
