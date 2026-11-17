@@ -13,6 +13,8 @@
 
 import type { Env } from '../types';
 import { cacheUtils } from './cache';
+import { ProfileModel } from '../models/profile';
+import { UserModel } from '../models/user';
 
 const PROBE_RE = /^obexv-([a-z0-9]{16,32})\./i;
 export const PROBE_NONCE_RE = /^[a-z0-9]{16,32}$/i;
@@ -134,5 +136,66 @@ export async function recordActiveConnection(
     await cacheWrite(ipKey, profileId, ttl);
   } catch {
     // best-effort only
+  }
+}
+
+/**
+ * Shared in-memory map for throttling profile & user activity timestamp updates.
+ * Thread/isolate safe and prevents continuous database writes on frequent DNS queries.
+ */
+const activeThrottleMemoryMap = new Map<string, number>();
+
+/**
+ * Updates profile and owning user last_active_at timestamps with throttling.
+ * Safe to invoke on any DNS query transport (DoH, DoT, UDP).
+ *
+ * @param env Worker or Serverfull environment configuration.
+ * @param profileId Profile identifier.
+ * @param cache Optional cache instance (defaults to caches.default if available).
+ */
+export async function touchProfileAndUserActivity(
+  env: Env,
+  profileId: string,
+  cache?: Cache | null
+): Promise<void> {
+  if (!profileId || !env.DB) return;
+
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const throttleSec = Number(env.THROTTLE_ACTIVE_SEC) || 3600;
+
+    // 1. Fast L1 in-memory check (0ms, 0 subrequests)
+    const inMemThrottle = activeThrottleMemoryMap.get(profileId);
+    if (inMemThrottle && nowSec - inMemThrottle < throttleSec) {
+      return;
+    }
+
+    // 2. Check L2 Cache API (across isolates in the same datacenter)
+    const activeCache = cache !== undefined ? cache : getCache();
+    const lastActiveKey = `active_throttle:${profileId}`;
+    const lastActiveThrottled = activeCache ? await cacheUtils.get<number>(activeCache, lastActiveKey) : null;
+    if (lastActiveThrottled && nowSec - lastActiveThrottled < throttleSec) {
+      activeThrottleMemoryMap.set(profileId, lastActiveThrottled);
+      return;
+    }
+
+    // Mark in-memory immediately to prevent concurrent requests from issuing duplicate DB updates
+    activeThrottleMemoryMap.set(profileId, nowSec);
+
+    try {
+      const profileModel = new ProfileModel(env.DB);
+      await profileModel.updateLastActive(profileId, nowSec);
+
+      const userModel = new UserModel(env.DB, env);
+      await userModel.updateLastActiveByProfile(profileId, nowSec);
+    } catch {
+      /* ignore DB write quota / lock errors */
+    }
+
+    if (activeCache) {
+      await cacheUtils.set(activeCache, lastActiveKey, nowSec, throttleSec);
+    }
+  } catch {
+    // Best-effort only: never fail DNS query resolution on metrics tracking
   }
 }
