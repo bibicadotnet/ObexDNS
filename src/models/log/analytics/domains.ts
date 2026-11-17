@@ -119,7 +119,7 @@ export class LogDomainAnalytics {
   }
 
   /**
-   * Retrieves top blocked/redirected domains for a given time range.
+   * Retrieves top blocked domains for a given time range.
    *
    * @param profileId - Profile identifier.
    * @param since - Start timestamp in seconds.
@@ -135,7 +135,7 @@ export class LogDomainAnalytics {
   ): Promise<DomainCountResult[]> {
     if (!this.aggregation) {
       let queryStr =
-        "SELECT domain, COUNT(*) as count FROM logs WHERE profile_id = ? AND timestamp >= ? AND timestamp <= ? AND domain IS NOT NULL AND domain != '' AND domain != '[Encrypted]' AND action IN ('BLOCK', 'REDIRECT')";
+        "SELECT domain, COUNT(*) as count FROM logs WHERE profile_id = ? AND timestamp >= ? AND timestamp <= ? AND domain IS NOT NULL AND domain != '' AND domain != '[Encrypted]' AND action = 'BLOCK'";
       const params: (string | number)[] = [profileId, since, until];
       if (accessPointId) {
         queryStr += " AND access_point_id = ?";
@@ -155,7 +155,7 @@ export class LogDomainAnalytics {
     // Case 1: No rollups available or entire range is after cutoff -> query raw logs only
     if (cutoff <= since) {
       let queryStr =
-        "SELECT domain, COUNT(*) as count FROM logs WHERE profile_id = ? AND timestamp >= ? AND timestamp <= ? AND domain IS NOT NULL AND domain != '' AND domain != '[Encrypted]' AND action IN ('BLOCK', 'REDIRECT')";
+        "SELECT domain, COUNT(*) as count FROM logs WHERE profile_id = ? AND timestamp >= ? AND timestamp <= ? AND domain IS NOT NULL AND domain != '' AND domain != '[Encrypted]' AND action = 'BLOCK'";
       const params: (string | number)[] = [profileId, since, until];
       if (accessPointId) {
         queryStr += " AND access_point_id = ?";
@@ -173,7 +173,7 @@ export class LogDomainAnalytics {
     if (cutoff > until) {
       const sinceHour = Math.floor(since / 3600) * 3600;
       let queryStr =
-        "SELECT key as domain, SUM(count) as count FROM hourly_rollups WHERE profile_id = ? AND metric_type = 'domain' AND sub_key IN ('BLOCK', 'REDIRECT') AND hour_timestamp >= ? AND hour_timestamp <= ?";
+        "SELECT key as domain, SUM(count) as count FROM hourly_rollups WHERE profile_id = ? AND metric_type = 'domain' AND sub_key = 'BLOCK' AND hour_timestamp >= ? AND hour_timestamp <= ?";
       const params: (string | number)[] = [profileId, sinceHour, until];
       if (accessPointId) {
         queryStr += " AND access_point_id = ?";
@@ -189,14 +189,14 @@ export class LogDomainAnalytics {
 
     // Case 3: Spans historical rollups and unaggregated logs -> Hybrid UNION ALL query
     const sinceHour = Math.floor(since / 3600) * 3600;
-    let rollupWhere = "profile_id = ? AND metric_type = 'domain' AND sub_key IN ('BLOCK', 'REDIRECT') AND hour_timestamp >= ? AND hour_timestamp < ?";
+    let rollupWhere = "profile_id = ? AND metric_type = 'domain' AND sub_key = 'BLOCK' AND hour_timestamp >= ? AND hour_timestamp < ?";
     const rollupParams: (string | number)[] = [profileId, sinceHour, cutoff];
     if (accessPointId) {
       rollupWhere += " AND access_point_id = ?";
       rollupParams.push(accessPointId);
     }
 
-    let logWhere = "profile_id = ? AND timestamp >= ? AND timestamp <= ? AND action IN ('BLOCK', 'REDIRECT') AND domain IS NOT NULL AND domain != '' AND domain != '[Encrypted]'";
+    let logWhere = "profile_id = ? AND timestamp >= ? AND timestamp <= ? AND action = 'BLOCK' AND domain IS NOT NULL AND domain != '' AND domain != '[Encrypted]'";
     const logParams: (string | number)[] = [profileId, cutoff, until];
     if (accessPointId) {
       logWhere += " AND access_point_id = ?";

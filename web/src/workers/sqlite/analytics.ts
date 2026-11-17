@@ -64,7 +64,7 @@ export function handleQueryAnalytics(params: WorkerAnalyticsParams): WorkerAnaly
   const allowedStmt = db.prepare(`
     SELECT domain, count(*) as count 
     FROM local_logs 
-    WHERE ${baseWhere} AND action IN ('PASS', 'REDIRECT') 
+    WHERE ${baseWhere} AND action = 'PASS' 
     GROUP BY domain 
     ORDER BY count DESC 
     LIMIT 10;
