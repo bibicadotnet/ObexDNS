@@ -94,6 +94,7 @@ export interface Env {
   APP_FAVICON_URL?: string;
   GITHUB_CORNER_ENABLED?: string | boolean;
   GITHUB_CORNER_URL?: string;
+  WINDOWS_TOOLS_URL?: string;
   DATABASE_SERVICE?: 'D1' | 'Turso' | 'File' | string;
   [key: string]: any;
 }

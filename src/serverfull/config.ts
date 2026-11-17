@@ -261,7 +261,8 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     APP_LOGO_URL: process.env.APP_LOGO_URL || 'https://img.bibica.net/CsXOg50M.png',
     APP_FAVICON_URL: process.env.APP_FAVICON_URL || 'https://img.bibica.net/UsF6Oisg.png',
     GITHUB_CORNER_ENABLED: process.env.GITHUB_CORNER_ENABLED !== undefined ? process.env.GITHUB_CORNER_ENABLED : 'true',
-    GITHUB_CORNER_URL: process.env.GITHUB_CORNER_URL || process.env.GITHUB_URL || 'https://github.com/bibicadotnet/ObexDNS'
+    GITHUB_CORNER_URL: process.env.GITHUB_CORNER_URL || process.env.GITHUB_URL || 'https://github.com/bibicadotnet/ObexDNS',
+    WINDOWS_TOOLS_URL: process.env.WINDOWS_TOOLS_URL || 'https://github.com/bibicadotnet/ObexDNS/releases/download/windows-tools-setup/windows-tools-setup.zip'
   };
 
   return { config, env };

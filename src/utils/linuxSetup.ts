@@ -1,10 +1,10 @@
-export function generateLinuxSetupScript(origin: string, key: string): string {
+export function generateLinuxSetupScript(origin: string, key: string, appName: string = "DNS Shield"): string {
   return `#!/bin/bash
 sudo curl -L 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64' -o /usr/local/bin/cloudflared
 sudo chmod +x /usr/local/bin/cloudflared
 sudo tee /etc/systemd/system/cloudflared-dns.service > /dev/null <<EOF
 [Unit]
-Description=DNS Worker DoH Proxy
+Description=${appName} DoH Proxy
 After=network.target
 
 [Service]
@@ -17,7 +17,7 @@ WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now cloudflared-dns
-echo "DNS Worker DoH Proxy installed successfully."
+echo "${appName} DoH Proxy installed successfully."
 echo "Please change your system DNS to 127.0.0.1"
 `;
 }

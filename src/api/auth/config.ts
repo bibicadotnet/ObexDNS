@@ -26,13 +26,13 @@ export async function handleAuthConfigRequest(request: Request, env: Env): Promi
       settingsModel.get('github_corner_url')
     ]);
 
-    const appName = dbAppName || env.APP_NAME || 'DNS Worker';
-    const appLogoUrl = dbLogoUrl || env.APP_LOGO_URL || '';
-    const appFaviconUrl = dbFaviconUrl || env.APP_FAVICON_URL || '';
+    const appName = dbAppName || env.APP_NAME || 'DNS Shield';
+    const appLogoUrl = dbLogoUrl || env.APP_LOGO_URL || 'https://img.bibica.net/CsXOg50M.png';
+    const appFaviconUrl = dbFaviconUrl || env.APP_FAVICON_URL || 'https://img.bibica.net/UsF6Oisg.png';
     const ghEnabled = dbGhEnabled !== null
       ? dbGhEnabled !== 'false'
       : (env.GITHUB_CORNER_ENABLED !== 'false' && env.GITHUB_CORNER_ENABLED !== false);
-    const ghUrl = dbGhUrl || env.GITHUB_CORNER_URL || 'https://github.com/Obein/DNS-Worker';
+    const ghUrl = dbGhUrl || env.GITHUB_CORNER_URL || 'https://github.com/bibicadotnet/ObexDNS';
 
     return new Response(JSON.stringify({
       turnstile_site_key: siteKey,

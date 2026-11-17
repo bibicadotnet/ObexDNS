@@ -2,6 +2,7 @@ import { Env, User, ExecutionContext } from './types';
 import { ScheduledEvent } from '@cloudflare/workers-types';
 import { readCsrfCookie, createCsrfCookie, generateId } from './lib/auth';
 import { generateLinuxSetupScript } from './utils/linuxSetup';
+import { generateWindowsSetupScript } from './utils/windowsSetup';
 import { ACCESS_KEY_REGEX } from './utils/validator';
 
 // Middleware imports
@@ -179,11 +180,52 @@ export default {
         if (!key || !ACCESS_KEY_REGEX.test(key)) {
           return new Response('Missing or invalid key parameter', { status: 400 });
         }
-        const script = generateLinuxSetupScript(url.origin, key);
+        const appName = url.searchParams.get('appName') || env.APP_NAME || 'DNS Shield';
+        const script = generateLinuxSetupScript(url.origin, key, appName);
         return new Response(script, {
           headers: {
             'Content-Type': 'text/plain; charset=utf-8',
             'Cache-Control': 'no-cache'
+          }
+        });
+      }
+
+      // Windows Setup PowerShell Script Route
+      if (url.pathname === '/setup.ps1') {
+        const key = url.searchParams.get('key');
+        if (!key || !ACCESS_KEY_REGEX.test(key)) {
+          return new Response('# Missing or invalid key parameter', { status: 400 });
+        }
+        const origin = url.searchParams.get('origin') || url.origin;
+        const dotDomain = env.SERVERFULL_DOT_DOMAIN || env.DOT_DOMAIN || '';
+        const toolsUrl = env.WINDOWS_TOOLS_URL || 'https://github.com/bibicadotnet/ObexDNS/releases/download/windows-tools-setup/windows-tools-setup.zip';
+        const script = generateWindowsSetupScript({
+          origin,
+          key,
+          dotDomain,
+          packageUrl: toolsUrl
+        });
+        return new Response(script, {
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      }
+
+      // Dynamic PWA Web Manifest Route (reflects runtime APP_NAME)
+      if (url.pathname === '/manifest.webmanifest') {
+        const appName = env.APP_NAME || 'DNS Shield';
+        const manifestObj = {
+          name: appName,
+          short_name: appName,
+          theme_color: '#1a1b26',
+          icons: []
+        };
+        return new Response(JSON.stringify(manifestObj), {
+          headers: {
+            'Content-Type': 'application/manifest+json; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600'
           }
         });
       }
@@ -255,11 +297,11 @@ export default {
                databaseService: dbService,
                isTurso: dbService === 'Turso',
                mode: isServerfull ? 'serverfull' : 'cloudflare',
-               appName: env.APP_NAME || 'DNS Worker',
-               appLogoUrl: env.APP_LOGO_URL || '',
-               appFaviconUrl: env.APP_FAVICON_URL || '',
+               appName: env.APP_NAME || 'DNS Shield',
+               appLogoUrl: env.APP_LOGO_URL || 'https://img.bibica.net/CsXOg50M.png',
+               appFaviconUrl: env.APP_FAVICON_URL || 'https://img.bibica.net/UsF6Oisg.png',
                githubCornerEnabled: env.GITHUB_CORNER_ENABLED !== 'false' && env.GITHUB_CORNER_ENABLED !== false,
-               githubCornerUrl: env.GITHUB_CORNER_URL || 'https://github.com/Obein/DNS-Worker'
+               githubCornerUrl: env.GITHUB_CORNER_URL || 'https://github.com/bibicadotnet/ObexDNS'
              });
           } catch (e) { }
           

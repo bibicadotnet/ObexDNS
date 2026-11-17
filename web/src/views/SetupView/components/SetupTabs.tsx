@@ -25,7 +25,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
   profileKey,
   profileName,
   accessPointName,
-  currentIps,
+  currentIps: _currentIps,
   dotDomain,
 }) => {
   const { t } = useTranslation();
@@ -137,27 +137,30 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
             <H5 className="font-bold">
               {t("setup.windowsTitle")}
             </H5>
-            <ol className="list-decimal list-inside space-y-4 text-sm leading-relaxed">
-              <li>
-                <a href="ms-settings:network-status">{t("setup.windowsStep0")}</a>
-              </li>
-              <li>{t("setup.windowsStep1")}</li>
-              <li>
-                {t("setup.windowsStep2")}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {currentIps.map((item) => (
-                    <div key={item.ip} className="flex flex-col gap-1">
-                      <Tag minimal interactive onClick={() => copyToClipboard(item.ip)} icon="duplicate" className="font-mono">
-                        {item.ip}
-                      </Tag>
-                      <span className="text-[9px] opacity-50 ml-1 font-mono">{item.area}</span>
-                    </div>
-                  ))}
-                </div>
-              </li>
-              <li>{t("setup.windowsStep3")}</li>
-              <li>{t("setup.windowsStep4")}</li>
-            </ol>
+            <p className="text-sm">{t("setup.windowsDesc")}</p>
+
+            <div className="mt-4">
+              <p className="text-sm font-bold mb-2">{t("setup.windowsStep1")}</p>
+              <div className="relative group">
+                <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-xs font-mono border border-gray-200 dark:border-gray-700">
+                  <code>{`irm "${window.location.origin}/setup.ps1?key=${profileKey}" | iex`}</code>
+                </pre>
+                <Button
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                  icon="duplicate"
+                  minimal
+                  small
+                  onClick={() => {
+                    copyToClipboard(`irm "${window.location.origin}/setup.ps1?key=${profileKey}" | iex`);
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1 pt-1">
+              <p>• {t("setup.windowsNote1")}</p>
+              <p>• {t("setup.windowsNote2")}</p>
+            </div>
           </div>
         }
       />
@@ -179,7 +182,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
               <p className="text-sm font-bold mb-2">{t("setup.linuxStep1")}</p>
               <div className="relative group">
                 <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-xs font-mono border border-gray-200 dark:border-gray-700">
-                  <code>{`curl -sL "${window.location.origin}/setup.sh?key=${profileKey}&origin=${window.location.origin}" | sudo bash`}</code>
+                  <code>{`curl -sL "${window.location.origin}/setup.sh?key=${profileKey}" | sudo bash`}</code>
                 </pre>
                 <Button
                   className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -187,7 +190,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
                   minimal
                   small
                   onClick={() => {
-                    copyToClipboard(`curl -sL "${window.location.origin}/setup.sh?key=${profileKey}&origin=${window.location.origin}" | sudo bash`);
+                    copyToClipboard(`curl -sL "${window.location.origin}/setup.sh?key=${profileKey}" | sudo bash`);
                   }}
                 />
               </div>

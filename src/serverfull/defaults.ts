@@ -448,6 +448,10 @@ PRESET_ECH_FRONTING_DOMAINS='["cloudflare-ech.com","crypto.cloudflare.com","one.
 # Destination URL when clicking the GitHub ribbon (default: "https://github.com/bibicadotnet/ObexDNS").
 # Đường dẫn khi bấm vào biểu tượng GitHub ở góc dưới bên phải (mặc định: "https://github.com/bibicadotnet/ObexDNS").
 # GITHUB_CORNER_URL="https://github.com/bibicadotnet/ObexDNS"
+
+# Package download URL for Windows DoH & Zapret DPI bypass installer (default: GitHub Releases).
+# Đường dẫn tải gói cài đặt dnsproxy & Zapret DPI bypass cho Windows (mặc định từ GitHub Releases).
+# WINDOWS_TOOLS_URL="https://github.com/bibicadotnet/ObexDNS/releases/download/windows-tools-setup/windows-tools-setup.zip"
 `;
 
 /**

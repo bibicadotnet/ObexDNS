@@ -56,7 +56,7 @@ export function formatProfileLabel(profileName?: string, accessPointName?: strin
     }
   }
 
-  const isDefaultName = (name: string) => name === 'DNS Worker' || Boolean(appName && name === appName);
+  const isDefaultName = (name: string) => name === 'DNS Worker' || name === 'DNS Shield' || Boolean(appName && name === appName);
   const cleanP = p && !isDefaultName(p) ? p : '';
   const cleanAp = ap && !isDefaultName(ap) ? ap : '';
 
@@ -109,7 +109,7 @@ export function generateMobileConfig(
   const dohUrl = `${cleanOrigin}/${key}`;
   const brandName = (typeof profileKeyOrOptions === "object" && (profileKeyOrOptions as any)?.appName) ||
     (typeof window !== "undefined" ? window.DNS_WORKER_CONFIG?.appName : undefined) ||
-    "DNS Worker";
+    "DNS Shield";
   const label = formatProfileLabel(pName, apName, brandName);
   const payloadUUID = crypto.randomUUID();
   const profileUUID = crypto.randomUUID();

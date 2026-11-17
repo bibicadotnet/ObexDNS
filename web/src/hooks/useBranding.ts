@@ -25,11 +25,11 @@ export function getBranding(): BrandingInfo {
   if (cachedBranding) return cachedBranding;
 
   const winConfig = typeof window !== "undefined" ? window.DNS_WORKER_CONFIG : undefined;
-  const appName = winConfig?.appName || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_APP_NAME) || "DNS Worker";
-  const appLogoUrl = winConfig?.appLogoUrl || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_APP_LOGO_URL) || "";
-  const appFaviconUrl = winConfig?.appFaviconUrl || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_APP_FAVICON_URL) || "";
+  const appName = winConfig?.appName || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_APP_NAME) || "DNS Shield";
+  const appLogoUrl = winConfig?.appLogoUrl || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_APP_LOGO_URL) || "https://img.bibica.net/CsXOg50M.png";
+  const appFaviconUrl = winConfig?.appFaviconUrl || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_APP_FAVICON_URL) || "https://img.bibica.net/UsF6Oisg.png";
   const githubCornerEnabled = winConfig?.githubCornerEnabled ?? (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_GITHUB_CORNER_ENABLED !== "false");
-  const githubCornerUrl = winConfig?.githubCornerUrl || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_GITHUB_CORNER_URL) || "https://github.com/Obein/DNS-Worker";
+  const githubCornerUrl = winConfig?.githubCornerUrl || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_GITHUB_CORNER_URL) || "https://github.com/bibicadotnet/ObexDNS";
 
   cachedBranding = {
     appName,

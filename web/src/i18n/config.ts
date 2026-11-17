@@ -48,7 +48,7 @@ export async function loadLocale(lang: string): Promise<boolean> {
 
 const getInitialAppName = (): string => {
   const winConfig = typeof window !== "undefined" ? window.DNS_WORKER_CONFIG : undefined;
-  return winConfig?.appName || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_APP_NAME) || "DNS Worker";
+  return winConfig?.appName || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_APP_NAME) || "DNS Shield";
 };
 
 export function updateI18nAppName(appName: string) {

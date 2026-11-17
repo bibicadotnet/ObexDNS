@@ -115,8 +115,8 @@ export default defineConfig({
       injectRegister: 'auto',
       registerType: 'autoUpdate',
       manifest: {
-        name: 'DNS Worker',
-        short_name: 'DNS Worker',
+        name: process.env.VITE_APP_NAME || process.env.APP_NAME || 'DNS Shield',
+        short_name: process.env.VITE_APP_NAME || process.env.APP_NAME || 'DNS Shield',
         theme_color: '#1a1b26',
         icons: []
       },
