@@ -49,18 +49,30 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
   };
 
   const waitForSyncCompletion = async (oldLists: FilterList[]) => {
-    const oldSyncTimes = new Map(oldLists.map(l => [l.id, l.last_synced_at]));
+    // Backend chỉ sync list Active, list Disabled sẽ không bao giờ đổi last_synced_at
+    // nên chỉ theo dõi các list đang enabled (nếu không sẽ poll treo đến hết 30s).
+    const oldSyncTimes = new Map(
+      oldLists.filter((l) => l.enabled).map((l) => [l.id, l.last_synced_at])
+    );
     let attempts = 0;
-    const maxAttempts = 15; // 30 seconds max
+    const maxAttempts = 30; // ~30 seconds max
     
     while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Poll sớm lần đầu (304 thường xong rất nhanh), các lần sau mỗi 1s
+      await new Promise(resolve => setTimeout(resolve, attempts === 0 ? 500 : 1000));
       try {
         const data = await getProfileLists(profileId);
         const newLists = data as FilterList[];
+        const activeLists = newLists.filter((l) => l.enabled);
+
+        // Không có list Active nào -> backend không có gì để sync
+        if (activeLists.length === 0) {
+          setLists(newLists);
+          return true;
+        }
         
         let allUpdated = true;
-        for (const list of newLists) {
+        for (const list of activeLists) {
           if (oldSyncTimes.has(list.id) && list.last_synced_at === oldSyncTimes.get(list.id)) {
             allUpdated = false;
             break;
@@ -71,7 +83,7 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
           }
         }
         
-        if (allUpdated && newLists.length > 0) {
+        if (allUpdated) {
           setLists(newLists);
           return true;
         }
