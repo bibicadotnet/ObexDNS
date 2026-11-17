@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { generateMobileConfig, formatProfileLabel, extractDomain } from "../../../utils/mobileconfig";
 import { StepStampWatermark } from "./StepStampWatermark";
 import { useDeploymentMode } from "../../../hooks/useDeploymentMode";
+import { useBranding } from "../../../hooks/useBranding";
 import { isDummyOrPlaceholderDomain } from "../../../services";
 
 export interface SetupTabsProps {
@@ -29,6 +30,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
 }) => {
   const { t } = useTranslation();
   const { isCloudflare } = useDeploymentMode();
+  const { appName } = useBranding();
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
@@ -95,18 +97,24 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
                     profileName,
                     accessPointName,
                     origin: window.location.origin,
+                    appName,
                   });
                   const blob = new Blob([xml], { type: "application/x-apple-aspen-config" });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
-                  const label = formatProfileLabel(profileName, accessPointName);
+                  const label = formatProfileLabel(profileName, accessPointName, appName);
                   const domain = extractDomain(window.location.origin);
                   const fileTag = (label || domain)
                     .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, "_")
                     .replace(/_+/g, "_")
                     .replace(/^_|_$/g, "");
-                  a.download = `dns_worker-${fileTag}-${profileKey}.mobileconfig`;
+                  const appPrefix = (appName || "dns_worker")
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_]/g, "_")
+                    .replace(/_+/g, "_")
+                    .replace(/^_|_$/g, "");
+                  a.download = `${appPrefix || "dns_worker"}-${fileTag}-${profileKey}.mobileconfig`;
                   a.click();
                   URL.revokeObjectURL(url);
                 }}

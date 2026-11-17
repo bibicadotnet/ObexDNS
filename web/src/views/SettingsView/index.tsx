@@ -20,6 +20,7 @@ import {
   getProfileLists
 } from "../../services";
 import { executeWithTimeout } from "../../utils/async";
+import { useBranding } from "../../hooks/useBranding";
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRef, currentUser, onSavingChange }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -27,6 +28,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { t } = useTranslation();
+  const { appName } = useBranding();
 
   useEffect(() => {
     onSavingChange?.(saving);
@@ -255,7 +257,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `dns-worker-${profile.name || profileId}.json`;
+      const appPrefix = (appName || "dns-worker")
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      a.download = `${appPrefix || "dns-worker"}-${profile.name || profileId}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

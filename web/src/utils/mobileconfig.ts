@@ -12,6 +12,8 @@ export interface GenerateMobileConfigOptions {
   accessPointName?: string;
   /** The server origin URL (e.g. "https://dns.example.com"). */
   origin: string;
+  /** Custom application name for profile labels. */
+  appName?: string;
 }
 
 /**
