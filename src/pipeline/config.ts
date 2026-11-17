@@ -91,8 +91,8 @@ export const pipelineConfig = {
       const [profile, rules, profileLists] = await Promise.all([
         profileModel.getById(profileId),
         ruleModel.getRules(profileId),
-        listModel.getLists(profileId).catch(() => []),
-        systemListsManager.ensureLoaded(env.DB, false, env).catch(() => {})
+        listModel.getLists(profileId),
+        systemListsManager.ensureLoaded(env.DB, false, env)
       ]);
 
       if (!profile) {

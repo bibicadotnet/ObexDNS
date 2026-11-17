@@ -212,7 +212,17 @@ export async function syncSingleSystemList(
       ...getListFetchTuning(env),
       fastPath,
       fastPathYieldBatch: yieldBatchSize,
-      fastPathYieldSleep: yieldSleepMs
+      fastPathYieldSleep: yieldSleepMs,
+      onRetry: () => {
+        filterBuilder.clear();
+        adguardPayload.exceptions = [];
+        adguardPayload.rewrites = {};
+        adguardPayload.patterns = [];
+        count = 0;
+        domainsSinceYield = 0;
+        domainLimitHit = false;
+        regexLimitHit = false;
+      }
     }
   );
 

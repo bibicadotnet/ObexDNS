@@ -370,12 +370,21 @@ export async function handleProfileListsRequest(
       });
     }
 
-    const { url: listUrl } = body as { url: string };
+    const rawUrl = (body as { url?: string })?.url;
+    if (typeof rawUrl !== 'string') {
+      return new Response("Invalid list URL format", { status: 400 });
+    }
+    const listUrl = rawUrl.trim();
     if (!listUrl || (!listUrl.startsWith('http://') && !listUrl.startsWith('https://'))) {
       return new Response("Invalid list URL format", { status: 400 });
     }
     if (!isSafeUrl(listUrl)) {
       return new Response("Invalid list URL. Private networks and localhosts are not allowed.", { status: 400 });
+    }
+
+    const existingUrls = new Set(existingLists.map(l => l.url.trim().toLowerCase()));
+    if (existingUrls.has(listUrl.toLowerCase())) {
+      return new Response("List URL already exists in this profile", { status: 400 });
     }
 
     if (!systemListsManager.isSystemUrl(listUrl) && currentCustomCount >= MAX_CUSTOM_LISTS) {

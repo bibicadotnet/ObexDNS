@@ -103,9 +103,16 @@ class SystemListsManager {
     }
 
     if (this.loadPromise) {
-      return this.loadPromise;
+      if (!force) {
+        return this.loadPromise;
+      }
+      // If force is requested while a load is in-flight, wait for it to finish,
+      // then run a fresh forced reload.
+      await this.loadPromise.catch(() => {});
+      return this.ensureLoaded(db, true, env);
     }
 
+    const loadVersion = this.version;
     this.loadPromise = (async () => {
       try {
         const model = new SystemListModel(db);
@@ -201,9 +208,13 @@ class SystemListsManager {
 
         this.items = newItems;
         this.urlToId = newUrlToId;
-        this.lastLoadedTs = Date.now();
+        // Only mark cache as fresh if no invalidation happened during loading
+        if (this.version === loadVersion) {
+          this.lastLoadedTs = Date.now();
+        }
       } catch (err) {
         console.error("[SystemListsManager] Failed to load system lists:", err);
+        throw err;
       } finally {
         this.loadPromise = null;
       }

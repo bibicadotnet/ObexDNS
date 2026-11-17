@@ -311,12 +311,11 @@ export async function fetchFromUpstream(
 
         let snippet = "";
         try {
-          snippet = new TextDecoder()
-            .decode(h2Res.answer)
-            .replace(/<[^>]*>?/gm, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 300);
+          const rawText = new TextDecoder().decode(h2Res.answer);
+          // Do not leak HTML snippets from internal web services
+          if (!rawText.trim().startsWith("<") && !/<html|<body|<!doctype/i.test(rawText)) {
+            snippet = rawText.replace(/\s+/g, " ").trim().slice(0, 300);
+          }
         } catch {}
         throw new UpstreamHttpError(h2Res.status, "HTTP/2 Error", snippet);
       } catch (h2Err) {
@@ -344,9 +343,12 @@ export async function fetchFromUpstream(
     if (!response.ok) {
       let snippet = "";
       try {
+        const contentType = response.headers.get("content-type") || "";
         const rawBody = await response.text();
-        // Extract plain text snippet (strip HTML tags and extra whitespace), retain max 300 chars
-        snippet = rawBody.replace(/<[^>]*>?/gm, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+        // Extract plain text snippet for DNS/API errors, but do not leak HTML snippets from internal web services
+        if (!contentType.includes("html") && !rawBody.trim().startsWith("<") && !/<html|<body|<!doctype/i.test(rawBody)) {
+          snippet = rawBody.replace(/\s+/g, " ").trim().slice(0, 300);
+        }
       } catch {}
       const cfRay = response.headers.get("cf-ray") || undefined;
       throw new UpstreamHttpError(response.status, response.statusText, snippet, cfRay);

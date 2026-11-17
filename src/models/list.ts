@@ -10,12 +10,13 @@ export class ListModel {
   }
 
   async addList(profileId: string, url: string): Promise<{ success: boolean; id?: number }> {
-    const result = await this.db.prepare("INSERT INTO lists (profile_id, url) VALUES (?, ?)").bind(profileId, url).run();
+    const trimmedUrl = url.trim();
+    const result = await this.db.prepare("INSERT INTO lists (profile_id, url) VALUES (?, ?)").bind(profileId, trimmedUrl).run();
     const lastRowId = result.meta?.last_row_id;
     if (lastRowId && typeof lastRowId === 'number' && lastRowId > 0) {
       return { success: result.success, id: lastRowId };
     }
-    const inserted = await this.getListByUrl(url, profileId);
+    const inserted = await this.getListByUrl(trimmedUrl, profileId);
     return { success: result.success, id: inserted?.id };
   }
 
@@ -42,7 +43,7 @@ export class ListModel {
       const enabled = (typeof item === 'object' && item.enabled !== undefined)
         ? (item.enabled ? 1 : 0)
         : 1;
-      return this.db.prepare("INSERT INTO lists (profile_id, url, enabled) VALUES (?, ?, ?)").bind(profileId, url, enabled);
+      return this.db.prepare("INSERT OR IGNORE INTO lists (profile_id, url, enabled) VALUES (?, ?, ?)").bind(profileId, url, enabled);
     });
 
     let inserted = 0;

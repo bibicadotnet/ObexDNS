@@ -3,7 +3,7 @@ import { ProfileModel } from "../../models/profile";
 import { ListModel } from "../../models/list";
 import { LogModel } from "../../models/log";
 import { generateId } from "../../lib/auth";
-import { isSafeUrl } from "../../utils/validator";
+import { isSafeUrl, isSafeUrlWithDnsCheck } from "../../utils/validator";
 import { buildDNSQuery, parseDNSAnswer } from "../../utils/dns";
 import { resolveClientGeoCountry } from "../../utils/geoip";
 import { pipeline } from "../../pipeline";
@@ -218,9 +218,9 @@ export async function handleProfilesCoreRequest(
         if (!isHttps && !isHttp && !isTcp && !isTls && !isDot && !isUdp && !isSdns && !isBareHost) {
           return new Response("Invalid upstream URL format. Only HTTP(S), TCP, TLS (DoT), DNS Stamp (sdns://), or bare host[:port] are allowed.", { status: 400 });
         }
-        // 统一规范化后做安全检查（防 SSRF）
+        // 统一规范化后做安全检查（防 SSRF，包含 DNS 解析校验）
         const normalized = isBareHost ? `tcp://${url}` : url;
-        if (!isSafeUrl(normalized)) {
+        if (!(await isSafeUrlWithDnsCheck(normalized))) {
           return new Response("Invalid upstream URL. Private networks and localhosts are not allowed.", { status: 400 });
         }
       }

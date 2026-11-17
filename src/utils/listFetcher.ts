@@ -40,6 +40,8 @@ export interface FetchListOptions {
   fastPathYieldBatch?: number;
   /** Yield sleep in ms for fast-path lines (default 10). */
   fastPathYieldSleep?: number;
+  /** Optional callback invoked before each retry attempt to reset any accumulated caller state. */
+  onRetry?: () => void;
 }
 
 /**
@@ -152,8 +154,13 @@ export async function fetchListContent(
   let lastError: string | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // 若为重试轮次，先等待指数退避时间（需确保剩余总超时预算充足）
+    // 若为重试轮次，先重置调用方累积状态并等待指数退避时间（需确保剩余总超时预算充足）
     if (attempt > 0) {
+      if (options?.onRetry) {
+        try {
+          options.onRetry();
+        } catch {}
+      }
       const backoffMs = baseRetryDelayMs * Math.pow(2, attempt - 1);
       const remainingBeforeBackoff = deadline - Date.now();
       if (remainingBeforeBackoff <= backoffMs + 1000) {
@@ -368,8 +375,8 @@ export async function fetchListContent(
         }
       }
 
-      // 处理流完结后残留的尾行数据
-      if (buffer) {
+      // 处理流完结后残留的尾行数据（若已截断，尾部 buffer 是未结束的残片，不应作为完整规则处理）
+      if (buffer && !truncated) {
         let line = buffer;
         if (line.charCodeAt(line.length - 1) === 13) {
           line = line.slice(0, -1);

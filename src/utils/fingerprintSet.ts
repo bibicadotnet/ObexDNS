@@ -506,6 +506,15 @@ export class FingerprintSetBuilder {
     return this.totalCount;
   }
 
+  clear(): void {
+    this.blocks = [];
+    this.currentBlock = null;
+    this.currentBlock32 = null;
+    this.currentCapacity = 0;
+    this.currentOffset = 0;
+    this.totalCount = 0;
+  }
+
   /**
    * Assembles, sorts and deduplicates elements into a single FingerprintSet.
    */

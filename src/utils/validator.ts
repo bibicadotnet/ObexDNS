@@ -133,6 +133,7 @@ export const PRIVATE_AND_RESERVED_CIDRS: readonly string[] = [
   // IPv6 Special/Private Ranges
   "::/128",            // Unspecified (RFC 4291)
   "::1/128",           // Loopback (RFC 4291)
+  "::/96",             // IPv4-Compatible IPv6 (RFC 4291, RFC 6890 deprecated)
   "64:ff9b::/96",      // IPv4-IPv6 Translation (RFC 6052)
   "100::/64",          // Discard Prefix (RFC 6666)
   "2001:db8::/32",     // Documentation (RFC 3849)
@@ -174,10 +175,18 @@ export function isPublicInternetIP(ip: string): boolean {
 
   // Check IPv4-mapped IPv6 in hex format (e.g. ::ffff:7f00:1 canonicalized from ::ffff:127.0.0.1)
   const ipv6Val = ipv6ToBigInt(cleanIp);
-  if (ipv6Val !== null && (ipv6Val >> 32n) === 0xffffn) {
-    const ipv4Num = Number(ipv6Val & 0xffffffffn);
-    const ipv4Str = `${(ipv4Num >>> 24) & 0xff}.${(ipv4Num >>> 16) & 0xff}.${(ipv4Num >>> 8) & 0xff}.${ipv4Num & 0xff}`;
-    return !isPrivateOrReservedIp(ipv4Str);
+  if (ipv6Val !== null) {
+    if ((ipv6Val >> 32n) === 0xffffn) {
+      const ipv4Num = Number(ipv6Val & 0xffffffffn);
+      const ipv4Str = `${(ipv4Num >>> 24) & 0xff}.${(ipv4Num >>> 16) & 0xff}.${(ipv4Num >>> 8) & 0xff}.${ipv4Num & 0xff}`;
+      return !isPrivateOrReservedIp(ipv4Str);
+    }
+    // Check IPv4-compatible IPv6 (::/96, e.g. ::7f00:1)
+    if ((ipv6Val >> 32n) === 0n && ipv6Val > 1n) {
+      const ipv4Num = Number(ipv6Val & 0xffffffffn);
+      const ipv4Str = `${(ipv4Num >>> 24) & 0xff}.${(ipv4Num >>> 16) & 0xff}.${(ipv4Num >>> 8) & 0xff}.${ipv4Num & 0xff}`;
+      return !isPrivateOrReservedIp(ipv4Str);
+    }
   }
 
   return !isPrivateOrReservedIp(cleanIp);
@@ -210,9 +219,9 @@ export function isSafeUrl(urlString: string): boolean {
     }
 
     const url = new URL(parseableUrl);
-    const rawHostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const rawHostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.+$/, '');
 
-    if (FORBIDDEN_HOSTNAMES.includes(rawHostname) || FORBIDDEN_HOSTNAMES.includes(url.hostname.toLowerCase())) {
+    if (FORBIDDEN_HOSTNAMES.includes(rawHostname) || FORBIDDEN_HOSTNAMES.includes(url.hostname.toLowerCase().replace(/\.+$/, ''))) {
       return false;
     }
 
@@ -289,7 +298,7 @@ export async function isSafeUrlWithDnsCheck(urlString: string): Promise<boolean>
       }
 
       const url = new URL(parseableUrl);
-      const rawHostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+      const rawHostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.+$/, '');
 
       // If already an IP address, isSafeUrl already ensured it is a public IP
       if (isIPv4(rawHostname) || isIPv6(rawHostname)) {
