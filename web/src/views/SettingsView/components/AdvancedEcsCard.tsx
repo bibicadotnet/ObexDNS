@@ -36,19 +36,14 @@ export const AdvancedEcsCard: React.FC<AdvancedEcsCardProps> = ({ settings, setS
   const fieldsEnabled = ecs.enabled && customMode;
 
   const handleCustomToggle = (checked: boolean) => {
-    setErrors({ v4: false, v6: false, none: false });
-    // Drop any unsaved / invalid draft (e.g. "2121"): the fields must always reflect what is stored.
-    setV4(ecs.ipv4_cidr || "");
-    setV6(ecs.ipv6_cidr || "");
     setCustomMode(checked);
     if (!checked) {
+      setErrors({ v4: false, v6: false, none: false });
       setSettings({ ...settings, ecs: { ...ecs, use_client_ip: true } });
       return;
     }
-    // Turning it on only saves when a previously stored subnet can be reused.
-    if (ecs.ipv4_cidr || ecs.ipv6_cidr) {
-      setSettings({ ...settings, ecs: { ...ecs, use_client_ip: false } });
-    }
+    // ON: validate the values currently in the fields. Valid -> saved and used; invalid -> error, nothing saved.
+    commitFields(v4, v6);
   };
 
   const commitFields = (raw4: string, raw6: string, reportEmpty = true) => {
@@ -160,14 +155,6 @@ export const AdvancedEcsCard: React.FC<AdvancedEcsCardProps> = ({ settings, setS
           {errors.none && (
             <p className="text-xs text-red-500">
               {t("settings.ecsSubnetRequired", "Enter an IPv4 and/or IPv6 subnet to use a custom subnet.")}
-            </p>
-          )}
-          {fieldsEnabled && ecs.use_client_ip && (
-            <p className="text-xs text-orange-500">
-              {t(
-                "settings.ecsCustomPending",
-                "Custom subnet is not active yet: your client IP is still used until a valid subnet is saved."
-              )}
             </p>
           )}
           {fieldsEnabled && (
