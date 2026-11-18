@@ -118,7 +118,7 @@ export async function handleAuthRegisterRequest(request: Request, env: Env, ctx?
         log_retention_days: defaultRetentionDays,
         skip_log_on_pass: false,
         default_policy: "ALLOW",
-        best_effort_ech: { enabled: false, fronting_domain: "cloudflare-ech.com" }
+        best_effort_ech: { enabled: false }
       }
     });
 

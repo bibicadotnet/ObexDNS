@@ -10,6 +10,8 @@ import { pipeline } from "../../pipeline";
 import { PROFILE_NAME_REGEX } from "../../utils/validator";
 import { getDefaultUpstreamUrl, getDefaultProfileFilterUrls } from "../../constants/presets";
 import { syncAllListsForProfile } from "../../utils/sync";
+import { validateEcsSettings } from "../../utils/ecsSubnet";
+import { probeUpstream } from "../../pipeline/resolver/probe";
 
 /**
  * Handle requests to /api/profiles (without specific profile ID)
@@ -66,7 +68,7 @@ export async function handleProfilesCoreCollectionRequest(
       log_retention_days: defaultRetentionDays,
       skip_log_on_pass: false,
       default_policy: 'ALLOW',
-      best_effort_ech: { enabled: false, fronting_domain: "cloudflare-ech.com" }
+      best_effort_ech: { enabled: false }
     };
     await profileModel.create({ id: newId, owner_id: user.id, name: body.name || "Unnamed Profile", settings: defaultSettings });
 
@@ -201,6 +203,28 @@ export async function handleProfilesCoreRequest(
       newSettings.log_retention_days = Math.min(Number(newSettings.log_retention_days), userMaxRetention);
     }
     
+    // Load the stored settings first: upstream is only re-probed when it actually changed.
+    const oldProfile = await profileModel.getById(profileId);
+    let oldSettingsParsed: Partial<ProfileSettings> = {};
+    try {
+      oldSettingsParsed = JSON.parse(oldProfile?.settings || "{}");
+    } catch {}
+
+    if (newSettings.upstream !== undefined) {
+      if (!Array.isArray(newSettings.upstream) || newSettings.upstream.length === 0) {
+        return new Response("Upstream is required.", { status: 400 });
+      }
+      const cleaned: string[] = [];
+      for (const entry of newSettings.upstream) {
+        const trimmed = typeof entry === 'string' ? entry.trim() : '';
+        if (!trimmed || trimmed.length > 2048) {
+          return new Response("Upstream cannot be empty.", { status: 400 });
+        }
+        cleaned.push(trimmed);
+      }
+      newSettings.upstream = cleaned;
+    }
+
     if (newSettings.upstream && Array.isArray(newSettings.upstream)) {
       for (const url of newSettings.upstream) {
         // 允许三种格式：https://...、http://...、tcp://...、裸 IP（8.8.8.8）或 IP:port（8.8.8.8:5353）
@@ -226,15 +250,42 @@ export async function handleProfilesCoreRequest(
       }
     }
 
-    // 检查旧配置中的 log_retention_days
-    const oldProfile = await profileModel.getById(profileId);
-    let oldDays = 30;
-    try {
-      const oldSettings = JSON.parse(oldProfile?.settings || "{}");
-      if (oldSettings?.log_retention_days != null) {
-        oldDays = Number(oldSettings.log_retention_days);
+    // Verify that a *changed* upstream really resolves before saving it. Saving an upstream that
+    // only looks valid (e.g. a DoH host without "/dns-query" -> HTTP 403) would break every query
+    // of the profile immediately. Unchanged upstreams are not re-probed so unrelated settings
+    // (log retention, policy ...) can still be saved while the upstream is temporarily down.
+    if (newSettings.upstream && newSettings.upstream.length > 0) {
+      const previousUpstream = Array.isArray(oldSettingsParsed.upstream) ? oldSettingsParsed.upstream[0] : undefined;
+      const nextUpstream = newSettings.upstream[0];
+      if (nextUpstream !== previousUpstream) {
+        const probe = await probeUpstream(nextUpstream);
+        if (!probe.ok) {
+          return new Response(`Upstream verification failed: ${probe.error}`, { status: 400 });
+        }
       }
-    } catch {}
+    }
+
+    // EDNS Client Subnet: reject malformed / empty custom subnets, append default prefix to bare IPs.
+    if (newSettings.ecs !== undefined) {
+      const ecsResult = validateEcsSettings(newSettings.ecs as any);
+      if (!ecsResult.ok) {
+        return new Response(ecsResult.error, { status: 400 });
+      }
+      newSettings.ecs = ecsResult.value;
+    }
+
+    // Best-effort ECH: the outer SNI (fronting domain) is server-managed. Only the on/off flag is user-controlled.
+    if (newSettings.best_effort_ech !== undefined) {
+      const rawEch: unknown = newSettings.best_effort_ech;
+      const echEnabled = typeof rawEch === 'boolean' ? rawEch : Boolean((rawEch as { enabled?: unknown } | null)?.enabled);
+      newSettings.best_effort_ech = { enabled: echEnabled };
+    }
+
+    // 检查旧配置中的 log_retention_days
+    let oldDays = 30;
+    if (oldSettingsParsed?.log_retention_days != null) {
+      oldDays = Number(oldSettingsParsed.log_retention_days);
+    }
 
     await profileModel.updateSettings(profileId, newSettings);
 

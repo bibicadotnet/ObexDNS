@@ -22,6 +22,8 @@ export interface FetchListResult {
   title?: string | null;
   /** List description taken from a `! Description:` / `# Description:` header comment, if present */
   description?: string | null;
+  /** Response Content-Type header (lower-cased), if any */
+  contentType?: string | null;
 }
 
 /** 列表拉取的协商缓存选项 */
@@ -42,6 +44,8 @@ export interface FetchListOptions {
   fastPathYieldSleep?: number;
   /** Optional callback invoked before each retry attempt to reset any accumulated caller state. */
   onRetry?: () => void;
+  /** Checked after each downloaded chunk; when it returns true the download is cancelled early (used for validation probes). */
+  shouldStop?: () => boolean;
 }
 
 /**
@@ -304,6 +308,7 @@ export async function fetchListContent(
       let count = 0;
       let totalBytes = 0;
       let truncated = false;
+      let stoppedEarly = false;
       let title: string | null = null;
       let description: string | null = null;
       let titleLinesLeft = TITLE_SCAN_LINES;
@@ -372,11 +377,17 @@ export async function fetchListContent(
 
           // 仅在当前 chunk 扫描完毕后，对 buffer 进行一次性截取，保留未完结的行碎片
           buffer = lineStart > 0 ? buffer.slice(lineStart) : buffer;
+
+          if (options?.shouldStop?.()) {
+            await reader.cancel();
+            stoppedEarly = true;
+            break;
+          }
         }
       }
 
       // 处理流完结后残留的尾行数据（若已截断，尾部 buffer 是未结束的残片，不应作为完整规则处理）
-      if (buffer && !truncated) {
+      if (buffer && !truncated && !stoppedEarly) {
         let line = buffer;
         if (line.charCodeAt(line.length - 1) === 13) {
           line = line.slice(0, -1);
@@ -414,6 +425,7 @@ export async function fetchListContent(
         lastModified: respLastModified,
         title,
         description,
+        contentType: (response.headers.get("content-type") || "").toLowerCase() || null,
       };
     } catch (e: any) {
       lastError = e.message || String(e);
@@ -428,4 +440,90 @@ export async function fetchListContent(
   }
 
   return { count: 0, error: lastError || "Failed to fetch list after retries", truncated: false };
+}
+
+
+/** Result of {@link probeListUrl}. */
+export type ListProbeResult =
+  | { ok: true; rules: number; title?: string | null }
+  | { ok: false; error: string };
+
+/** How many rule-like lines are sampled before a verdict is made. */
+const PROBE_SAMPLE_RULES = 200;
+
+/**
+ * A domain-like token that could plausibly be a DNS filter entry.
+ * The AdGuard parser is deliberately permissive (any whitespace-free line becomes a "domain"),
+ * so an HTML/JSON/text page would otherwise look like a list full of rules.
+ */
+function isPlausibleFilterDomain(domain: string | undefined): boolean {
+  if (!domain || domain.length > 253) return false;
+  if (!/^[\p{L}\p{N}*_.-]+$/u.test(domain)) return false;
+  return domain.includes(".") || domain.includes("*");
+}
+
+/**
+ * Downloads only the beginning of a list URL and checks that it really is a DNS filter list
+ * (hosts file, AdGuard/ABP style domain rules, domain list ...) before it is stored.
+ *
+ * Rejects: unreachable / non-2xx URLs, HTML pages, and documents with no usable rule.
+ *
+ * @param url - HTTP(S) list URL (SSRF-checked again inside fetchListContent, including redirects).
+ * @param maxBytes - Per-list size limit (same value used by the real sync).
+ * @param timeoutMs - Overall timeout for the probe.
+ */
+export async function probeListUrl(url: string, maxBytes: number, timeoutMs: number): Promise<ListProbeResult> {
+  let valid = 0;
+  let junk = 0;
+  let htmlLike = false;
+  let firstLineSeen = false;
+
+  const onRule = (rule: ParsedAdGuardRule): void => {
+    switch (rule.kind) {
+      case AdGuardRuleKind.COMPLEX_PATTERN:
+        valid++;
+        break;
+      case AdGuardRuleKind.BLOOM_DOMAIN:
+      case AdGuardRuleKind.EXCEPTION:
+      case AdGuardRuleKind.DNS_REWRITE:
+        if (isPlausibleFilterDomain(rule.domain)) valid++;
+        else junk++;
+        break;
+      default:
+        break;
+    }
+  };
+
+  const res = await fetchListContent(url, maxBytes, timeoutMs, onRule, {
+    maxRetries: 1,
+    // Used purely to peek at the first non-empty line; always defers to the real parser.
+    fastPath: (line: string) => {
+      if (!firstLineSeen) {
+        const t = line.trim();
+        if (t) {
+          firstLineSeen = true;
+          if (t.startsWith("<") || t.startsWith("{") || t.startsWith("[{")) htmlLike = true;
+        }
+      }
+      return false;
+    },
+    shouldStop: () => htmlLike || valid + junk >= PROBE_SAMPLE_RULES,
+  });
+
+  if (res.error) {
+    return { ok: false, error: res.error };
+  }
+  if (res.notModified) {
+    return { ok: true, rules: 0 };
+  }
+  if (htmlLike || (res.contentType && res.contentType.includes("text/html"))) {
+    return { ok: false, error: "The URL returned a web page / structured document, not a filter list." };
+  }
+  if (valid === 0) {
+    return { ok: false, error: "No valid filter rules were found at this URL." };
+  }
+  if (junk > valid) {
+    return { ok: false, error: "The content at this URL does not look like a DNS filter list." };
+  }
+  return { ok: true, rules: valid, title: res.title ?? null };
 }

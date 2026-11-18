@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Card, Elevation, H5, FormGroup, InputGroup, Button, PopoverNext, Menu, MenuItem } from "@blueprintjs/core";
 import { Server } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -14,13 +14,31 @@ export const UpstreamCard: React.FC<UpstreamCardProps> = ({ settings, setSetting
   const { t } = useTranslation();
   const PRESET_UPSTREAMS = usePresetUpstreams();
 
+  // Typing must not save anything: the value is only committed (and verified by the server)
+  // on Enter / blur / preset pick. The draft re-syncs when the saved value changes (incl. rollback on failure).
+  const committed = settings.upstream?.[0] || "";
+  const [draft, setDraft] = useState(committed);
+  useEffect(() => {
+    setDraft(committed);
+  }, [committed]);
+
+  const commit = (raw: string) => {
+    const value = raw.trim();
+    if (!value || value === committed) {
+      setDraft(committed);
+      return;
+    }
+    setDraft(value);
+    setSettings({ ...settings, upstream: [value] });
+  };
+
   const upstreamMenu = (
     <Menu className="min-w-96">
       {PRESET_UPSTREAMS.map((preset, i) => (
         <MenuItem
           key={i}
           text={preset.label}
-          onClick={() => setSettings({ ...settings, upstream: [preset.url] })}
+          onClick={() => commit(preset.url)}
           labelElement={
             <div className="flex flex-col items-end text-right">
               <span className="text-[9px] opacity-85 max-w-64 truncate" title={preset.url}>
@@ -42,8 +60,17 @@ export const UpstreamCard: React.FC<UpstreamCardProps> = ({ settings, setSetting
         <InputGroup
           fill
           placeholder="https://... | tls://... | sdns://... | 1.1.1.1"
-          value={settings.upstream?.[0] || ""}
-          onChange={(e) => setSettings({ ...settings, upstream: [e.target.value] })}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => commit(draft)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit(draft);
+            } else if (e.key === "Escape") {
+              setDraft(committed);
+            }
+          }}
           onFocus={(e) => e.target.select()}
           rightElement={
             <PopoverNext content={upstreamMenu} placement="bottom-end" animation="minimal" arrow={false}>
@@ -53,6 +80,11 @@ export const UpstreamCard: React.FC<UpstreamCardProps> = ({ settings, setSetting
         />
       </FormGroup>
       <p className="text-xs opacity-60">{t("settings.upstreamDesc")}</p>
+      <p className="text-xs opacity-60 mt-1">
+        {draft.trim() !== committed
+          ? t("settings.upstreamPendingHint", "Press Enter or click outside to verify and save. The upstream must answer a test query.")
+          : t("settings.upstreamVerifiedHint", "A changed upstream is verified with a real DNS query before it is saved.")}
+      </p>
     </Card>
   );
 };

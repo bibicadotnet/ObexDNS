@@ -159,10 +159,10 @@ export async function processBestEffortEch(
     }
 
     if (isCf) {
+      // The outer SNI is part of the ECHConfig and must match what Cloudflare accepts, so it is
+      // server-managed only. Any legacy per-profile `fronting_domain` value is intentionally ignored.
       const frontingDomain =
-        context.env.SERVERFULL_ECH_FRONTING_DOMAIN ||
-        (typeof settings.best_effort_ech === "object" && settings.best_effort_ech?.fronting_domain) ||
-        DEFAULT_ECH_FRONTING_DOMAIN;
+        context.env.SERVERFULL_ECH_FRONTING_DOMAIN?.trim() || DEFAULT_ECH_FRONTING_DOMAIN;
 
       const echConfigBase64 = buildCloudflareEchConfig(frontingDomain, existingEch);
       const targetType =

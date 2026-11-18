@@ -10,6 +10,7 @@ import {
   syncAllSystemLists
 } from "../../utils/sync";
 import { isSafeUrl } from "../../utils/validator";
+import { probeListUrl } from "../../utils/listFetcher";
 import { pipeline } from "../../pipeline";
 import { ListFilterModel } from "../../models/listFilter";
 import { FingerprintSet } from "../../utils/fingerprintSet";
@@ -18,6 +19,40 @@ import { AdGuardProfileEngine } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
 import { customListsManager } from "../../lib/filtering/customListsManager";
 import { getDefaultProfileFilterUrls } from "../../constants/presets";
+
+
+/** Max parallel list probes during bulk additions. */
+const LIST_PROBE_CONCURRENCY = 4;
+
+/**
+ * Verifies that each URL really serves a DNS filter list before it is stored.
+ * Returns the accepted URLs and a map of rejected URL -> reason.
+ */
+async function probeListUrls(
+  urls: string[],
+  env: Env
+): Promise<{ accepted: Set<string>; rejected: { url: string; error: string }[] }> {
+  const maxListBytes = Number(env.MAX_LIST_BYTES) || 25 * 1024 * 1024;
+  const timeoutMs = Math.min(Number(env.SYNC_TIMEOUT_MS) || 30000, 15000);
+  const accepted = new Set<string>();
+  const rejected: { url: string; error: string }[] = [];
+
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < urls.length) {
+      const url = urls[cursor++];
+      try {
+        const res = await probeListUrl(url, maxListBytes, timeoutMs);
+        if (res.ok) accepted.add(url);
+        else rejected.push({ url, error: res.error });
+      } catch (e: any) {
+        rejected.push({ url, error: e?.message || String(e) });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(LIST_PROBE_CONCURRENCY, urls.length) }, worker));
+  return { accepted, rejected };
+}
 
 /**
  * Handle filter lists requests to /api/profiles/:id/lists
@@ -357,14 +392,27 @@ export async function handleProfileListsRequest(
         return new Response(`Exceeded maximum limit of ${MAX_CUSTOM_LISTS} custom filter lists per profile.`, { status: 400 });
       }
 
+      // Only store URLs that really serve a filter list. Known system lists are admin-curated and skipped.
+      let rejected: { url: string; error: string }[] = [];
+      let finalItems = itemsToInsert;
+      if (nonSystemToInsert.length > 0) {
+        const probe = await probeListUrls(nonSystemToInsert.map((i) => i.url), env);
+        rejected = probe.rejected;
+        finalItems = itemsToInsert.filter((i) => systemListsManager.isSystemUrl(i.url) || probe.accepted.has(i.url));
+        if (finalItems.length === 0) {
+          const detail = rejected.map((r) => `${r.url}: ${r.error}`).join("; ");
+          return new Response(`No valid filter lists. ${detail}`, { status: 400 });
+        }
+      }
+
       let insertedCount = 0;
-      if (itemsToInsert.length > 0) {
-        insertedCount = await listModel.addListsBulk(profileId, itemsToInsert);
+      if (finalItems.length > 0) {
+        insertedCount = await listModel.addListsBulk(profileId, finalItems);
         ctx.waitUntil(syncNextListForProfile(profileId, env, ctx));
         ctx.waitUntil(pipeline.clearCache(profileId, true, env));
       }
 
-      return new Response(JSON.stringify({ success: true, count: insertedCount }), {
+      return new Response(JSON.stringify({ success: true, count: insertedCount, rejected }), {
         status: 201,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -389,6 +437,14 @@ export async function handleProfileListsRequest(
 
     if (!systemListsManager.isSystemUrl(listUrl) && currentCustomCount >= MAX_CUSTOM_LISTS) {
       return new Response(`Exceeded maximum limit of ${MAX_CUSTOM_LISTS} custom filter lists per profile.`, { status: 400 });
+    }
+
+    // Verify the URL really serves a DNS filter list *before* it is stored (system lists are admin-curated).
+    if (!systemListsManager.isSystemUrl(listUrl)) {
+      const probe = await probeListUrls([listUrl], env);
+      if (probe.rejected.length > 0) {
+        return new Response(`Cannot add list: ${probe.rejected[0].error}`, { status: 400 });
+      }
     }
 
     const insertResult = await listModel.addList(profileId, listUrl);

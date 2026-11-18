@@ -18,6 +18,7 @@ export * from "./ecs";
 export * from "./ech";
 export * from "./block";
 export * from "./observability";
+export * from "./probe";
 
 /**
  * High-level DNS resolution coordinator for the DNS Worker pipeline.

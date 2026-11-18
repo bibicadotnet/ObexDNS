@@ -143,7 +143,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
     const currentSeq = ++saveSeqRef.current;
     setSaving(true);
     try {
-      await executeWithTimeout(updateProfileSettings(profileId, settingsToSave as any), 10000);
+      // Upstream changes are verified with a real DNS query on the server, which can take several seconds.
+      await executeWithTimeout(updateProfileSettings(profileId, settingsToSave as any), 20000);
       if (currentSeq === saveSeqRef.current) {
         lastConfirmedSettingsRef.current = cloneSettings(settingsToSave);
         toasterRef?.current?.show({
@@ -164,11 +165,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
         if (lastConfirmedSettingsRef.current) {
           setSettings(cloneSettings(lastConfirmedSettingsRef.current));
         }
-        // 3. Toast 提示保存失败
+        // 3. Toast: show the server's validation message (e.g. "Upstream verification failed: ...")
+        //    when there is one, otherwise the generic failure text.
+        const serverMsg = e instanceof Error ? e.message.trim() : "";
+        const detail = serverMsg && serverMsg.length <= 400 && !serverMsg.startsWith("<") ? serverMsg : "";
         toasterRef?.current?.show({
-          message: t("common.saveFailed", "保存失败"),
+          message: detail
+            ? `${t("common.saveFailed", "保存失败")}: ${detail}`
+            : t("common.saveFailed", "保存失败"),
           intent: Intent.DANGER,
           icon: "error",
+          timeout: detail ? 8000 : undefined,
         });
       }
     } finally {

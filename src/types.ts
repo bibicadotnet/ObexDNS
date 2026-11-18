@@ -145,6 +145,7 @@ export interface ProfileSettings {
   custom_block_ipv6?: string;
   best_effort_ech?: {
     enabled: boolean;
+    /** @deprecated Ignored: the outer SNI is server-managed (SERVERFULL_ECH_FRONTING_DOMAIN). Kept for stored legacy settings. */
     fronting_domain?: string;
   };
 }
