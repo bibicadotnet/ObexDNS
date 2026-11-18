@@ -15,7 +15,7 @@ permissions:
 
 env:
   RELEASE_TAG: windows-tools-setup
-  ZIP_NAME: windows-tools-setup-latest.zip
+  ZIP_NAME: windows-tools-setup.zip
   NSSM_VERSION: "2.24"
   ZAPRET_REPO: bol-van/zapret-win-bundle
   ZAPRET_DIR: zapret-winws
