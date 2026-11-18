@@ -78,7 +78,8 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
     {
       key: "action",
       header: t("rules.tableAction"),
-      headerClassName: "w-32",
+      headerClassName: "w-28 whitespace-nowrap",
+      cellClassName: "whitespace-nowrap align-middle",
       render: (rule: Rule): React.ReactNode => (
         <>
           {rule.type === "BLOCK" && (
@@ -102,37 +103,40 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
     {
       key: "pattern",
       header: t("rules.tablePattern"),
-      headerClassName: "w-1/4",
-      cellClassName: "font-mono font-bold",
+      headerClassName: "min-w-[180px] max-w-sm md:max-w-md",
+      cellClassName: "font-mono font-bold break-all align-middle text-xs sm:text-sm",
       render: (rule: Rule): React.ReactNode => (
-        <span>{rule.pattern}</span>
+        <span className="break-all" title={rule.pattern}>
+          {rule.pattern}
+        </span>
       ),
     },
     {
       key: "details",
       header: t("rules.tableDetails"),
-      cellClassName: "py-2",
+      headerClassName: "min-w-[140px]",
+      cellClassName: "py-2 align-middle break-all",
       render: (rule: Rule): React.ReactNode => (
         <>
           {rule.type === "REDIRECT" ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {rule.v_a && (
-                <Tag minimal className="font-mono text-[10px]">
+                <Tag minimal className="font-mono text-[10px] break-all">
                   A: {rule.v_a}
                 </Tag>
               )}
               {rule.v_aaaa && (
-                <Tag minimal className="font-mono text-[10px]">
+                <Tag minimal className="font-mono text-[10px] break-all">
                   AAAA: {rule.v_aaaa}
                 </Tag>
               )}
               {rule.v_cname && (
-                <Tag minimal className="font-mono text-[10px]">
+                <Tag minimal className="font-mono text-[10px] break-all">
                   CNAME: {rule.v_cname}
                 </Tag>
               )}
               {rule.v_txt && (
-                <Tag minimal className="font-mono text-[10px]">
+                <Tag minimal className="font-mono text-[10px] break-all">
                   TXT: {rule.v_txt}
                 </Tag>
               )}
@@ -153,8 +157,8 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
     {
       key: "created_at",
       header: t("rules.tableCreatedAt", "添加时间"),
-      headerClassName: "w-44",
-      cellClassName: "text-xs text-gray-500 align-middle",
+      headerClassName: "w-36 sm:w-44 whitespace-nowrap text-right",
+      cellClassName: "text-xs text-gray-500 align-middle whitespace-nowrap text-right",
       render: (rule: Rule): React.ReactNode => (
         rule.created_at ? formatDateTime(new Date(rule.created_at * 1000)) : "—"
       ),
@@ -163,7 +167,7 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
 
   return (
     <div className="w-full max-w-full overflow-x-auto pb-4">
-      <HTMLTable interactive striped className="w-full min-w-max whitespace-nowrap">
+      <HTMLTable interactive striped className="w-full">
         <thead>
           <tr>
             {columns.map((col) => (
@@ -176,7 +180,12 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
                 )}
                 title={t("rules.clickToSort", "点击排序")}
               >
-                <div className="flex items-center gap-1.5">
+                <div
+                  className={clsx(
+                    "flex items-center gap-1.5",
+                    col.key === "created_at" && "justify-end"
+                  )}
+                >
                   <span>{col.header}</span>
                   {sortField === col.key ? (
                     sortOrder === "asc" ? (
