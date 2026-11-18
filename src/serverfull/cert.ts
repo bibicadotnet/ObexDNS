@@ -5,6 +5,7 @@
 
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import tls from 'node:tls';
 import { DiagnosticConfig } from './format';
 
 export interface TlsCertificateInfo {
@@ -203,4 +204,74 @@ export function getCertbotDiagnosticOptions(
       'Then update SERVERFULL_TLS_CERT_PATH and SERVERFULL_TLS_KEY_PATH to resume DoT service.'
     ]
   };
+}
+
+/** Minimal server shape shared by tls.Server and http2.Http2SecureServer. */
+export interface CertReloadableServer {
+  prependListener?(event: 'connection', listener: () => void): unknown;
+  on?(event: 'connection', listener: () => void): unknown;
+  setSecureContext(options: tls.SecureContextOptions): void;
+}
+
+/**
+ * Makes a TLS server pick up renewed certificates (e.g. after Certbot) without a restart.
+ *
+ * There are no watchers or timers: when a new TCP connection arrives, and at most once per
+ * `minIntervalMs`, the cert/key files are stat()ed. Only if they changed are they re-read and
+ * applied with `server.setSecureContext()`, which affects every subsequent handshake
+ * (existing connections keep the old certificate until they close). An idle server costs nothing.
+ *
+ * A failed reload (files missing or mid-write, cert/key mismatch) is logged and the previous
+ * certificate keeps being served; it is retried automatically as soon as the files change again.
+ */
+export function enableCertAutoReload(
+  server: CertReloadableServer,
+  certPath: string,
+  keyPath: string,
+  label: string,
+  minIntervalMs = 60_000
+): void {
+  const signature = (): string => {
+    const c = fs.statSync(certPath); // statSync follows Certbot's live/ -> archive/ symlinks
+    const k = fs.statSync(keyPath);
+    return `${c.ino}:${c.size}:${c.mtimeMs}|${k.ino}:${k.size}:${k.mtimeMs}`;
+  };
+
+  let lastSignature = '';
+  try { lastSignature = signature(); } catch { /* files checked again on first interval */ }
+  let lastCheck = Date.now();
+
+  const onConnection = () => {
+    const now = Date.now();
+    if (now - lastCheck < minIntervalMs) return;
+    lastCheck = now;
+
+    let current: string;
+    try {
+      current = signature();
+    } catch {
+      return; // transient (e.g. mid-renewal): keep serving the current certificate
+    }
+    if (current === lastSignature) return;
+    lastSignature = current;
+
+    try {
+      const cert = fs.readFileSync(certPath);
+      const key = fs.readFileSync(keyPath);
+      tls.createSecureContext({ cert, key }); // throws if the pair is invalid or mismatched
+      server.setSecureContext({ cert, key });
+      console.log(`[${label}] TLS certificate reloaded from disk.`);
+    } catch (err: any) {
+      console.error(`[${label}] TLS certificate changed but reload failed, keeping the previous one:`, err?.message || err);
+    }
+  };
+
+  // Never let a runtime quirk stop the server from starting: worst case, reload simply stays off.
+  try {
+    // Prepend where possible so the very connection that triggers a reload already gets the new cert.
+    if (typeof server.prependListener === 'function') server.prependListener('connection', onConnection);
+    else server.on?.('connection', onConnection);
+  } catch (err: any) {
+    console.warn(`[${label}] TLS certificate auto-reload unavailable:`, err?.message || err);
+  }
 }

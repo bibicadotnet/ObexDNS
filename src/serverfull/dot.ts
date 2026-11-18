@@ -15,7 +15,7 @@ import { resolveUpstreamEndpoint, fetchFromUpstream } from '../pipeline/resolver
 import { DEFAULT_FAIL_OPEN_UPSTREAM } from '../constants/presets';
 import { ACCESS_KEY_REGEX } from '../utils/validator';
 import { formatDiagnostic, formatPortError } from './format';
-import { inspectTlsCertificate, getCertbotCommand } from './cert';
+import { inspectTlsCertificate, getCertbotCommand, enableCertAutoReload } from './cert';
 
 export interface DotServerOptions {
   port: number;
@@ -98,6 +98,7 @@ export class DotDnsServer {
         this.server = tls.createServer(tlsOptions, (socket: tls.TLSSocket) => {
           this.handleConnection(socket);
         });
+        enableCertAutoReload(this.server, tlsCertPath, tlsKeyPath, 'DoT');
 
         const startupErrorHandler = (err: any) => {
           this.server = null;

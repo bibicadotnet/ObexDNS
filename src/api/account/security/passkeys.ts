@@ -178,7 +178,7 @@ export async function handlePasskeysRequest(
         sessionHash
       );
       console.warn("[Passkey Test] Verification failed:", err.message || err);
-      return new Response(err.message || "Passkey verification failed", { status: 400 });
+      return new Response("Passkey verification failed", { status: 400 });
     }
   }
 
@@ -327,7 +327,7 @@ export async function handlePasskeysRequest(
       );
     } catch (err: any) {
       console.warn("[Passkey Registration] Verification failed:", err.message || err);
-      return new Response(err.message || "Passkey registration failed", { status: 400 });
+      return new Response("Passkey registration failed", { status: 400 });
     }
   }
 

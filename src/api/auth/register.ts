@@ -21,6 +21,7 @@ import { verifyTurnstile } from "./utils";
 import { getAuthLimits, PENALTY_LIMIT } from "./authLimits";
 import { getDefaultUpstreamUrl, getDefaultProfileFilterUrls } from "../../constants/presets";
 import { syncAllListsForProfile } from "../../utils/sync";
+import { toPublicErrorCode } from "../../utils/publicError";
 
 /**
  * Handle user registration requests (signup)
@@ -178,6 +179,7 @@ export async function handleAuthRegisterRequest(request: Request, env: Env, ctx?
         console.error("Failed to clean up incomplete user registration:", cleanupErr);
       }
     }
-    return new Response(e.message, { status: 400 });
+    console.error("[Auth Register] Failed:", e?.message || e);
+    return new Response(toPublicErrorCode(e, "registration_failed"), { status: 400 });
   }
 }

@@ -12,6 +12,7 @@ import {
   getTursoMigrationStats,
   runTursoMigrations
 } from "../../lib/turso";
+import { toPublicErrorCode } from "../../utils/publicError";
 
 /**
  * Allowlist of system setting keys that can be updated via administrative REST APIs.
@@ -58,7 +59,8 @@ export async function handleAdminRequest(
         await userModel.create({ id: userId, username, passwordHash: hashedPassword, role: role || 'user', passwordVersion: 2 });
         return new Response(JSON.stringify({ id: userId }), { status: 201 });
       } catch (e: any) {
-        return new Response(e.message, { status: 400 });
+        console.error("[Admin] Create user failed:", e?.message || e);
+        return new Response(toPublicErrorCode(e, "create_user_failed"), { status: 400 });
       }
     }
 

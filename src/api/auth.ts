@@ -6,6 +6,7 @@ import { handleRefreshRequest } from "./auth/refresh";
 import { handleLogoutRequest } from "./auth/logout";
 import { handleSessionLockRequest } from "./auth/lock";
 import { handleForgotPasswordRequest } from "./auth/forgotPassword";
+import { toPublicErrorCode } from "../utils/publicError";
 
 /**
  * Handle authentication related requests by delegating to specialized handlers.
@@ -53,7 +54,7 @@ export async function handleAuthRequest(request: Request, env: Env, ctx?: Execut
     return new Response("Not Found", { status: 404 });
   } catch (e: any) {
     console.error("[Auth API] Unhandled Error:", e.message || e);
-    return new Response(e.message || "Internal Server Error", {
+    return new Response(toPublicErrorCode(e), {
       status: 500,
       headers: { "Content-Type": "text/plain; charset=utf-8" }
     });

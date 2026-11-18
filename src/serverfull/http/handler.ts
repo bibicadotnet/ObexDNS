@@ -8,6 +8,45 @@ import { Buffer } from 'node:buffer';
 import worker from '../../index';
 import { Env, ExecutionContext } from '../../types';
 import { extractClientIp } from './clientIp';
+import { envNumber } from '../../utils/envNumber';
+
+/** RFC 8484: a DoH POST body is one DNS message, at most 65535 bytes. */
+const MAX_DOH_BODY_BYTES = 65535;
+const DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Reads the request body, giving up as soon as it exceeds `maxBytes`.
+ * Resolves to null when the limit is exceeded (the remaining data is drained and discarded).
+ */
+function readBodyWithLimit(req: http.IncomingMessage, maxBytes: number): Promise<Buffer | null> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const cleanup = () => {
+      req.off('data', onData);
+      req.off('end', onEnd);
+      req.off('error', onError);
+      req.off('aborted', onError);
+    };
+    const onData = (chunk: Buffer | string) => {
+      const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+      total += buf.length;
+      if (total > maxBytes) {
+        cleanup();
+        req.resume(); // discard whatever the client keeps sending
+        resolve(null);
+        return;
+      }
+      chunks.push(buf);
+    };
+    const onEnd = () => { cleanup(); resolve(Buffer.concat(chunks, total)); };
+    const onError = (err?: Error) => { cleanup(); reject(err ?? new Error('request aborted')); };
+    req.on('data', onData);
+    req.on('end', onEnd);
+    req.on('error', onError);
+    req.on('aborted', onError);
+  });
+}
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -90,11 +129,21 @@ export function createHttpRequestHandler(
 
       let body: any = null;
       if (req.method !== 'GET' && req.method !== 'HEAD') {
-        const chunks: Buffer[] = [];
-        for await (const chunk of req) {
-          chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+        const isDoh = (headers.get('content-type') || '').toLowerCase().includes('application/dns-message');
+        const maxBytes = isDoh
+          ? MAX_DOH_BODY_BYTES
+          : envNumber(env.MAX_BODY_SIZE_BYTES, DEFAULT_MAX_BODY_BYTES, { min: 1 });
+
+        const declared = Number(req.headers['content-length']);
+        const buffered = declared > maxBytes ? null : await readBodyWithLimit(req, maxBytes);
+        if (buffered === null) {
+          res.statusCode = 413;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          if (req.httpVersion !== '2.0') res.setHeader('Connection', 'close'); // forbidden header in HTTP/2
+          res.end('payload_too_large', () => req.destroy());
+          return;
         }
-        body = Buffer.concat(chunks);
+        body = buffered;
       }
 
       const request = new Request(fullUrl.toString(), {

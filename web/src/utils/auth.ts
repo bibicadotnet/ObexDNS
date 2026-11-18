@@ -205,7 +205,11 @@ export function formatApiErrorMessage(err: any, t: (key: string, options?: any) 
     return t("auth.noUsersRegistered", "系统尚无账号，请注册成为管理员。");
   }
 
-  if (bodyText.includes("no such table") || bodyText.includes("SQLITE_ERROR")) {
+  if (
+    bodyText === "db_not_initialized" ||
+    bodyText.includes("no such table") ||
+    bodyText.includes("SQLITE_ERROR")
+  ) {
     return t("auth.dbNotInitialized", {
       defaultValue: "数据库未初始化或缺少数据表，请在终端执行 'npm run db:migrate:prod' 应用数据库迁移。"
     });
@@ -247,6 +251,10 @@ export function formatApiErrorMessage(err: any, t: (key: string, options?: any) 
   }
   if (bodyText === "jwt_secret_invalid") {
     return t("auth.jwtSecretInvalid", "JWT_SECRET 密钥格式无效，请检查配置。");
+  }
+
+  if (bodyText === "internal_server_error" || bodyText === "registration_failed") {
+    return t("auth.serverError", "Server error, please try again later.");
   }
 
   // If bodyText is short and doesn't contain HTML markup, return it directly

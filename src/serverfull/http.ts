@@ -9,6 +9,7 @@ import http2 from 'node:http2';
 import fs from 'node:fs';
 import { Env } from '../types';
 import { formatPortError } from './format';
+import { enableCertAutoReload } from './cert';
 import { attachStaticAssetHandler } from './http/assets';
 import { createHttpRequestHandler } from './http/handler';
 
@@ -136,6 +137,8 @@ export class HttpsServer {
           },
           handler as any
         );
+
+        enableCertAutoReload(this.server, certPath, keyPath, 'HTTPS');
 
         if ('keepAliveTimeout' in this.server) {
           (this.server as any).keepAliveTimeout = 65000;

@@ -85,6 +85,7 @@ export interface Env {
   SERVERFULL_HTTPS_PORT?: string | number;
   SERVERFULL_DOT_PORT?: string | number;
   TRUSTED_PROXIES?: string;
+  MAX_BODY_SIZE_BYTES?: string | number;
   TURSO_DATABASE_URL?: string;
   TURSO_URL?: string;
   TURSO_AUTH_TOKEN?: string;
