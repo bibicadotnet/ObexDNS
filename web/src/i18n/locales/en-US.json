@@ -585,6 +585,7 @@
     "ecsInvalidIpv6": "Invalid IPv6 subnet. Example: 2001:db8:: or 2001:db8::/32",
     "ecsSubnetRequired": "Enter an IPv4 and/or IPv6 subnet to use a custom subnet.",
     "ecsPrefixHint": "Just enter an IP: /24 (IPv4) or /48 (IPv6) is added automatically. Saved when you press Enter or leave the field.",
+    "ecsCustomPending": "Custom subnet is not active yet: your client IP is still used until a valid subnet is saved.",
     "echServerManaged": "The ECH configuration and outer SNI are managed by the server and cannot be changed per profile.",
     "testToolTitle": "Resolution Test Tool",
     "testDomain": "Test Domain",

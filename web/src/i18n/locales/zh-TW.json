@@ -580,6 +580,7 @@
     "ecsInvalidIpv6": "IPv6 子網無效。範例：2001:db8:: 或 2001:db8::/32",
     "ecsSubnetRequired": "使用自訂子網時，請填寫 IPv4 和/或 IPv6 子網。",
     "ecsPrefixHint": "只需填寫 IP：系統會自動補上 /24 (IPv4) 或 /48 (IPv6)。按 Enter 或離開輸入框時儲存。",
+    "ecsCustomPending": "自訂子網尚未生效：在儲存有效子網之前，仍使用用戶端 IP。",
     "echServerManaged": "ECH 設定與外層 SNI 由伺服器統一管理，無法依設定檔單獨修改。",
     "testToolTitle": "即時解析測試工具",
     "testDomain": "測試域名",

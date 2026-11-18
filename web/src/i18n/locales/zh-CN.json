@@ -584,6 +584,7 @@
     "ecsInvalidIpv6": "IPv6 子网无效。示例：2001:db8:: 或 2001:db8::/32",
     "ecsSubnetRequired": "使用自定义子网时，请填写 IPv4 和/或 IPv6 子网。",
     "ecsPrefixHint": "只需填写 IP：系统会自动补上 /24 (IPv4) 或 /48 (IPv6)。按回车或离开输入框时保存。",
+    "ecsCustomPending": "自定义子网尚未生效：在保存有效子网之前，仍使用客户端 IP。",
     "echServerManaged": "ECH 配置与外层 SNI 由服务器统一管理，无法按配置文件单独修改。",
     "testToolTitle": "实时解析测试工具",
     "testDomain": "测试域名",

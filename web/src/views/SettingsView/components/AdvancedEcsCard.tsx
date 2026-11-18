@@ -37,6 +37,9 @@ export const AdvancedEcsCard: React.FC<AdvancedEcsCardProps> = ({ settings, setS
 
   const handleCustomToggle = (checked: boolean) => {
     setErrors({ v4: false, v6: false, none: false });
+    // Drop any unsaved / invalid draft (e.g. "2121"): the fields must always reflect what is stored.
+    setV4(ecs.ipv4_cidr || "");
+    setV6(ecs.ipv6_cidr || "");
     setCustomMode(checked);
     if (!checked) {
       setSettings({ ...settings, ecs: { ...ecs, use_client_ip: true } });
@@ -157,6 +160,14 @@ export const AdvancedEcsCard: React.FC<AdvancedEcsCardProps> = ({ settings, setS
           {errors.none && (
             <p className="text-xs text-red-500">
               {t("settings.ecsSubnetRequired", "Enter an IPv4 and/or IPv6 subnet to use a custom subnet.")}
+            </p>
+          )}
+          {fieldsEnabled && ecs.use_client_ip && (
+            <p className="text-xs text-orange-500">
+              {t(
+                "settings.ecsCustomPending",
+                "Custom subnet is not active yet: your client IP is still used until a valid subnet is saved."
+              )}
             </p>
           )}
           {fieldsEnabled && (

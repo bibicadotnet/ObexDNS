@@ -585,6 +585,7 @@
     "ecsInvalidIpv6": "Subnet IPv6 không hợp lệ. Ví dụ: 2001:db8:: hoặc 2001:db8::/32",
     "ecsSubnetRequired": "Hãy nhập subnet IPv4 và/hoặc IPv6 để dùng mạng con tùy chỉnh.",
     "ecsPrefixHint": "Chỉ cần nhập IP: hệ thống tự thêm /24 (IPv4) hoặc /48 (IPv6). Lưu khi nhấn Enter hoặc rời khỏi ô nhập.",
+    "ecsCustomPending": "Mạng con tùy chỉnh chưa có hiệu lực: vẫn dùng IP của client cho đến khi lưu một subnet hợp lệ.",
     "echServerManaged": "Cấu hình ECH và SNI bên ngoài do máy chủ quản lý, không thể thay đổi theo từng profile.",
     "testToolTitle": "Công cụ kiểm tra phân giải thời gian thực",
     "testDomain": "Tên miền kiểm tra",
