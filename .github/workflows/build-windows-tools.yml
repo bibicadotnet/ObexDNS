@@ -1,0 +1,156 @@
+name: Build windows-tools-setup
+
+on:
+  schedule:
+    - cron: "0 17 * * *" # 17:00 UTC = 00:00 giờ Việt Nam, mỗi ngày 1 lần
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Bỏ qua kiểm tra phiên bản, ép build và phát hành lại"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: windows-tools-setup
+  ZIP_NAME: windows-tools-setup-latest.zip
+  NSSM_VERSION: "2.24"
+  ZAPRET_REPO: bol-van/zapret-win-bundle
+  ZAPRET_DIR: zapret-winws
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Lấy thông tin phiên bản mới nhất
+        id: ver
+        run: |
+          set -euo pipefail
+
+          DNSPROXY_VERSION=$(gh api repos/AdguardTeam/dnsproxy/releases/latest --jq .tag_name)
+
+          read -r ZAPRET_SHA ZAPRET_DATE < <(gh api \
+            "repos/${ZAPRET_REPO}/commits?path=${ZAPRET_DIR}&per_page=1" \
+            --jq '.[0] | "\(.sha) \(.commit.author.date[0:10])"')
+          ZAPRET_SHORT=${ZAPRET_SHA:0:7}
+
+          SIGNATURE="dnsproxy=${DNSPROXY_VERSION};zapret=${ZAPRET_SHA};nssm=${NSSM_VERSION}"
+
+          {
+            echo "dnsproxy_version=${DNSPROXY_VERSION}"
+            echo "zapret_sha=${ZAPRET_SHA}"
+            echo "zapret_short=${ZAPRET_SHORT}"
+            echo "zapret_date=${ZAPRET_DATE}"
+            echo "signature=${SIGNATURE}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "dnsproxy: ${DNSPROXY_VERSION}"
+          echo "zapret:   ${ZAPRET_DATE} (${ZAPRET_SHORT})"
+          echo "nssm:     ${NSSM_VERSION}"
+
+      - name: Kiểm tra release hiện tại (bỏ qua nếu không có gì mới)
+        id: check
+        run: |
+          set -euo pipefail
+          SKIP=false
+          if [ "${{ inputs.force }}" != "true" ]; then
+            OLD_BODY=$(gh release view "$RELEASE_TAG" --json body --jq .body 2>/dev/null || true)
+            if echo "$OLD_BODY" | grep -qF "signature: ${{ steps.ver.outputs.signature }}"; then
+              SKIP=true
+              echo "Phiên bản không đổi, bỏ qua."
+            fi
+          fi
+          echo "skip=${SKIP}" >> "$GITHUB_OUTPUT"
+
+      - name: Tải dnsproxy
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p work/dl-dnsproxy pkg/dnsproxy
+          gh release download "${{ steps.ver.outputs.dnsproxy_version }}" \
+            --repo AdguardTeam/dnsproxy \
+            --pattern "dnsproxy-windows-amd64-*.zip" \
+            --dir work/dl-dnsproxy
+          unzip -q work/dl-dnsproxy/*.zip -d work/dl-dnsproxy/extract
+          EXE=$(find work/dl-dnsproxy/extract -type f -name dnsproxy.exe | head -n 1)
+          test -n "$EXE"
+          cp "$EXE" pkg/dnsproxy/dnsproxy.exe
+
+      - name: Tải zapret (winws)
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p pkg/zapret
+          BASE="https://raw.githubusercontent.com/${ZAPRET_REPO}/${{ steps.ver.outputs.zapret_sha }}/${ZAPRET_DIR}"
+          for f in cygwin1.dll WinDivert.dll WinDivert64.sys winws.exe; do
+            curl -fsSL --retry 3 -o "pkg/zapret/$f" "$BASE/$f"
+          done
+
+      - name: Tải NSSM
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p work/dl-nssm
+          curl -fsSL --retry 3 -o work/dl-nssm/nssm.zip \
+            "https://nssm.cc/release/nssm-${NSSM_VERSION}.zip" \
+          || curl -fsSL --retry 3 -o work/dl-nssm/nssm.zip \
+            "https://load.bibica.net/nssm-${NSSM_VERSION}.zip"
+          unzip -q work/dl-nssm/nssm.zip -d work/dl-nssm/extract
+          EXE=$(find work/dl-nssm/extract -type f -path "*win64*" -name nssm.exe | head -n 1)
+          test -n "$EXE"
+          cp "$EXE" pkg/nssm.exe
+
+      - name: Kiểm tra và nén file
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          cd pkg
+          for f in dnsproxy/dnsproxy.exe zapret/cygwin1.dll zapret/WinDivert.dll \
+                   zapret/WinDivert64.sys zapret/winws.exe nssm.exe; do
+            test -s "$f" || { echo "Thiếu hoặc rỗng: $f"; exit 1; }
+          done
+          zip -r -9 "../${ZIP_NAME}" dnsproxy zapret nssm.exe
+          cd ..
+          unzip -l "${ZIP_NAME}"
+
+      - name: Tạo release notes
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          cat > notes.md <<EOF
+          ## Phiên bản các thành phần
+
+          | Thành phần | Phiên bản |
+          |---|---|
+          | dnsproxy | \`${{ steps.ver.outputs.dnsproxy_version }}\` |
+          | zapret (winws) | \`${{ steps.ver.outputs.zapret_date }}\` (commit \`${{ steps.ver.outputs.zapret_short }}\`) |
+          | nssm | \`${NSSM_VERSION}\` |
+
+          Cập nhật lúc: $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          Nguồn:
+          - dnsproxy: https://github.com/AdguardTeam/dnsproxy/releases/tag/${{ steps.ver.outputs.dnsproxy_version }}
+          - zapret: https://github.com/${ZAPRET_REPO}/commit/${{ steps.ver.outputs.zapret_sha }}
+          - nssm: https://nssm.cc/release/nssm-${NSSM_VERSION}.zip
+
+          <!-- signature: ${{ steps.ver.outputs.signature }} -->
+          EOF
+          cat notes.md
+
+      - name: Tạo hoặc cập nhật release
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          TITLE="windows-tools-setup"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${ZIP_NAME}" --clobber
+            gh release edit "$RELEASE_TAG" --title "$TITLE" --notes-file notes.md --latest
+          else
+            gh release create "$RELEASE_TAG" "${ZIP_NAME}" \
+              --title "$TITLE" --notes-file notes.md --latest
+          fi
