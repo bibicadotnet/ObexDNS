@@ -45,6 +45,11 @@ export interface EcsApplicationResult {
   queryRaw: Uint8Array;
   /** Normalized ECS subnet string for logging, if applied. */
   ecs?: string;
+  /**
+   * Set only when the answer depends on the client's own subnet (use_client_ip).
+   * The DNS cache must store/look up such answers under this scope.
+   */
+  ecsScope?: string;
 }
 
 /**

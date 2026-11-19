@@ -20,6 +20,7 @@ import { UpstreamHttpError, ParsedDNSAnswerRecord } from "./types";
  * @param minTTL - Minimum TTL across answers (bounded between 10 and 3600 seconds).
  * @param rawUpstreamUrl - Upstream URL or stamp string.
  * @param ecs - Normalized ECS string if applied.
+ * @param ecsScope - Cache scope when the answer depends on the client's subnet (use_client_ip).
  */
 export function recordSuccessAndCache(
   request: Request,
@@ -32,12 +33,16 @@ export function recordSuccessAndCache(
   answer: Uint8Array,
   minTTL: number,
   rawUpstreamUrl: string,
-  ecs?: string
+  ecs?: string,
+  ecsScope?: string
 ): void {
   // 1. Cache first, synchronously. Nothing log-related (GeoIP, batching) may delay it,
   //    otherwise identical queries arriving meanwhile miss the cache and hit upstream again.
   if (answer.length > 0) {
-    dnsCache.set(`${context.profileId}:${query.name}:${query.type}`, {
+    // Answers resolved with a per-client ECS subnet are keyed by that subnet so they are
+    // never served to clients in other networks.
+    const baseKey = `${context.profileId}:${query.name}:${query.type}`;
+    dnsCache.set(ecsScope ? `${baseKey}|${ecsScope}` : baseKey, {
       answer,
       ttl: minTTL,
       action,

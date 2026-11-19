@@ -13,5 +13,13 @@ export {
   createServFail
 } from "./encoder";
 export { encodeRData } from "./rdata";
-export { injectEcsIntoQuery } from "./injectEcs";
+export {
+  injectEcsIntoQuery,
+  stripEcsFromQuery,
+  stripEcsFromResponse,
+  disableEcsInQuery,
+  parseEcsCidr,
+  formatEcsSubnet
+} from "./injectEcs";
+export type { EcsSubnet } from "./injectEcs";
 export type { DNSRecord } from "./encoder";

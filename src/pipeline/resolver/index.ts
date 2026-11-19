@@ -1,5 +1,5 @@
 import { Context, DNSQuery, ProfileSettings, ResolutionResult } from "../../types";
-import { parseDNSAnswer } from "../../utils/dns";
+import { parseDNSAnswer, stripEcsFromResponse } from "../../utils/dns";
 import { isSafeUrl } from "../../utils/validator";
 import {
   fetchFromUpstream,
@@ -69,19 +69,21 @@ export const pipelineResolver = {
       };
     }
 
-    const { queryRaw, ecs } = applyEcs(request, query, settings);
+    const { queryRaw, ecs, ecsScope } = applyEcs(request, query, settings);
 
     let endpoint: UpstreamEndpointInfo | undefined;
     try {
       endpoint = resolveUpstreamEndpoint(rawUpstreamUrl);
       const transportRes = await fetchFromUpstream(endpoint, queryRaw);
+      // Never hand upstream-added/echoed ECS to clients or to the cache.
+      const upstreamAnswer = stripEcsFromResponse(transportRes.answer);
 
-      const initialParsedAnswers = parseDNSAnswer(transportRes.answer);
+      const initialParsedAnswers = parseDNSAnswer(upstreamAnswer);
 
       const echRes = await processBestEffortEch(
         query,
         initialParsedAnswers,
-        transportRes.answer,
+        upstreamAnswer,
         context,
         settings,
         request,
@@ -109,7 +111,8 @@ export const pipelineResolver = {
         answer,
         minTTL,
         rawUpstreamUrl,
-        ecs
+        ecs,
+        ecsScope
       );
 
       return {
