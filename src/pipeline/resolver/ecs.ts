@@ -126,3 +126,27 @@ export function applyEcs(
   // No usable subnet: do not forward whatever the client attached, and tell the upstream not to add its own.
   return { queryRaw: disableEcsInQuery(query.raw), ecsScope };
 }
+
+/** Cloudflare Gateway endpoint with ECS disabled on Cloudflare's side. */
+const GATEWAY_NO_ECS_HOST = "no-ecs.cloudflare-gateway.com";
+
+/**
+ * Cloudflare Gateway adds its own ECS (0.0.0.0/24) to every query and ignores the RFC 7871
+ * /0 opt-out. When "Send ECS" is off, DoH/DoT upstreams of the form
+ * https://<id>.cloudflare-gateway.com/... or tls://<id>.cloudflare-gateway.com[:port]
+ * are therefore swapped, for this resolution only, to Cloudflare's no-ECS endpoint.
+ *
+ * The stored profile setting is never modified: turning Send ECS back on simply stops
+ * applying the swap, so the user's original Gateway location is used again.
+ *
+ * @param url - Upstream URL as configured in the profile.
+ * @param ecsEnabled - Whether the profile's "Send ECS" option is on.
+ * @returns The URL to actually query (unchanged for any other upstream or when ECS is on).
+ */
+export function resolveEcsUpstreamUrl(url: string, ecsEnabled: boolean): string {
+  if (ecsEnabled) return url;
+  return url.replace(
+    /^(https:\/\/|tls:\/\/)[a-z0-9-]+\.cloudflare-gateway\.com(?=[:/?#]|$)/i,
+    `$1${GATEWAY_NO_ECS_HOST}`
+  );
+}

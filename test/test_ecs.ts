@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import assert from "node:assert";
-import { applyEcs, ecsCacheScope, normalizeClientIp } from "../src/pipeline/resolver/ecs";
+import { applyEcs, ecsCacheScope, normalizeClientIp, resolveEcsUpstreamUrl } from "../src/pipeline/resolver/ecs";
 import { injectEcsIntoQuery, stripEcsFromQuery, stripEcsFromResponse, disableEcsInQuery, parseEcsCidr } from "../src/utils/dns";
 
 // ECS option with source prefix 0 = "do not use / forward a client subnet" (RFC 7871 §7.1.2)
@@ -219,7 +219,30 @@ function testOptOutAndResponse() {
   assert.strictEqual(stripEcsFromResponse(clean), clean);
 }
 
-const tests = { testMapped, testDisabledStrips, testPreserveEdns, testAppendNoOpt, testClientIp, testCustom, testCacheScope, testMalformed, testOptOutAndResponse };
+// ── 9. Cloudflare Gateway: no-ECS endpoint while Send ECS is off ─────────────
+function testGatewayUpstream() {
+  const off = (u: string) => resolveEcsUpstreamUrl(u, false);
+  assert.strictEqual(off("https://bu0eg1tdzu.cloudflare-gateway.com/dns-query"), "https://no-ecs.cloudflare-gateway.com/dns-query");
+  assert.strictEqual(off("tls://bu0eg1tdzu.cloudflare-gateway.com"), "tls://no-ecs.cloudflare-gateway.com");
+  assert.strictEqual(off("tls://BU0EG1TDZU.cloudflare-gateway.com:853"), "tls://no-ecs.cloudflare-gateway.com:853");
+  assert.strictEqual(off("https://no-ecs.cloudflare-gateway.com/dns-query"), "https://no-ecs.cloudflare-gateway.com/dns-query");
+  // ECS on -> the user's own location is used untouched
+  assert.strictEqual(resolveEcsUpstreamUrl("https://bu0eg1tdzu.cloudflare-gateway.com/dns-query", true), "https://bu0eg1tdzu.cloudflare-gateway.com/dns-query");
+  // Anything else is never rewritten
+  for (const u of [
+    "https://dns.google/dns-query",
+    "tls://dns.adguard-dns.com",
+    "https://cloudflare-gateway.com/dns-query",
+    "https://a.b.cloudflare-gateway.com/dns-query",
+    "https://evilcloudflare-gateway.com/dns-query",
+    "https://bu0eg1tdzu.cloudflare-gateway.com.evil.test/dns-query",
+    "https://x@bu0eg1tdzu.cloudflare-gateway.com/dns-query",
+    "sdns://AgcAAAAAAAAA",
+    "tcp://9.9.9.11:9953"
+  ]) assert.strictEqual(off(u), u, u);
+}
+
+const tests = { testMapped, testDisabledStrips, testPreserveEdns, testAppendNoOpt, testClientIp, testCustom, testCacheScope, testMalformed, testOptOutAndResponse, testGatewayUpstream };
 for (const [name, fn] of Object.entries(tests)) {
   fn();
   console.log(`✓ ${name}`);

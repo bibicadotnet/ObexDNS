@@ -6,7 +6,7 @@ import {
   resolveUpstreamEndpoint,
   UpstreamEndpointInfo
 } from "./transport";
-import { applyEcs } from "./ecs";
+import { applyEcs, resolveEcsUpstreamUrl } from "./ecs";
 import { processBestEffortEch } from "./ech";
 import { handleBlockOrRedirect } from "./block";
 import { recordSuccessAndCache, recordFailure } from "./observability";
@@ -51,23 +51,26 @@ export const pipelineResolver = {
     action: "PASS",
     reason?: string
   ): Promise<ResolutionResult> {
-    const rawUpstreamUrl =
+    const configuredUpstreamUrl =
       settings.upstream[0] || getDefaultUpstreamUrl(context.env);
 
-    if (!isSafeUrl(rawUpstreamUrl)) {
+    if (!isSafeUrl(configuredUpstreamUrl)) {
       return {
         answer: new Uint8Array(),
         ttl: 0,
         action: "FAIL",
         reason: "Unsafe upstream URL",
         diagnostics: {
-          upstream_url: rawUpstreamUrl,
+          upstream_url: configuredUpstreamUrl,
           method: "BLOCKED",
           status: 0
         },
         latency: Date.now() - context.startTime
       };
     }
+
+    // Cloudflare Gateway ignores the ECS opt-out: use its no-ECS endpoint while Send ECS is off.
+    const rawUpstreamUrl = resolveEcsUpstreamUrl(configuredUpstreamUrl, Boolean(settings.ecs?.enabled));
 
     const { queryRaw, ecs, ecsScope } = applyEcs(request, query, settings);
 
