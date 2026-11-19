@@ -64,13 +64,34 @@ export function buildDNSQuery(name: string, type: string): Uint8Array {
 /**
  * Creates a standard SERVFAIL response packet (RFC 1035).
  *
- * @param queryRaw - Optional raw incoming DNS query to echo ID and flags from.
- * @returns A 12-byte DNS header with RCODE 2 (SERVFAIL).
+ * The response echoes the ID, flags and the QUESTION section of the query (RFC 1035 §4.1.1),
+ * with ANCOUNT/NSCOUNT/ARCOUNT set to 0. Strict clients (e.g. AdGuard dnsproxy) reject a
+ * response whose QDCOUNT does not match its question section.
+ *
+ * @param queryRaw - Optional raw incoming DNS query to echo ID, flags and question from.
+ * @returns A DNS packet with RCODE 2 (SERVFAIL).
  */
 export function createServFail(queryRaw?: Uint8Array): Uint8Array {
-  const res = new Uint8Array(12);
+  let res = new Uint8Array(12); // no/invalid query: header only, QDCOUNT=0
   if (queryRaw && queryRaw.length >= 12) {
-    res.set(queryRaw.slice(0, 12));
+    let questionEnd = 12;
+    const qCount = (queryRaw[4] << 8) | queryRaw[5];
+    let valid = qCount > 0;
+    for (let i = 0; valid && i < qCount; i++) {
+      const { read } = decodeName(queryRaw, questionEnd);
+      if (read === 0 || questionEnd + read + 4 > queryRaw.length) {
+        valid = false;
+        break;
+      }
+      questionEnd += read + 4;
+    }
+    if (valid) {
+      res = new Uint8Array(questionEnd);
+      res.set(queryRaw.slice(0, questionEnd)); // header + question section
+      res[6] = res[7] = res[8] = res[9] = res[10] = res[11] = 0; // AN/NS/AR = 0
+    } else {
+      res.set(queryRaw.slice(0, 4)); // ID + flags only; QDCOUNT/AN/NS/AR stay 0
+    }
   }
   res[2] = (res[2] & 0x01) | 0x80; // QR=1, inherit RD
   res[3] = (res[3] & 0xf0) | 0x02; // ServFail (RCODE 2)
@@ -186,11 +207,7 @@ export function buildResponseMulti(
     return res;
   } catch (e) {
     console.error("Critical error in buildResponseMulti:", e);
-    const fallback = new Uint8Array(12);
-    fallback.set(queryRaw.slice(0, 12));
-    fallback[2] |= 0x80;
-    fallback[3] = (fallback[3] & 0xf0) | 0x02; // ServFail
-    return fallback;
+    return createServFail(queryRaw);
   }
 }
 
@@ -279,10 +296,6 @@ export function buildResponse(
     return res;
   } catch (e) {
     console.error("Critical error in buildResponse:", e);
-    const fallback = new Uint8Array(12);
-    fallback.set(queryRaw.slice(0, 12));
-    fallback[2] |= 0x80;
-    fallback[3] = (fallback[3] & 0xf0) | 0x02; // ServFail
-    return fallback;
+    return createServFail(queryRaw);
   }
 }
