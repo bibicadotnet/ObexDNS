@@ -11,6 +11,7 @@ import {
 } from '../pipeline/cache';
 import { resolveUpstreamEndpoint, fetchFromUpstream } from '../pipeline/resolver/transport';
 import { DEFAULT_FAIL_OPEN_UPSTREAM } from '../constants/presets';
+import { isServerfullEnv } from '../utils/serverfullEnv';
 
 /**
  * Compiles a compliant RFC 8484 DNS over HTTPS Response.
@@ -68,7 +69,8 @@ export async function resolveProfileByKey(
   env: Env,
   ctx: ExecutionContext
 ): Promise<(ProfileWithFilter & { access_point_id?: string; access_point_name?: string }) | null> {
-  const cache = typeof caches !== "undefined" ? (caches as any).default : null;
+  const isServerfull = isServerfullEnv(env);
+  const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;
   const now = Date.now();
 
   // 1. Check L1 Memory Cache (Isolate Global) - 5 minutes
@@ -77,7 +79,7 @@ export async function resolveProfileByKey(
     return inMem.data;
   }
 
-  // 2. Check L2 Cloudflare Cache API - 1 hour
+  // 2. Check L2 Cloudflare Cache API (Cloudflare Workers only, skipped on Serverfull)
   const cacheKey = `doh_key_v1:${profileKey}`;
   if (cache) {
     try {

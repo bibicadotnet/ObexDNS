@@ -3,6 +3,8 @@ import { LogModel } from "../../models/log";
 import { cacheUtils } from "../../utils/cache";
 import { handleProfileLogsWs } from "./logsWs";
 import { scheduleSpaceReclaim } from "../../utils/dbMaintenance";
+import { isServerfullEnv } from "../../utils/serverfullEnv";
+import { pipelineCache } from "../../pipeline/cache";
 
 /**
  * Handle logs and analytics requests to /api/profiles/:id/logs and /api/profiles/:id/analytics
@@ -15,7 +17,7 @@ export async function handleProfileLogsAndAnalyticsRequest(
   pathParts: string[],
   ctx: ExecutionContext
 ): Promise<Response> {
-  const logModel = new LogModel(env.DB);
+  const logModel = new LogModel(env.DB, env);
   const profileId = profile.id;
 
   // Handle Logs endpoint: /api/profiles/:id/logs
@@ -28,6 +30,9 @@ export async function handleProfileLogsAndAnalyticsRequest(
     if (request.method === 'DELETE') {
       await logModel.deleteByProfile(profileId);
       await logModel.kemKeys.cleanupProfileOrphans(profileId, 0);
+      if (env.CF_ZONE_ID && env.CF_PURGE_TOKEN) {
+        ctx.waitUntil(pipelineCache.purgeTags(env, [`analytics-${profileId}`]).catch(() => {}));
+      }
       // Give the freed pages back to the disk in the background (never blocks DNS or this response).
       scheduleSpaceReclaim(env.DB, ctx);
       return new Response(JSON.stringify({ success: true }), {
@@ -57,11 +62,12 @@ export async function handleProfileLogsAndAnalyticsRequest(
     let since: number;
     let until = Math.floor(Date.now() / 1000);
     const globalMaxRetention = env.MAX_LOG_RETENTION_DAYS !== undefined && env.MAX_LOG_RETENTION_DAYS !== ''
-      ? Number(env.MAX_LOG_RETENTION_DAYS)
+      ? Math.max(0, Number(env.MAX_LOG_RETENTION_DAYS) || 30)
       : 30;
     const settings: ProfileSettings = JSON.parse(profile.settings);
-    const logRetentionDays = settings.log_retention_days !== undefined
-      ? Math.min(Number(settings.log_retention_days), globalMaxRetention)
+    const rawDays = Number(settings.log_retention_days);
+    const logRetentionDays = Number.isFinite(rawDays)
+      ? Math.max(0, Math.min(rawDays, globalMaxRetention))
       : globalMaxRetention;
 
     if (logRetentionDays === 0) {
@@ -174,11 +180,13 @@ export async function handleProfileLogsAndAnalyticsRequest(
     }
 
     const subResource = pathParts[4];
+    const isServerfull = isServerfullEnv(env);
+    const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;
+
     if (subResource) {
       const exact = urlParams.get('exact') === 'true';
-      const cache = (caches as any).default;
       const subCacheKey = `analytics_sub:${profileId}:${subResource}:${urlParams.toString()}`;
-      if (!exact) {
+      if (!exact && cache) {
         const cached = await cacheUtils.get<any>(cache, subCacheKey);
         if (cached) {
           return new Response(JSON.stringify(cached), {
@@ -219,8 +227,8 @@ export async function handleProfileLogsAndAnalyticsRequest(
         return new Response("Not Found", { status: 404 });
       }
 
-      if (!exact) {
-        await cacheUtils.set(cache, subCacheKey, data, 300);
+      if (!exact && cache) {
+        await cacheUtils.set(cache, subCacheKey, data, 300, [`analytics-${profileId}`]);
       }
       return new Response(JSON.stringify(data), {
         headers: {
@@ -231,21 +239,24 @@ export async function handleProfileLogsAndAnalyticsRequest(
       });
     }
     
-    const cache = (caches as any).default;
     const cacheKey = `analytics:${profileId}:${since}:${until}:${interval}:${accessPointId || 'all'}`;
-    const cached = await cacheUtils.get<any>(cache, cacheKey);
-    if (cached) {
-      return new Response(JSON.stringify(cached), {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Cache': 'HIT',
-          'Cache-Control': 'private, no-cache'
-        }
-      });
+    if (cache) {
+      const cached = await cacheUtils.get<any>(cache, cacheKey);
+      if (cached) {
+        return new Response(JSON.stringify(cached), {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Cache': 'HIT',
+            'Cache-Control': 'private, no-cache'
+          }
+        });
+      }
     }
 
     const analytics = await logModel.getAnalytics(profileId, since, until, interval, accessPointId);
-    await cacheUtils.set(cache, cacheKey, analytics, 60);
+    if (cache) {
+      await cacheUtils.set(cache, cacheKey, analytics, 60, [`analytics-${profileId}`]);
+    }
 
     return new Response(JSON.stringify(analytics), {
       headers: {

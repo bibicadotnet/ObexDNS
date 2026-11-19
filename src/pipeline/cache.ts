@@ -133,19 +133,35 @@ function getEnvNumber(key: string, defaultVal: number): number {
   return defaultVal;
 }
 
-// 基础配置体积较小，允许缓存 200 个 Profile (CONFIG_CACHE_LIMIT)
+// 基础配置体积较小，允许缓存 5000 个 Profile (CONFIG_CACHE_LIMIT)
 export const configCache = new SizeCappedMap<string, ConfigCacheEntry>(
-  getEnvNumber("CONFIG_CACHE_LIMIT", 200)
+  getEnvNumber("CONFIG_CACHE_LIMIT", 5000)
 );
 
-// DNS 缓存限制最多 500 条记录 (DNS_CACHE_LIMIT)
+// DNS 缓存限制最多 50000 条记录 (DNS_CACHE_LIMIT)
 export const dnsCache = new SizeCappedMap<string, any>(
-  getEnvNumber("DNS_CACHE_LIMIT", 500)
+  getEnvNumber("DNS_CACHE_LIMIT", 50000)
 );
 
-// Profile Key 到 Profile 元数据映射缓存 (L1 内存缓存，限制最多 500 个 Key, PROFILE_KEY_CACHE_LIMIT)
+/**
+ * Purges expired DNS query records from in-memory dnsCache.
+ * Called during system maintenance (CLEANUP_INTERVAL_SEC) to free RAM from orphan queries.
+ */
+export function sweepExpiredDnsCache(): number {
+  const now = Date.now();
+  let count = 0;
+  for (const [key, entry] of dnsCache) {
+    if (entry && typeof entry.expiresAt === "number" && now >= entry.expiresAt) {
+      dnsCache.delete(key);
+      count++;
+    }
+  }
+  return count;
+}
+
+// Profile Key 到 Profile 元数据映射缓存 (L1 内存缓存，限制最多 10000 个 Key, PROFILE_KEY_CACHE_LIMIT)
 export const profileKeyMemoryMap = new SizeCappedMap<string, { data: any; ts: number }>(
-  getEnvNumber("PROFILE_KEY_CACHE_LIMIT", 500)
+  getEnvNumber("PROFILE_KEY_CACHE_LIMIT", 10000)
 );
 
 // 默认 Profile 元数据内存缓存 (L1 内存缓存，5 分钟 TTL，防范 UDP DNS 高频穿透)
@@ -179,6 +195,39 @@ async function purgeTags(env: Env, tags: string[]): Promise<void> {
 
 export const PROFILE_CACHE_KEY_PREFIX = "profile_v9";
 
+const profileGenerations = new Map<string, number>();
+
+/**
+ * Returns the current generation counter for a profile.
+ */
+export function getProfileGeneration(profileId: string): number {
+  return profileGenerations.get(profileId) || 0;
+}
+
+/**
+ * Increments the generation counter for a profile, invalidating any in-flight
+ * query resolutions that started before this cache invalidation.
+ */
+export function bumpProfileGeneration(profileId: string): number {
+  const next = (profileGenerations.get(profileId) || 0) + 1;
+  profileGenerations.set(profileId, next);
+  return next;
+}
+
+/**
+ * Clears dnsCache entries for a given set of profile IDs in a single O(N) pass.
+ */
+export function clearDnsCacheFor(profileIds: Set<string> | string[]): void {
+  const pSet = profileIds instanceof Set ? profileIds : new Set(profileIds);
+  if (pSet.size === 0) return;
+  for (const key of dnsCache.keys()) {
+    const colonIdx = key.indexOf(':');
+    if (colonIdx > 0 && pSet.has(key.slice(0, colonIdx))) {
+      dnsCache.delete(key);
+    }
+  }
+}
+
 let lastPipelineCacheEnv: Env | undefined;
 
 export const pipelineCache = {
@@ -200,13 +249,15 @@ export const pipelineCache = {
   },
 
   /**
-   * 清理指定 Profile 的各级缓存。
+   * 清理多个 Profile 的各级缓存，单次扫描 dnsCache 避免事件循环阻塞。
    */
-  async clear(
-    profileId: string,
+  async clearMany(
+    profileIds: string[],
     clearFilterOrEnv: boolean | Env = true,
     envOrClearFilter?: Env | boolean
   ): Promise<void> {
+    if (!profileIds || profileIds.length === 0) return;
+
     let clearFilter = true;
     let targetEnv: Env | undefined;
 
@@ -222,29 +273,33 @@ export const pipelineCache = {
       }
     }
 
-    // 清理 L1 (内存)
-    configCache.delete(profileId);
+    const pSet = new Set(profileIds);
+    for (const pid of profileIds) {
+      bumpProfileGeneration(pid);
+      configCache.delete(pid);
+    }
+
+    // 清理 L1 (内存): 单次遍历 dnsCache，O(N) 复杂度
     profileKeyMemoryMap.clear();
     defaultProfileMemoryCache = null;
-    for (const key of dnsCache.keys()) {
-      if (key.startsWith(`${profileId}:`)) {
-        dnsCache.delete(key);
-      }
-    }
+    clearDnsCacheFor(pSet);
 
     // 清理 L2 (本地数据中心 Cache API - Workers only, skipped on Serverfull)
     const isServerfull = isServerfullEnv(targetEnv);
     if (!isServerfull && typeof caches !== "undefined" && caches && (caches as any).default) {
       try {
         const cache = (caches as any).default;
-        const tasks: Promise<any>[] = [
-          cacheUtils.delete(cache, `${PROFILE_CACHE_KEY_PREFIX}:${profileId}`),
-          cacheUtils.delete(cache, `profile_v8:${profileId}`),
-          cacheUtils.delete(cache, `profile_v7:${profileId}`),
-          cacheUtils.delete(cache, `profile_v6:${profileId}`)
-        ];
-        if (clearFilter) {
-          tasks.push(cacheUtils.delete(cache, `filter-bin:${profileId}`));
+        const tasks: Promise<any>[] = [];
+        for (const pid of profileIds) {
+          tasks.push(
+            cacheUtils.delete(cache, `${PROFILE_CACHE_KEY_PREFIX}:${pid}`),
+            cacheUtils.delete(cache, `profile_v8:${pid}`),
+            cacheUtils.delete(cache, `profile_v7:${pid}`),
+            cacheUtils.delete(cache, `profile_v6:${pid}`)
+          );
+          if (clearFilter) {
+            tasks.push(cacheUtils.delete(cache, `filter-bin:${pid}`));
+          }
         }
         await Promise.all(tasks);
       } catch (e) {
@@ -254,11 +309,30 @@ export const pipelineCache = {
 
     // 清理 L2 全球边缘节点 (Cloudflare Zone Cache Purge by Tag)
     if (targetEnv && targetEnv.CF_ZONE_ID && targetEnv.CF_PURGE_TOKEN) {
-      const tags = [`profile-${profileId}`];
-      if (clearFilter) {
-        tags.push(`filter-${profileId}`);
+      const tags: string[] = [];
+      for (const pid of profileIds) {
+        tags.push(`profile-${pid}`);
+        if (clearFilter) {
+          tags.push(`filter-${pid}`);
+        }
       }
-      await purgeTags(targetEnv, tags);
+      const PURGE_TAG_CHUNK = 30;
+      for (let i = 0; i < tags.length; i += PURGE_TAG_CHUNK) {
+        await purgeTags(targetEnv, tags.slice(i, i + PURGE_TAG_CHUNK));
+      }
     }
-  }
+  },
+
+  /**
+   * 清理指定 Profile 的各级缓存。
+   */
+  async clear(
+    profileId: string,
+    clearFilterOrEnv: boolean | Env = true,
+    envOrClearFilter?: Env | boolean
+  ): Promise<void> {
+    return pipelineCache.clearMany([profileId], clearFilterOrEnv, envOrClearFilter);
+  },
+
+  purgeTags
 };

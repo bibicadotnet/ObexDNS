@@ -178,9 +178,9 @@ export function getCertbotDiagnosticOptions(
     return {
       level: 'warning',
       title: 'TLS Certificate Not Configured / Missing',
-      message: 'No valid TLS certificate detected. HTTPS Web UI (port 10443) and DoT (port 853) are disabled.',
+      message: 'No valid TLS certificate detected. HTTPS Web UI and DoT (port 853) are disabled.',
       details: [
-        'Plain HTTP Web UI (port 10080) and Classic UDP DNS (port 53) remain fully operational.'
+        'Plain HTTP Web UI and Classic UDP DNS (port 53) remain fully operational.'
       ],
       solutions: [
         'To enable HTTPS and DoT with per-profile routing, register a free wildcard certificate using certbot:',

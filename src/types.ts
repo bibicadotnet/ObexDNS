@@ -67,10 +67,13 @@ export interface Env {
   NORMAL_USER_MAX_LOG_RETENTION_DAYS?: string | number;
   NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS?: string | number;
   FAIL_OPEN_UPSTREAM?: string;
+  DOH_H2_HEDGE_MS?: string | number;
   CF_ZONE_ID?: string;
   CF_PURGE_TOKEN?: string;
   SESSION_LAST_ACTIVE_UPDATE_INTERVAL?: string | number;
   AUTH_CACHE_TTL_SEC?: string | number;
+  LOG_CLEANUP_CHUNK_SIZE?: string | number;
+  LOG_CLEANUP_YIELD_SLEEP_MS?: string | number;
   LOG_CLEANUP_BATCH_LIMIT?: string | number;
   LOG_CLEANUP_DAILY_BUDGET?: string | number;
   LOG_ORPHAN_KEY_MIN_AGE_SEC?: string | number;
@@ -288,6 +291,8 @@ export interface Context {
   ctx: ExecutionContext;
   /** When true, no query log is written (used for unknown-profile-key fallback traffic). */
   noLog?: boolean;
+  /** Generation tracker to invalidate in-flight resolutions when profile config is mutated. */
+  profileGeneration?: number;
 }
 
 export interface AccessPoint {

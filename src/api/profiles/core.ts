@@ -12,6 +12,37 @@ import { getDefaultUpstreamUrl, getDefaultProfileFilterUrls } from "../../consta
 import { syncAllListsForProfile } from "../../utils/sync";
 import { validateEcsSettings } from "../../utils/ecsSubnet";
 import { probeUpstream } from "../../pipeline/resolver/probe";
+import { AccessPointModel } from "../../models/accessPoint";
+import { profileKeyMemoryMap } from "../../pipeline/cache";
+import { cacheUtils } from "../../utils/cache";
+import { isServerfullEnv } from "../../utils/serverfullEnv";
+import { envNumber } from "../../utils/envNumber";
+
+/**
+ * Helper to clamp profile settings to effective user role limits before returning to client.
+ */
+export function clampProfileSettingsForUser(profile: Profile, user: User | null, env: Env): Profile {
+  const globalMax = envNumber(env.MAX_LOG_RETENTION_DAYS, 30);
+  const normalUserMax = envNumber(env.NORMAL_USER_MAX_LOG_RETENTION_DAYS, Math.min(7, globalMax), { max: globalMax });
+  const adminMax = envNumber(env.ADMIN_USER_MAX_LOG_RETENTION_DAYS, globalMax, { max: globalMax });
+  const roleCap = user?.role === 'admin' ? adminMax : normalUserMax;
+
+  try {
+    const isString = typeof profile.settings === 'string';
+    const settings = isString ? JSON.parse(profile.settings || '{}') : { ...profile.settings };
+    if (settings.log_retention_days != null) {
+      const parsed = Number(settings.log_retention_days);
+      if (Number.isFinite(parsed) && parsed > roleCap) {
+        settings.log_retention_days = roleCap;
+        return {
+          ...profile,
+          settings: isString ? JSON.stringify(settings) : settings
+        };
+      }
+    }
+  } catch {}
+  return profile;
+}
 
 /**
  * Handle requests to /api/profiles (without specific profile ID)
@@ -23,12 +54,13 @@ export async function handleProfilesCoreCollectionRequest(
   pathParts: string[],
   ctx?: ExecutionContext
 ): Promise<Response> {
-  const profileModel = new ProfileModel(env.DB);
+  const profileModel = new ProfileModel(env.DB, env);
 
   // GET /api/profiles
   if (request.method === 'GET') {
     const results = await profileModel.listByOwner(user.id);
-    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+    const clamped = results.map(p => clampProfileSettingsForUser(p, user, env));
+    return new Response(JSON.stringify(clamped), { headers: { 'Content-Type': 'application/json' } });
   }
 
   // POST /api/profiles
@@ -144,8 +176,8 @@ export async function handleProfilesCoreRequest(
   pathParts: string[],
   ctx: ExecutionContext
 ): Promise<Response> {
-  const profileModel = new ProfileModel(env.DB);
-  const logModel = new LogModel(env.DB);
+  const profileModel = new ProfileModel(env.DB, env);
+  const logModel = new LogModel(env.DB, env);
   const profileId = profile.id;
 
   // Handles:
@@ -154,7 +186,28 @@ export async function handleProfilesCoreRequest(
   // - GET /api/profiles/:id
   if (pathParts.length === 3) {
     if (request.method === 'DELETE') {
+      const isServerfull = isServerfullEnv(env);
+      const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;
+      if (profile.profile_key) {
+        profileKeyMemoryMap.delete(profile.profile_key);
+        if (cache) {
+          ctx.waitUntil(cacheUtils.delete(cache, `doh_key_v1:${profile.profile_key}`));
+        }
+      }
+      try {
+        const apModel = new AccessPointModel(env.DB);
+        const aps = await apModel.getAccessPoints(profileId);
+        for (const ap of aps) {
+          if (ap.token) {
+            profileKeyMemoryMap.delete(ap.token);
+            if (cache) {
+              ctx.waitUntil(cacheUtils.delete(cache, `doh_key_v1:${ap.token}`));
+            }
+          }
+        }
+      } catch {}
       await profileModel.delete(profileId);
+      ctx.waitUntil(pipeline.clearCache(profileId, true, env));
       return new Response(null, { status: 204 });
     }
 
@@ -167,7 +220,8 @@ export async function handleProfilesCoreRequest(
     }
 
     if (request.method === 'GET') {
-      return new Response(JSON.stringify(profile), {
+      const clamped = clampProfileSettingsForUser(profile, user, env);
+      return new Response(JSON.stringify(clamped), {
         headers: { 'Content-Type': 'application/json' }
       });
     }
@@ -177,8 +231,17 @@ export async function handleProfilesCoreRequest(
 
   // POST /api/profiles/:id/rotate_key
   if (pathParts[3] === 'rotate_key' && request.method === 'POST') {
+    const oldKey = profile.profile_key;
     const newKey = generateId(12);
     await profileModel.rotateKey(profileId, newKey);
+    if (oldKey) {
+      profileKeyMemoryMap.delete(oldKey);
+      const isServerfull = isServerfullEnv(env);
+      const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;
+      if (cache) {
+        ctx.waitUntil(cacheUtils.delete(cache, `doh_key_v1:${oldKey}`));
+      }
+    }
     ctx.waitUntil(pipeline.clearCache(profileId, false, env));
     return new Response(JSON.stringify({ profile_key: newKey }), { headers: { 'Content-Type': 'application/json' } });
   }
@@ -188,19 +251,16 @@ export async function handleProfilesCoreRequest(
     const newSettings = await request.json() as ProfileSettings;
     
     // Enforce log retention limit
-    const globalMaxRetention = env.MAX_LOG_RETENTION_DAYS !== undefined && env.MAX_LOG_RETENTION_DAYS !== ''
-      ? Number(env.MAX_LOG_RETENTION_DAYS)
-      : 30;
-    const adminMaxRetention = env.ADMIN_USER_MAX_LOG_RETENTION_DAYS !== undefined && env.ADMIN_USER_MAX_LOG_RETENTION_DAYS !== ''
-      ? Math.min(Number(env.ADMIN_USER_MAX_LOG_RETENTION_DAYS), globalMaxRetention)
-      : globalMaxRetention;
-    const normalUserMax = env.NORMAL_USER_MAX_LOG_RETENTION_DAYS !== undefined && env.NORMAL_USER_MAX_LOG_RETENTION_DAYS !== ''
-      ? Math.min(Number(env.NORMAL_USER_MAX_LOG_RETENTION_DAYS), globalMaxRetention)
-      : Math.min(7, globalMaxRetention);
+    const globalMaxRetention = envNumber(env.MAX_LOG_RETENTION_DAYS, 30);
+    const adminMaxRetention = envNumber(env.ADMIN_USER_MAX_LOG_RETENTION_DAYS, globalMaxRetention, { max: globalMaxRetention });
+    const normalUserMax = envNumber(env.NORMAL_USER_MAX_LOG_RETENTION_DAYS, Math.min(7, globalMaxRetention), { max: globalMaxRetention });
     const userMaxRetention = user?.role === 'admin' ? adminMaxRetention : normalUserMax;
 
     if (newSettings.log_retention_days != null) {
-      newSettings.log_retention_days = Math.min(Number(newSettings.log_retention_days), userMaxRetention);
+      const parsedDays = Number(newSettings.log_retention_days);
+      newSettings.log_retention_days = Number.isFinite(parsedDays)
+        ? Math.max(0, Math.min(parsedDays, userMaxRetention))
+        : 0;
     }
     
     // Load the stored settings first: upstream is only re-probed when it actually changed.
@@ -293,13 +353,10 @@ export async function handleProfilesCoreRequest(
     const newDays = newSettings.log_retention_days;
     if (newDays != null && Number(newDays) < oldDays) {
       if (Number(newDays) === 0) {
-        // 关闭日志时彻底清空当前配置的历史日志
+        // 关闭日志时彻底清空当前配置的历史日志 (thực hiện theo chunk có pacing để không nghẽn DNS)
         ctx.waitUntil((async () => {
           try {
-            await env.DB.batch([
-              env.DB.prepare("DELETE FROM logs WHERE profile_id = ?").bind(profileId),
-              env.DB.prepare("DELETE FROM hourly_rollups WHERE profile_id = ?").bind(profileId)
-            ]);
+            await logModel.deleteByProfile(profileId);
             await logModel.kemKeys.cleanupProfileOrphans(profileId);
           } catch (e: any) {
             console.error("[Profile] Failed to purge logs on retention disable:", e?.message || e);
@@ -307,7 +364,7 @@ export async function handleProfilesCoreRequest(
         })());
       } else {
         const threshold = Math.floor(Date.now() / 1000 - (Number(newDays) * 24 * 3600));
-        ctx.waitUntil(logModel.cleanup(profileId, threshold));
+        ctx.waitUntil(logModel.deleteLogsChunked(profileId, threshold));
       }
     }
 

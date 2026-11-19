@@ -287,13 +287,9 @@ export async function syncSingleSystemList(
           .all<{ profile_id: string }>();
 
         if (affected?.results && affected.results.length > 0) {
-          const clearTasks = affected.results.map((row) =>
-            pipelineCache.clear(row.profile_id, false, env).catch((e) =>
-              console.warn(`[SystemListSync] Failed to clear cache for profile ${row.profile_id}:`, e)
-            )
-          );
-          await Promise.all(clearTasks);
-          console.log(`[SystemListSync] Cleared pipeline cache for ${affected.results.length} profile(s) using system list #${systemListId}.`);
+          const profileIds = affected.results.map((row) => row.profile_id);
+          await pipelineCache.clearMany(profileIds, false, env);
+          console.log(`[SystemListSync] Cleared pipeline cache for ${profileIds.length} profile(s) using system list #${systemListId}.`);
         }
       } catch (err) {
         console.warn("[SystemListSync] Failed to clear pipeline cache for affected profiles:", err);

@@ -1,5 +1,5 @@
 import { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
-import { ResolutionLog } from "../../types";
+import { Env, ResolutionLog } from "../../types";
 import {
   LogCoreModel,
   GetLogsOptions
@@ -36,10 +36,10 @@ export class LogModel {
   public readonly analytics: LogAnalyticsModel;
   public readonly kemKeys: KemKeyModel;
 
-  constructor(private readonly db: D1Database) {
-    this.core = new LogCoreModel(db);
+  constructor(private readonly db: D1Database, env?: Env) {
+    this.core = new LogCoreModel(db, env);
     this.aggregation = new LogAggregationModel(db);
-    this.retention = new LogRetentionModel(db);
+    this.retention = new LogRetentionModel(db, undefined, env);
     this.analytics = new LogAnalyticsModel(db, this.aggregation);
     this.kemKeys = new KemKeyModel(db);
   }
@@ -60,15 +60,24 @@ export class LogModel {
     return this.core.getLog(profileId, logId, timestamp);
   }
 
-  async deleteByProfile(profileId: string): Promise<boolean> {
-    return this.core.deleteByProfile(profileId);
+  async deleteByProfile(profileId: string, chunkSize?: number, yieldSleepMs?: number): Promise<boolean> {
+    return this.core.deleteByProfile(profileId, chunkSize, yieldSleepMs);
   }
 
-  async deleteByOwner(ownerId: string): Promise<boolean> {
-    return this.core.deleteByOwner(ownerId);
+  async deleteByOwner(ownerId: string, chunkSize?: number, yieldSleepMs?: number): Promise<boolean> {
+    return this.core.deleteByOwner(ownerId, chunkSize, yieldSleepMs);
   }
 
-  async cleanup(profileId: string, olderThanTimestamp: number, maxRows = 1000): Promise<number> {
+  async deleteLogsChunked(
+    profileId: string,
+    olderThanTimestamp?: number,
+    chunkSize?: number,
+    yieldSleepMs?: number
+  ): Promise<number> {
+    return this.core.deleteLogsChunked(profileId, olderThanTimestamp, chunkSize, yieldSleepMs);
+  }
+
+  async cleanup(profileId: string, olderThanTimestamp: number, maxRows?: number): Promise<number> {
     return this.core.cleanup(profileId, olderThanTimestamp, maxRows);
   }
 
@@ -77,9 +86,10 @@ export class LogModel {
     batchLimit = 1000,
     dailyBudget = 20000,
     orphanKeyOptions: { safetyWindowSec?: number; batchLimit?: number } = {},
-    capOptions: { maxLogsPerProfile?: number; chunkSize?: number } = {}
+    capOptions: { maxLogsPerProfile?: number; chunkSize?: number; yieldSleepMs?: number } = {},
+    roleOptions: { normalUserMaxDays?: number; adminMaxDays?: number } = {}
   ): Promise<number> {
-    return this.retention.cleanupGlobal(maxRetentionDays, batchLimit, dailyBudget, orphanKeyOptions, capOptions);
+    return this.retention.cleanupGlobal(maxRetentionDays, batchLimit, dailyBudget, orphanKeyOptions, capOptions, roleOptions);
   }
 
   async getLatestRollupHour(profileId: string): Promise<number | null> {

@@ -199,6 +199,12 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     ASSETS: null as any, // Set by http.ts
     JWT_SECRET: getOrInitPersistentJwtSecret(),
     FAIL_OPEN_UPSTREAM: process.env.FAIL_OPEN_UPSTREAM || DEFAULT_FAIL_OPEN_UPSTREAM,
+    DOH_H2_HEDGE_MS: process.env.DOH_H2_HEDGE_MS !== undefined && process.env.DOH_H2_HEDGE_MS !== ''
+      ? Number(process.env.DOH_H2_HEDGE_MS)
+      : 100,
+    CF_ZONE_ID: process.env.CF_ZONE_ID || '',
+    CF_PURGE_TOKEN: process.env.CF_PURGE_TOKEN || '',
+    DOMAIN_ROLLUP_MIN_COUNT: Number(process.env.DOMAIN_ROLLUP_MIN_COUNT) || 1,
     SUBSTITUTE_DOMAIN: process.env.SUBSTITUTE_DOMAIN || DEFAULT_SUBSTITUTE_DOMAIN,
     PRESET_UPSTREAMS: process.env.PRESET_UPSTREAMS || JSON.stringify(DEFAULT_PRESET_UPSTREAMS),
     PRESET_EXTERNAL_FILTERS: process.env.PRESET_EXTERNAL_FILTERS || JSON.stringify(DEFAULT_PRESET_EXTERNAL_FILTERS),
@@ -211,13 +217,13 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     ACCESS_TOKEN_EXPIRATION_MINUTES: Number(process.env.ACCESS_TOKEN_EXPIRATION_MINUTES) || 10,
     SESSION_GEO_DISTANCE_KM: process.env.SESSION_GEO_DISTANCE_KM || 50,
     PREAUTH_TTL_SECONDS: process.env.PREAUTH_TTL_SECONDS || 300,
-    FILTER_MEM_TTL: process.env.FILTER_MEM_TTL || process.env.BLOOM_MEM_TTL || 600000,
+    FILTER_MEM_TTL: process.env.FILTER_MEM_TTL || process.env.BLOOM_MEM_TTL || '0',
     FILTER_MEM_BYTES: Number(process.env.FILTER_MEM_BYTES || process.env.BLOOM_MEM_BYTES) || 268435456,
-    CONFIG_MEM_TTL: process.env.CONFIG_MEM_TTL || 300000,
-    CONFIG_CACHE_LIMIT: Number(process.env.CONFIG_CACHE_LIMIT) || 200,
-    DNS_CACHE_LIMIT: Number(process.env.DNS_CACHE_LIMIT) || 500,
-    PROFILE_KEY_CACHE_LIMIT: Number(process.env.PROFILE_KEY_CACHE_LIMIT) || 500,
-    MEMORY_CACHE_LIMIT: Number(process.env.MEMORY_CACHE_LIMIT) || 5000,
+    CONFIG_MEM_TTL: process.env.CONFIG_MEM_TTL || '0',
+    CONFIG_CACHE_LIMIT: Number(process.env.CONFIG_CACHE_LIMIT) || 5000,
+    DNS_CACHE_LIMIT: Number(process.env.DNS_CACHE_LIMIT) || 50000,
+    PROFILE_KEY_CACHE_LIMIT: Number(process.env.PROFILE_KEY_CACHE_LIMIT) || 10000,
+    MEMORY_CACHE_LIMIT: Number(process.env.MEMORY_CACHE_LIMIT) || 20000,
     RULE_PARSE_CACHE_LIMIT: Number(process.env.RULE_PARSE_CACHE_LIMIT) || 5000,
     SYNC_TIMEOUT_MS: process.env.SYNC_TIMEOUT_MS || 30000,
     INACTIVITY_THRESHOLD_DAYS: process.env.INACTIVITY_THRESHOLD_DAYS !== undefined && process.env.INACTIVITY_THRESHOLD_DAYS !== ''
@@ -234,6 +240,9 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     MAX_LIST_DOMAINS: Number(process.env.MAX_LIST_DOMAINS) || 2000000,
     MAX_LIST_BYTES: Number(process.env.MAX_LIST_BYTES) || 104857600, // 100 MB
     MAX_LOG_RETENTION_DAYS: process.env.MAX_LOG_RETENTION_DAYS || 30,
+    ADMIN_USER_MAX_LOG_RETENTION_DAYS: process.env.ADMIN_USER_MAX_LOG_RETENTION_DAYS !== undefined && process.env.ADMIN_USER_MAX_LOG_RETENTION_DAYS !== ''
+      ? Number(process.env.ADMIN_USER_MAX_LOG_RETENTION_DAYS)
+      : (process.env.MAX_LOG_RETENTION_DAYS || 30),
     DEFAULT_LOG_RETENTION_DAYS: process.env.DEFAULT_LOG_RETENTION_DAYS || 7,
     NORMAL_USER_MAX_LOG_RETENTION_DAYS: process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS !== undefined && process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS !== ''
       ? Number(process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS)
@@ -242,7 +251,15 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     MAX_LOGS_PER_PROFILE: process.env.MAX_LOGS_PER_PROFILE || 500000,
     // Local disk has no write quota, so cleanup runs often and in large batches (D1/Workers keep 3600s / 1000 / 20000).
     CLEANUP_INTERVAL_SEC: process.env.CLEANUP_INTERVAL_SEC || 600,
-    LOG_CLEANUP_BATCH_LIMIT: process.env.LOG_CLEANUP_BATCH_LIMIT || 20000,
+    LOG_CLEANUP_CHUNK_SIZE: process.env.LOG_CLEANUP_CHUNK_SIZE !== undefined && process.env.LOG_CLEANUP_CHUNK_SIZE !== ''
+      ? Number(process.env.LOG_CLEANUP_CHUNK_SIZE)
+      : 2500,
+    LOG_CLEANUP_YIELD_SLEEP_MS: process.env.LOG_CLEANUP_YIELD_SLEEP_MS !== undefined && process.env.LOG_CLEANUP_YIELD_SLEEP_MS !== ''
+      ? Number(process.env.LOG_CLEANUP_YIELD_SLEEP_MS)
+      : 10,
+    LOG_CLEANUP_BATCH_LIMIT: process.env.LOG_CLEANUP_BATCH_LIMIT !== undefined && process.env.LOG_CLEANUP_BATCH_LIMIT !== ''
+      ? Number(process.env.LOG_CLEANUP_BATCH_LIMIT)
+      : 0, // 0 = unmetered chunked loop with yield (dọn sạch 100% rác)
     LOG_CLEANUP_DAILY_BUDGET: process.env.LOG_CLEANUP_DAILY_BUDGET !== undefined && process.env.LOG_CLEANUP_DAILY_BUDGET !== ''
       ? process.env.LOG_CLEANUP_DAILY_BUDGET
       : 0, // 0 = no daily deletion limit

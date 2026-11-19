@@ -32,14 +32,14 @@ class CustomListsManager {
   private inFlightLoads: Map<number, Promise<void>> = new Map();
   private generations: Map<number, number> = new Map();
   private dbErrorBackoffs: Map<number, number> = new Map();
-  private ttlMs: number = 300000; // 5 minutes default TTL
+  private ttlMs: number = 0; // 0 = no time expiration by default, managed by ByteCappedMap LRU and invalidation
   private lastEnv: any = null;
 
   constructor() {
     const memBytes = getEnvNumber("FILTER_MEM_BYTES", getEnvNumber("BLOOM_MEM_BYTES", 32 * 1024 * 1024));
     this.cache = new ByteCappedMap<number, CustomListEntry>(memBytes);
-    const ttlSec = getEnvNumber("FILTER_MEM_TTL", getEnvNumber("BLOOM_MEM_TTL", 300));
-    this.ttlMs = ttlSec * 1000;
+    const ttlSec = getEnvNumber("FILTER_MEM_TTL", getEnvNumber("BLOOM_MEM_TTL", 0));
+    this.ttlMs = ttlSec > 0 ? ttlSec * 1000 : 0;
   }
 
   /**
@@ -52,9 +52,10 @@ class CustomListsManager {
     if (Number.isFinite(memBytes) && memBytes > 0) {
       this.cache.setMaxBytes(memBytes);
     }
-    const ttlSec = Number(env.FILTER_MEM_TTL) || Number(env.BLOOM_MEM_TTL);
-    if (Number.isFinite(ttlSec) && ttlSec > 0) {
-      this.ttlMs = ttlSec * 1000;
+    const rawTtl = env.FILTER_MEM_TTL ?? env.BLOOM_MEM_TTL;
+    if (rawTtl !== undefined && rawTtl !== '') {
+      const ttlSec = Number(rawTtl);
+      this.ttlMs = Number.isFinite(ttlSec) && ttlSec > 0 ? ttlSec * 1000 : 0;
     }
   }
 

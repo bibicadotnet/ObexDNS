@@ -72,6 +72,39 @@ export function invalidateProfileLogKeyCache(profileId: string): void {
 /** In-memory batch queue of logs waiting to be flushed to D1 */
 const logBatchQueue: ResolutionLog[] = [];
 
+/**
+ * Immediately discards any pending in-memory logs for the specified profile IDs.
+ * Called before deleting profile logs or deleting a profile to prevent stale logs
+ * in logBatchQueue from being written to DB.
+ */
+/** In-flight batch being flushed */
+let currentInFlightLogs: ResolutionLog[] | null = null;
+
+export function discardPendingLogs(profileId: string): number {
+  return discardPendingLogsFor([profileId]);
+}
+
+export function discardPendingLogsFor(profileIds: Set<string> | string[]): number {
+  const pSet = profileIds instanceof Set ? profileIds : new Set(profileIds);
+  if (pSet.size === 0) return 0;
+  let count = 0;
+  for (let i = logBatchQueue.length - 1; i >= 0; i--) {
+    if (pSet.has(logBatchQueue[i].profile_id)) {
+      logBatchQueue.splice(i, 1);
+      count++;
+    }
+  }
+  if (currentInFlightLogs) {
+    for (let i = currentInFlightLogs.length - 1; i >= 0; i--) {
+      if (pSet.has(currentInFlightLogs[i].profile_id)) {
+        currentInFlightLogs.splice(i, 1);
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 /** Maximum number of statements in a single db.batch() transaction */
 const MAX_BATCH_SIZE = 40;
 
@@ -179,14 +212,9 @@ export async function flushLogBatch(env: Env, ctx?: ExecutionContext): Promise<v
       return;
     }
 
+    currentInFlightLogs = logsToFlush;
     const logModel = new LogModel(env.DB);
     const statements: D1PreparedStatement[] = [];
-
-    // Generate atomic rollup UPSERT statements from unencrypted in-memory logs BEFORE sensitive data encryption
-    const rollupStatements = logModel.aggregation.createRollupUpsertStatements(logsToFlush);
-    if (rollupStatements.length > 0) {
-      statements.push(...rollupStatements);
-    }
 
     // Group logs by profile to batch E2EE public key lookup
     const profileIds = Array.from(new Set(logsToFlush.map((l) => l.profile_id)));
@@ -210,6 +238,16 @@ export async function flushLogBatch(env: Env, ctx?: ExecutionContext): Promise<v
         }
       })
     );
+
+    if (logsToFlush.length === 0) {
+      return;
+    }
+
+    // Generate atomic rollup UPSERT statements from unencrypted in-memory logs BEFORE sensitive data encryption
+    const rollupStatements = logModel.aggregation.createRollupUpsertStatements(logsToFlush);
+    if (rollupStatements.length > 0) {
+      statements.push(...rollupStatements);
+    }
 
     for (const log of logsToFlush) {
       const pubKey = keyMap.get(log.profile_id);
@@ -291,6 +329,7 @@ export async function flushLogBatch(env: Env, ctx?: ExecutionContext): Promise<v
       }
     }
   } finally {
+    currentInFlightLogs = null;
     isFlushing = false;
     // If there are still items remaining in queue, schedule the next batch
     if (logBatchQueue.length > 0) {

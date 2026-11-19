@@ -1,11 +1,13 @@
 import { Env, User, ExecutionContext } from "../../types";
 import { createBlankRefreshTokenCookie, readRefreshTokenCookie, parseRefreshTokenString, isUsableJwtSecret, isStrongJwtSecret } from "../../lib/auth";
 import { UserModel } from "../../models/user";
+import { ProfileModel } from "../../models/profile";
 import { LogModel } from "../../models/log";
 import { PasskeyModel } from "../../models/passkey";
 import { USERNAME_REGEX } from "../../utils/validator";
 import { verifyUserReauth, ReauthPayload } from "./security/reauth";
 import { scheduleSpaceReclaim } from "../../utils/dbMaintenance";
+import { pipeline } from "../../pipeline";
 
 /**
  * Handle requests to /api/account/me, /api/account/logs, /api/account/delete
@@ -18,7 +20,7 @@ export async function handleMeRequest(
   ctx: ExecutionContext
 ): Promise<Response> {
   const userModel = new UserModel(env.DB, env);
-  const logModel = new LogModel(env.DB);
+  const logModel = new LogModel(env.DB, env);
   const action = pathParts[2];
 
   // GET /api/account/me & PATCH /api/account/me
@@ -178,12 +180,25 @@ export async function handleMeRequest(
       return new Response(authResult.error || "Authentication failed", { status: 400 });
     }
 
+    const { results: userProfiles } = await env.DB
+      .prepare("SELECT id FROM profiles WHERE owner_id = ?")
+      .bind(user.id)
+      .all<{ id: string }>();
+
     const { invalidateSession } = await import("../../lib/auth");
     const cookieHeader = request.headers.get("Cookie") || "";
     const refreshToken = readRefreshTokenCookie(cookieHeader);
     const sessionId = refreshToken ? parseRefreshTokenString(refreshToken)?.sid || null : null;
     if (sessionId) await invalidateSession(env, sessionId);
+
+    const profileModel = new ProfileModel(env.DB, env);
+    await profileModel.deleteByOwner(user.id);
     await userModel.delete(user.id);
+
+    if (userProfiles && userProfiles.length > 0) {
+      const pids = userProfiles.map((p) => p.id);
+      ctx.waitUntil(pipeline.clearCacheMany(pids, true, env));
+    }
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Set-Cookie": createBlankRefreshTokenCookie(), "Content-Type": "application/json" }
     });

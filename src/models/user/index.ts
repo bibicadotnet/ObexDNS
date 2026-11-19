@@ -32,7 +32,7 @@ export class UserModel {
     this.core = new UserCoreModel(db, this.secrets);
     this.security = new UserSecurityModel(db);
     this.mfa = new UserMfaModel(db, env);
-    this.lifecycle = new UserLifecycleModel(db);
+    this.lifecycle = new UserLifecycleModel(db, env as any);
   }
 
   /**

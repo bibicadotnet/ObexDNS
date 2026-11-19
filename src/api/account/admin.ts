@@ -3,9 +3,11 @@ import { generateId } from "../../lib/auth";
 import { hashPassword } from "../../utils/crypto";
 import { UserModel } from "../../models/user";
 import { ProfileModel } from "../../models/profile";
+import { LogModel } from "../../models/log";
 import { SystemSettingsModel } from "../../models/systemSettings";
 import { PASSWORD_REGEX, USERNAME_REGEX } from "../../utils/validator";
 import { isServerfullEnv } from "../../utils/serverfullEnv";
+import { pipeline } from "../../pipeline";
 import {
   getDatabaseService,
   isTursoConfigured,
@@ -37,7 +39,7 @@ export async function handleAdminRequest(
   ctx: ExecutionContext
 ): Promise<Response> {
   const userModel = new UserModel(env.DB, env);
-  const profileModel = new ProfileModel(env.DB);
+  const profileModel = new ProfileModel(env.DB, env);
 
   if (pathParts[2] === 'users') {
     if (request.method === 'GET') {
@@ -67,8 +69,21 @@ export async function handleAdminRequest(
     if (request.method === 'DELETE' && pathParts[3]) {
       const targetId = pathParts[3];
       if (targetId === user.id) return new Response("Cannot delete yourself", { status: 400 });
+
+      const { results: targetProfiles } = await env.DB
+        .prepare("SELECT id FROM profiles WHERE owner_id = ?")
+        .bind(targetId)
+        .all<{ id: string }>();
+
+      const profileModel = new ProfileModel(env.DB, env);
       await profileModel.deleteByOwner(targetId);
       await userModel.delete(targetId);
+
+      if (targetProfiles && targetProfiles.length > 0) {
+        for (const p of targetProfiles) {
+          ctx.waitUntil(pipeline.clearCache(p.id, true, env));
+        }
+      }
       return new Response(null, { status: 204 });
     }
   }

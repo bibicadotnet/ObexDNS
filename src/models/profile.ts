@@ -1,6 +1,7 @@
 import { D1Database } from "@cloudflare/workers-types";
-import { Profile, ProfileSettings } from "../types";
+import { Env, Profile, ProfileSettings } from "../types";
 import { generateId, generateZBase32Token } from "../lib/auth";
+import { LogModel } from "./log";
 
 export interface ProfileWithFilter extends Profile {
   list_updated_at?: number;
@@ -8,7 +9,7 @@ export interface ProfileWithFilter extends Profile {
 export type ProfileWithBloom = ProfileWithFilter;
 
 export class ProfileModel {
-  constructor(private db: D1Database) {}
+  constructor(private db: D1Database, private env?: Env) {}
 
   // --- Core Profile Methods ---
   async getById(id: string): Promise<ProfileWithFilter | null> {
@@ -92,21 +93,17 @@ export class ProfileModel {
   }
 
   async delete(id: string): Promise<boolean> {
-    const results = await this.db.batch([
-      this.db.prepare("DELETE FROM logs WHERE profile_id = ?").bind(id),
-      this.db.prepare("DELETE FROM hourly_rollups WHERE profile_id = ?").bind(id),
-      this.db.prepare("DELETE FROM profiles WHERE id = ?").bind(id)
-    ]);
-    return results.every(r => r.success);
+    const logModel = new LogModel(this.db, this.env);
+    await logModel.deleteByProfile(id);
+    const result = await this.db.prepare("DELETE FROM profiles WHERE id = ?").bind(id).run();
+    return result.success;
   }
 
   async deleteByOwner(ownerId: string): Promise<boolean> {
-    const results = await this.db.batch([
-      this.db.prepare("DELETE FROM logs WHERE profile_id IN (SELECT id FROM profiles WHERE owner_id = ?)").bind(ownerId),
-      this.db.prepare("DELETE FROM hourly_rollups WHERE profile_id IN (SELECT id FROM profiles WHERE owner_id = ?)").bind(ownerId),
-      this.db.prepare("DELETE FROM profiles WHERE owner_id = ?").bind(ownerId)
-    ]);
-    return results.every(r => r.success);
+    const logModel = new LogModel(this.db, this.env);
+    await logModel.deleteByOwner(ownerId);
+    const result = await this.db.prepare("DELETE FROM profiles WHERE owner_id = ?").bind(ownerId).run();
+    return result.success;
   }
 
   async updateName(id: string, name: string): Promise<boolean> {

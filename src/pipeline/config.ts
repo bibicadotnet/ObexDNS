@@ -43,12 +43,15 @@ export const pipelineConfig = {
 
     // 1. 检查 L1 Memory (Isolate Global)
     const cachedConfig = configCache.get(profileId);
-    const configuredMemTtl = Number(env.CONFIG_MEM_TTL) || 300000;
+    const configuredMemTtl = env.CONFIG_MEM_TTL !== undefined && env.CONFIG_MEM_TTL !== ''
+      ? Number(env.CONFIG_MEM_TTL)
+      : 0;
+    // 0 = keep permanently in RAM until invalidated or evicted by CONFIG_CACHE_LIMIT LRU
     const configMemTtl = Number.isFinite(configuredMemTtl) && configuredMemTtl > 0
       ? configuredMemTtl
-      : 300000;
+      : 0;
 
-    if (cachedConfig && (Date.now() - (cachedConfig.timestamp || 0) < configMemTtl)) {
+    if (cachedConfig && (configMemTtl === 0 || Date.now() - (cachedConfig.timestamp || 0) < configMemTtl)) {
       track('load_config_l1_mem');
       const enabledCustomListIds = cachedConfig.enabledCustomListIds || [];
       if (env.DB && enabledCustomListIds.length > 0) {

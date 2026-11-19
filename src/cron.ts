@@ -14,6 +14,8 @@ import { SystemSettingsModel } from './models/systemSettings';
 let lastCleanupMemoryTs = 0;
 /** In-memory throttle tracker for system shared lists sync phase */
 let lastSystemSyncMemoryTs = 0;
+/** Concurrency lock preventing overlapping cron runs if execution exceeds trigger interval */
+let isScheduledRunning = false;
 
 /**
  * Handles cron-scheduled events to run background cleanup and list synchronization.
@@ -28,6 +30,11 @@ export async function handleScheduled(
   env: Env,
   ctx: ExecutionContext
 ): Promise<void> {
+  if (isScheduledRunning) {
+    console.warn("[Cron] handleScheduled already in progress, skipping overlapping execution.");
+    return;
+  }
+  isScheduledRunning = true;
   try {
     const cache = typeof caches !== 'undefined' ? (caches as any).default : null;
     const now = Math.floor(Date.now() / 1000);
@@ -106,10 +113,12 @@ export async function handleScheduled(
       }
 
       try {
-        const logModel = new LogModel(env.DB);
+        const logModel = new LogModel(env.DB, env);
         const maxRetentionDays = envNumber(env.MAX_LOG_RETENTION_DAYS, 30);
         const cleanupBatchLimit = envNumber(env.LOG_CLEANUP_BATCH_LIMIT, 1000);
         const cleanupDailyBudget = envNumber(env.LOG_CLEANUP_DAILY_BUDGET, 20000);
+        const normalUserMaxDays = envNumber(env.NORMAL_USER_MAX_LOG_RETENTION_DAYS, Math.min(7, maxRetentionDays));
+        const adminMaxDays = envNumber(env.ADMIN_USER_MAX_LOG_RETENTION_DAYS, maxRetentionDays);
         await logModel.cleanupGlobal(
           maxRetentionDays,
           cleanupBatchLimit,
@@ -121,7 +130,15 @@ export async function handleScheduled(
           // The per-profile row cap needs an indexed lookup per profile, which is free on local SQLite
           // but billed as row reads on Cloudflare D1, so it is only enabled where the DB can also
           // reclaim disk space (Serverfull File mode).
-          { maxLogsPerProfile: hasLocalMaintenance ? envNumber(env.MAX_LOGS_PER_PROFILE, 0) : 0 }
+          {
+            maxLogsPerProfile: hasLocalMaintenance ? envNumber(env.MAX_LOGS_PER_PROFILE, 0) : 0,
+            chunkSize: envNumber(env.LOG_CLEANUP_CHUNK_SIZE, 2500, { min: 100 }),
+            yieldSleepMs: envNumber(env.LOG_CLEANUP_YIELD_SLEEP_MS, 10, { min: 0 }),
+          },
+          {
+            normalUserMaxDays,
+            adminMaxDays,
+          }
         );
       } catch (e) {
         console.error("[Cron] Global log cleanup failed:", e);
@@ -136,6 +153,17 @@ export async function handleScheduled(
         }
       } catch (e) {
         console.error("[Cron] Session cleanup failed:", e);
+      }
+
+      // 4. Sweep expired in-memory DNS cache entries (TTL expired and never queried again)
+      try {
+        const { sweepExpiredDnsCache } = await import('./pipeline/cache');
+        const swept = sweepExpiredDnsCache();
+        if (swept > 0) {
+          console.log(`[Cron] Swept ${swept} expired DNS cache entry/entries from RAM.`);
+        }
+      } catch (e) {
+        console.warn("[Cron] Failed to sweep expired DNS cache:", e);
       }
 
       // Give disk space freed by the deletions above back to the filesystem, in short chunks that
@@ -258,5 +286,7 @@ export async function handleScheduled(
   } catch (e: unknown) {
     const errorMsg = e instanceof Error ? e.message : String(e);
     console.error("[Cron] Critical Failure:", errorMsg);
+  } finally {
+    isScheduledRunning = false;
   }
 }

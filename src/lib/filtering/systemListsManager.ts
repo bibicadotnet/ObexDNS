@@ -97,8 +97,7 @@ class SystemListsManager {
    * Cached with TTL (10 minutes) or refreshed immediately if invalidated.
    */
   async ensureLoaded(db: D1Database, force: boolean = false, env?: any): Promise<void> {
-    const now = Date.now();
-    if (!force && this.lastLoadedTs > 0 && now - this.lastLoadedTs < 600000 && this.items.size > 0) {
+    if (!force && this.lastLoadedTs > 0 && this.items.size > 0) {
       return;
     }
 

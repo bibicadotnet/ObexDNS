@@ -1,5 +1,6 @@
 import { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
-import { ResolutionLog } from "../../types";
+import { Env, ResolutionLog } from "../../types";
+import { discardPendingLogs } from "../../pipeline/logBatcher";
 
 let logSeqCounter = 0;
 
@@ -42,7 +43,32 @@ export interface GetLogsOptions {
  * filtered pagination, and profile-scoped deletions.
  */
 export class LogCoreModel {
-  constructor(private readonly db: D1Database) {}
+  constructor(
+    private readonly db: D1Database,
+    private readonly env?: Env
+  ) {}
+
+  private getChunkSize(explicit?: number): number {
+    if (explicit !== undefined && !isNaN(explicit)) return Math.max(100, Math.floor(explicit));
+    const envVal = Number(this.env?.LOG_CLEANUP_CHUNK_SIZE);
+    if (!isNaN(envVal) && envVal > 0) return Math.max(100, Math.floor(envVal));
+    if (typeof process !== 'undefined') {
+      const procVal = Number(process.env?.LOG_CLEANUP_CHUNK_SIZE);
+      if (!isNaN(procVal) && procVal > 0) return Math.max(100, Math.floor(procVal));
+    }
+    return 2500;
+  }
+
+  private getYieldSleepMs(explicit?: number): number {
+    if (explicit !== undefined && !isNaN(explicit)) return Math.max(0, Math.floor(explicit));
+    const envVal = this.env?.LOG_CLEANUP_YIELD_SLEEP_MS !== undefined ? Number(this.env.LOG_CLEANUP_YIELD_SLEEP_MS) : undefined;
+    if (envVal !== undefined && !isNaN(envVal) && envVal >= 0) return Math.max(0, Math.floor(envVal));
+    if (typeof process !== 'undefined' && process.env?.LOG_CLEANUP_YIELD_SLEEP_MS !== undefined) {
+      const procVal = Number(process.env.LOG_CLEANUP_YIELD_SLEEP_MS);
+      if (!isNaN(procVal) && procVal >= 0) return Math.max(0, Math.floor(procVal));
+    }
+    return 10;
+  }
 
   /**
    * Generates a prepared D1 INSERT statement for a single resolution log entry.
@@ -225,31 +251,82 @@ export class LogCoreModel {
   }
 
   /**
-   * Deletes all logs and hourly rollups belonging to a specific profile.
-   *
-   * @param profileId - Profile identifier.
-   * @returns Promise resolving to true if delete succeeded.
+   * Deletes raw logs of a profile in chunks with cooperative event loop yielding,
+   * ensuring synchronous database drivers never freeze incoming DNS resolution.
    */
-  async deleteByProfile(profileId: string): Promise<boolean> {
-    const results = await this.db.batch([
-      this.db.prepare("DELETE FROM logs WHERE profile_id = ?").bind(profileId),
-      this.db.prepare("DELETE FROM hourly_rollups WHERE profile_id = ?").bind(profileId)
-    ]);
-    return results.every(r => r.success);
+  async deleteLogsChunked(
+    profileId: string,
+    olderThanTimestamp?: number,
+    chunkSize?: number,
+    yieldSleepMs?: number
+  ): Promise<number> {
+    const chunk = this.getChunkSize(chunkSize);
+    const sleepMs = this.getYieldSleepMs(yieldSleepMs);
+    let totalDeleted = 0;
+
+    for (;;) {
+      const stmt = olderThanTimestamp !== undefined
+        ? this.db.prepare(`
+            DELETE FROM logs WHERE (profile_id, timestamp, id) IN (
+              SELECT profile_id, timestamp, id FROM logs WHERE profile_id = ? AND timestamp < ? LIMIT ?
+            )
+          `).bind(profileId, olderThanTimestamp, chunk)
+        : this.db.prepare(`
+            DELETE FROM logs WHERE (profile_id, timestamp, id) IN (
+              SELECT profile_id, timestamp, id FROM logs WHERE profile_id = ? LIMIT ?
+            )
+          `).bind(profileId, chunk);
+
+      const result = await stmt.run();
+      const count = result.meta?.changes ?? 0;
+      if (count <= 0) break;
+      totalDeleted += count;
+      if (count < chunk) break;
+
+      if (sleepMs > 0) {
+        await new Promise((r) => setTimeout(r, sleepMs));
+      } else {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    }
+    return totalDeleted;
   }
 
   /**
-   * Deletes all logs and hourly rollups belonging to all profiles of an owner.
+   * Deletes all logs and hourly rollups belonging to a specific profile in chunks.
    *
-   * @param ownerId - User identifier.
+   * @param profileId - Profile identifier.
+   * @param chunkSize - Optional rows per batch (defaults to LOG_CLEANUP_CHUNK_SIZE or 2500).
+   * @param yieldSleepMs - Optional delay between chunks in ms (defaults to LOG_CLEANUP_YIELD_SLEEP_MS or 10).
    * @returns Promise resolving to true if delete succeeded.
    */
-  async deleteByOwner(ownerId: string): Promise<boolean> {
-    const results = await this.db.batch([
-      this.db.prepare("DELETE FROM logs WHERE profile_id IN (SELECT id FROM profiles WHERE owner_id = ?)").bind(ownerId),
-      this.db.prepare("DELETE FROM hourly_rollups WHERE profile_id IN (SELECT id FROM profiles WHERE owner_id = ?)").bind(ownerId)
-    ]);
-    return results.every(r => r.success);
+  async deleteByProfile(profileId: string, chunkSize?: number, yieldSleepMs?: number): Promise<boolean> {
+    discardPendingLogs(profileId);
+    await this.deleteLogsChunked(profileId, undefined, chunkSize, yieldSleepMs);
+    const result = await this.db.prepare("DELETE FROM hourly_rollups WHERE profile_id = ?").bind(profileId).run();
+    return result.success;
+  }
+
+  /**
+   * Deletes all logs and hourly rollups belonging to all profiles of an owner in chunks.
+   *
+   * @param ownerId - User identifier.
+   * @param chunkSize - Optional rows per batch (defaults to LOG_CLEANUP_CHUNK_SIZE or 2500).
+   * @param yieldSleepMs - Optional delay between chunks in ms (defaults to LOG_CLEANUP_YIELD_SLEEP_MS or 10).
+   * @returns Promise resolving to true if delete succeeded.
+   */
+  async deleteByOwner(ownerId: string, chunkSize?: number, yieldSleepMs?: number): Promise<boolean> {
+    const { results: profiles } = await this.db
+      .prepare("SELECT id FROM profiles WHERE owner_id = ?")
+      .bind(ownerId)
+      .all<{ id: string }>();
+
+    if (profiles && profiles.length > 0) {
+      for (const p of profiles) {
+        await this.deleteByProfile(p.id, chunkSize, yieldSleepMs);
+      }
+    }
+    return true;
   }
 
   /**
@@ -257,14 +334,15 @@ export class LogCoreModel {
    *
    * @param profileId - Profile identifier.
    * @param olderThanTimestamp - Unix epoch timestamp threshold in seconds.
-   * @param maxRows - Maximum number of raw log rows to delete (default 1000).
+   * @param maxRows - Maximum number of raw log rows to delete (defaults to LOG_CLEANUP_CHUNK_SIZE or 2500).
    * @returns Total number of rows deleted.
    */
-  async cleanup(profileId: string, olderThanTimestamp: number, maxRows = 1000): Promise<number> {
+  async cleanup(profileId: string, olderThanTimestamp: number, maxRows?: number): Promise<number> {
+    const limit = maxRows ?? this.getChunkSize();
     let totalDeleted = 0;
-    const batchSize = Math.min(1000, maxRows);
-    while (totalDeleted < maxRows) {
-      const currentBatch = Math.min(batchSize, maxRows - totalDeleted);
+    const batchSize = Math.min(this.getChunkSize(), limit);
+    while (totalDeleted < limit) {
+      const currentBatch = Math.min(batchSize, limit - totalDeleted);
       const result = await this.db.prepare(`
         DELETE FROM logs WHERE (profile_id, timestamp, id) IN (
           SELECT profile_id, timestamp, id FROM logs WHERE profile_id = ? AND timestamp < ? LIMIT ?

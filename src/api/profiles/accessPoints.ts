@@ -1,6 +1,10 @@
 import { Env, User, ExecutionContext } from "../../types";
 import { AccessPointModel } from "../../models/accessPoint";
 import { AP_NAME_REGEX } from "../../utils/validator";
+import { pipeline } from "../../pipeline";
+import { profileKeyMemoryMap } from "../../pipeline/cache";
+import { cacheUtils } from "../../utils/cache";
+import { isServerfullEnv } from "../../utils/serverfullEnv";
 
 /**
  * Handle access points requests to /api/profiles/:id/access_points
@@ -23,7 +27,19 @@ export async function handleProfileAccessPointsRequest(
   if (request.method === 'POST') {
     if (pathParts.length === 6 && pathParts[5] === 'rotate_token') {
       const apId = pathParts[4];
+      const aps = await apModel.getAccessPoints(profileId);
+      const targetAp = aps.find((a) => a.id === apId);
+      const oldToken = targetAp?.token;
       const newToken = await apModel.rotateAccessPointToken(apId, profileId);
+      if (oldToken) {
+        profileKeyMemoryMap.delete(oldToken);
+        const isServerfull = isServerfullEnv(env);
+        const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;
+        if (cache) {
+          ctx.waitUntil(cacheUtils.delete(cache, `doh_key_v1:${oldToken}`));
+        }
+      }
+      ctx.waitUntil(pipeline.clearCache(profileId, false, env));
       return new Response(JSON.stringify({ token: newToken }), { headers: { 'Content-Type': 'application/json' } });
     }
 
@@ -59,7 +75,19 @@ export async function handleProfileAccessPointsRequest(
 
   if (request.method === 'DELETE' && pathParts.length === 5) {
     const apId = pathParts[4];
+    const aps = await apModel.getAccessPoints(profileId);
+    const targetAp = aps.find((a) => a.id === apId);
+    const oldToken = targetAp?.token;
     await apModel.deleteAccessPoint(apId, profileId);
+    if (oldToken) {
+      profileKeyMemoryMap.delete(oldToken);
+      const isServerfull = isServerfullEnv(env);
+      const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;
+      if (cache) {
+        ctx.waitUntil(cacheUtils.delete(cache, `doh_key_v1:${oldToken}`));
+      }
+    }
+    ctx.waitUntil(pipeline.clearCache(profileId, false, env));
     return new Response(null, { status: 204 });
   }
 

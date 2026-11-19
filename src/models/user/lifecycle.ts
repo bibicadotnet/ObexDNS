@@ -1,5 +1,8 @@
 import { D1Database } from "@cloudflare/workers-types";
+import { Env } from "../../types";
 import { InactivityPolicyResult } from "./types";
+import { LogModel } from "../log";
+import { pipelineCache } from "../../pipeline/cache";
 
 /**
  * Handles account activity timestamp tracking and automated data retention / inactivity cleanup policies.
@@ -7,7 +10,7 @@ import { InactivityPolicyResult } from "./types";
  * Single Responsibility: Account resolution activity tracking and periodic inactivity retention enforcement.
  */
 export class UserLifecycleModel {
-  constructor(private db: D1Database) {}
+  constructor(private db: D1Database, private env?: Env) {}
 
   /**
    * Updates the `last_active_at` timestamp of the user who owns the specified profile.
@@ -48,29 +51,24 @@ export class UserLifecycleModel {
     if (profileInactivityDays > 0) {
       const profileThreshold = now - profileInactivityDays * 24 * 3600;
 
-      const deleteRollupsStmt = this.db.prepare(`
-        DELETE FROM hourly_rollups
-        WHERE profile_id IN (
-          SELECT id FROM profiles
-          WHERE owner_id IN (
-            SELECT id FROM users
-            WHERE role = 'user'
-              AND (last_active_at < ? OR (last_active_at IS NULL AND created_at < ?))
-          )
+      // Identify inactive profiles beforehand to delete logs in non-blocking chunks and invalidate RAM cache
+      const { results: inactiveProfiles } = await this.db.prepare(`
+        SELECT id FROM profiles
+        WHERE owner_id IN (
+          SELECT id FROM users
+          WHERE role = 'user'
+            AND (last_active_at < ? OR (last_active_at IS NULL AND created_at < ?))
         )
-      `).bind(profileThreshold, profileThreshold);
+      `).bind(profileThreshold, profileThreshold).all<{ id: string }>();
 
-      const deleteLogsStmt = this.db.prepare(`
-        DELETE FROM logs
-        WHERE profile_id IN (
-          SELECT id FROM profiles
-          WHERE owner_id IN (
-            SELECT id FROM users
-            WHERE role = 'user'
-              AND (last_active_at < ? OR (last_active_at IS NULL AND created_at < ?))
-          )
-        )
-      `).bind(profileThreshold, profileThreshold);
+      const pids = (inactiveProfiles || []).map((p) => p.id);
+      if (pids.length > 0) {
+        const logModel = new LogModel(this.db, this.env);
+        for (const pid of pids) {
+          await logModel.deleteByProfile(pid);
+        }
+        await pipelineCache.clearMany(pids, true, this.env);
+      }
 
       const deleteProfilesStmt = this.db.prepare(`
         DELETE FROM profiles 
@@ -81,7 +79,7 @@ export class UserLifecycleModel {
         )
       `).bind(profileThreshold, profileThreshold);
 
-      stmts.push(deleteRollupsStmt, deleteLogsStmt, deleteProfilesStmt);
+      stmts.push(deleteProfilesStmt);
       profileDeleteIndex = stmts.length - 1;
     }
 

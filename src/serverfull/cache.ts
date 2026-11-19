@@ -13,7 +13,7 @@ export class MemoryCache {
       : undefined;
     this.maxEntries = maxEntries && maxEntries > 0
       ? maxEntries
-      : (envLimit && envLimit > 0 ? envLimit : 5000);
+      : (envLimit && envLimit > 0 ? envLimit : 20000);
   }
 
   async match(request: string | Request): Promise<Response | undefined> {

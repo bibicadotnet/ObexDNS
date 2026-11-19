@@ -34,10 +34,10 @@ export function isHttp2Supported(): boolean {
 }
 
 /** Send a second copy of the query on a new session after this many ms without a response. */
-const HEDGE_MS = (() => {
+export function getHedgeMs(): number {
   const n = typeof process !== 'undefined' ? Number(process.env?.DOH_H2_HEDGE_MS) : NaN;
-  return n >= 20 ? n : 100;
-})();
+  return Number.isFinite(n) && n >= 20 ? n : 100;
+}
 
 /**
  * Connection pool managing active ClientHttp2Session instances per origin.
@@ -157,7 +157,7 @@ export class Http2SessionPool {
       const overall = setTimeout(() => {
         finish(new Error(`HTTP/2 Request Timeout (${timeoutMs}ms)`));
       }, timeoutMs);
-      const hedgeTimer = setTimeout(() => launch(true), HEDGE_MS);
+      const hedgeTimer = setTimeout(() => launch(true), getHedgeMs());
 
       const finish = (err: Error | null, res?: Http2Response) => {
         if (isSettled) return;

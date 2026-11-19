@@ -1,6 +1,6 @@
 import { Context, DNSQuery, ProfileSettings, ResolutionResult } from "../../types";
 import { fetchGeoIP, resolveClientGeoCountry } from "../../utils/geoip";
-import { dnsCache } from "../cache";
+import { dnsCache, getProfileGeneration } from "../cache";
 import { enqueueLog, shouldLogQuery } from "../logBatcher";
 import { UpstreamHttpError, ParsedDNSAnswerRecord } from "./types";
 
@@ -38,7 +38,11 @@ export function recordSuccessAndCache(
 ): void {
   // 1. Cache first, synchronously. Nothing log-related (GeoIP, batching) may delay it,
   //    otherwise identical queries arriving meanwhile miss the cache and hit upstream again.
-  if (answer.length > 0) {
+  //    Guard against race: if profile config was invalidated while query was resolving, discard stale write.
+  const currentGen = getProfileGeneration(context.profileId);
+  const isGenerationValid = context.profileGeneration === undefined || context.profileGeneration === currentGen;
+
+  if (answer.length > 0 && isGenerationValid) {
     // Answers resolved with a per-client ECS subnet are keyed by that subnet so they are
     // never served to clients in other networks.
     const baseKey = `${context.profileId}:${query.name}:${query.type}`;

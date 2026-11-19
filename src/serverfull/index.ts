@@ -218,7 +218,13 @@ async function bootstrap(): Promise<void> {
   if (httpsServer) await httpsServer.start();
 
   // 7. Start scheduled cron jobs (every 60 seconds)
+  let isCronRunning = false;
   const cronTimer = setInterval(async () => {
+    if (isCronRunning) {
+      console.warn('[Cron] Previous scheduled run still in progress, skipping tick.');
+      return;
+    }
+    isCronRunning = true;
     try {
       const scheduledEvent = {
         cron: '* * * * *',
@@ -236,6 +242,8 @@ async function bootstrap(): Promise<void> {
       await worker.scheduled(scheduledEvent as any, env, ctx);
     } catch (err) {
       console.error('[Cron Scheduler Error]:', err);
+    } finally {
+      isCronRunning = false;
     }
   }, 60000);
 
