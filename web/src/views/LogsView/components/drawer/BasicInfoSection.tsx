@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { formatDateTime } from "../../../../utils/date";
 import type { LogEntry } from "../../types";
 import { DetailItem } from "./DetailItem";
+import { DomainIcon } from "../DomainIcon";
 
 export interface BasicInfoSectionProps {
   selectedLog: LogEntry;
@@ -42,13 +43,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                 {isEncryptedLocked ? (
                   <Lock size={14} className="text-amber-500" />
                 ) : (
-                  <img
-                    src={`/api/icon/${selectedLog.domain.replace(/^\*\./, "")}.ico`}
-                    className="w-4 h-4 rounded-sm"
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    onError={(e) => (e.currentTarget.style.display = "none")}
-                  />
+                  <DomainIcon domain={selectedLog.domain} />
                 )}
                 <span className={clsx({ "italic text-gray-400 dark:text-gray-500": isEncryptedLocked })}>
                   {isEncryptedLocked ? t("logs.encryptedRecord", "[加密记录]") : selectedLog.domain}

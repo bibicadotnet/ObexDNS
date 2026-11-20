@@ -5,7 +5,7 @@ export function processTrendData(data: AnalyticsData | null, range: TimeRange, c
 
   const trendMap: Record<
     number,
-    { timestamp: number; allowed: number; blocked: number; redirected: number }
+    { timestamp: number; allowed: number; blocked: number; redirected: number; failed: number }
   > = {};
 
   // Calculate time range and interval
@@ -60,6 +60,7 @@ export function processTrendData(data: AnalyticsData | null, range: TimeRange, c
       allowed: 0,
       blocked: 0,
       redirected: 0,
+      failed: 0,
     };
   }
 
@@ -72,11 +73,13 @@ export function processTrendData(data: AnalyticsData | null, range: TimeRange, c
         allowed: 0,
         blocked: 0,
         redirected: 0,
+        failed: 0,
       };
     }
     if (t.action === "PASS") trendMap[ts].allowed += t.count;
     else if (t.action === "BLOCK") trendMap[ts].blocked += t.count;
     else if (t.action === "REDIRECT") trendMap[ts].redirected += t.count;
+    else if (t.action === "FAIL") trendMap[ts].failed += t.count;
   });
 
   return Object.keys(trendMap)

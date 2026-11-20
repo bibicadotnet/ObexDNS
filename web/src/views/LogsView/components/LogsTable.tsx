@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { Lock } from "lucide-react";
 import type {  LogEntry  } from "../types";
+import { DomainIcon } from "./DomainIcon";
 import { getFlagEmoji } from "../../../utils/getFlagEmoji";
 
 export interface LogsTableProps {
@@ -92,14 +93,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
             {isEncryptedLocked ? (
               <Lock size={14} className="text-amber-500 shrink-0" />
             ) : (
-              <img
-                src={`/api/icon/${log.domain.replace(/^\*\./, "")}.ico`}
-                className="w-4 h-4 rounded-sm shrink-0"
-                alt=""
-                loading="lazy"
-                decoding="async"
-                referrerPolicy="no-referrer"
-              />
+              <DomainIcon domain={log.domain} />
             )}
             <span
               className={clsx("font-bold text-sm truncate", {

@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { Lock } from "lucide-react";
 import type {  LogEntry  } from "../types";
+import { DomainIcon } from "./DomainIcon";
 
 export interface LogsListProps {
   logs: LogEntry[];
@@ -51,15 +52,7 @@ export const LogsList: React.FC<LogsListProps> = ({
               {isEncryptedLocked ? (
                 <Lock size={14} className="text-amber-500 shrink-0" />
               ) : (
-                <img
-                  src={`/api/icon/${log.domain.replace(/^\*\./, "")}.ico`}
-                  className="w-4 h-4 rounded-sm shrink-0"
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => (e.currentTarget.style.opacity = "0")}
-                />
+                <DomainIcon domain={log.domain} />
               )}
               <span className={clsx("font-bold text-sm truncate", { "italic text-gray-400 dark:text-gray-500": isEncryptedLocked })}>
                 {isEncryptedLocked ? t("logs.encryptedRecord", "[加密记录]") : log.domain}

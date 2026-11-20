@@ -39,7 +39,7 @@ export const AnalyticsMetricCards: React.FC<AnalyticsMetricCardsProps> = ({ data
       title: t("analytics.failed"),
       value: failed.toLocaleString(),
       hint: `${failRate}%`,
-      icon: <AlertTriangle className="text-orange-500" size={20} />
+      icon: <AlertTriangle className="text-slate-500" size={20} />
     },
     {
       title: t("analytics.blockRate"),
