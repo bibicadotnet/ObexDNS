@@ -44,6 +44,10 @@ export interface Env {
   CLEANUP_INTERVAL_SEC?: string | number;
   CF_IP_SYNC_INTERVAL_SEC?: string | number;
   ACTIVE_DNS_CACHE_TTL?: string | number;
+  /** Lazy cache: how long (seconds) an expired DNS answer may still be served while it is refreshed. 0 disables it. */
+  DNS_STALE_WINDOW_SEC?: string | number;
+  /** Lazy cache: TTL (seconds) given to clients for an answer served after it expired. */
+  DNS_STALE_ANSWER_TTL_SEC?: string | number;
   LOGIN_MAX_ATTEMPTS?: string | number;
   LOGIN_LOCK_WINDOW_SEC?: string | number;
   SIGNUP_MAX_PER_WINDOW?: string | number;
@@ -296,6 +300,8 @@ export interface Context {
   noLog?: boolean;
   /** Generation tracker to invalidate in-flight resolutions when profile config is mutated. */
   profileGeneration?: number;
+  /** Internal lazy-cache refresh: updates the cache entry but writes no query log row. */
+  isBackgroundRefresh?: boolean;
 }
 
 export interface AccessPoint {

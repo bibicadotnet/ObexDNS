@@ -3,6 +3,7 @@ import { fetchGeoIP, resolveClientGeoCountry } from "../../utils/geoip";
 import { dnsCache, getProfileGeneration } from "../cache";
 import { enqueueLog, shouldLogQuery, isLogPolicyEnabled } from "../logBatcher";
 import { UpstreamHttpError, ParsedDNSAnswerRecord } from "./types";
+import { staleWindowMs } from "../lazyRefresh";
 
 /**
  * Caches the result in memory immediately (synchronously), then - only if the log will
@@ -43,16 +44,23 @@ export function recordSuccessAndCache(
   const isGenerationValid = context.profileGeneration === undefined || context.profileGeneration === currentGen;
 
   let cacheEntry: Record<string, any> | undefined;
-  if (answer.length > 0 && isGenerationValid) {
+  // A background refresh must not replace a good cached answer with an upstream error (SERVFAIL / REFUSED).
+  const rcode = answer.length >= 4 ? answer[3] & 0x0f : 0;
+  const isRefresh = context.isBackgroundRefresh === true;
+  const refreshFailed = isRefresh && (rcode === 2 || rcode === 5);
+  if (answer.length > 0 && isGenerationValid && !refreshFailed) {
     // Answers resolved with a per-client ECS subnet are keyed by that subnet so they are
     // never served to clients in other networks.
     const baseKey = `${context.profileId}:${query.name}:${query.type}`;
+    const expiresAt = Date.now() + minTTL * 1000;
     cacheEntry = {
       answer,
       ttl: minTTL,
       action,
       reason: effectiveReason,
-      expiresAt: Date.now() + minTTL * 1000,
+      expiresAt,
+      // Lazy cache: the entry may still be served (with a short TTL) after expiresAt, until this moment.
+      staleUntil: expiresAt + staleWindowMs(context.env),
       // Cache hits are counted into the hourly rollups (not logged) only when a miss
       // would have been logged for this profile. Profile setting changes clear dnsCache.
       countHits: !context.noLog && isLogPolicyEnabled(settings, action),
@@ -60,6 +68,25 @@ export function recordSuccessAndCache(
       destCountry: null
     };
     dnsCache.set(ecsScope ? `${baseKey}|${ecsScope}` : baseKey, cacheEntry);
+  }
+
+  // Lazy-cache refresh: no log row (the client's query was already served and counted from the stale entry).
+  // Only the destination country is re-learned, because cache hits are counted into the destination rollups.
+  if (isRefresh) {
+    const refreshedIp = parsedAnswers.find((a) => a.type === "A" || a.type === "AAAA")?.data;
+    if (cacheEntry?.countHits && refreshedIp) {
+      context.ctx?.waitUntil?.(
+        fetchGeoIP(refreshedIp)
+          .then((geo) => {
+            if (cacheEntry && geo?.country_code) {
+              cacheEntry.destCountryCode = geo.country_code.toUpperCase();
+              cacheEntry.destCountry = geo.country || null;
+            }
+          })
+          .catch(() => undefined)
+      );
+    }
+    return;
   }
 
   // 2. Skip everything below (including GeoIP lookups) when the log would be discarded.
@@ -187,7 +214,7 @@ export function recordFailure(
 
   // Asynchronously persist failure log for upstream troubleshooting
   // (skip entirely, including client GeoIP, when the log would be discarded)
-  if (!context.noLog && shouldLogQuery(settings, "FAIL")) context.ctx.waitUntil(
+  if (!context.noLog && !context.isBackgroundRefresh && shouldLogQuery(settings, "FAIL")) context.ctx.waitUntil(
     (async () => {
       try {
         const clientCountry = await resolveClientGeoCountry(request, clientIp).catch(() => "UNKNOWN");

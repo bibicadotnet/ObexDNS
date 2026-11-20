@@ -144,14 +144,17 @@ export const dnsCache = new SizeCappedMap<string, any>(
 );
 
 /**
- * Purges expired DNS query records from in-memory dnsCache.
+ * Purges DNS query records that can no longer be served from in-memory dnsCache.
+ * An expired entry is kept until `staleUntil` (lazy cache: it may still be served while being refreshed);
+ * entries without `staleUntil` leave at `expiresAt`.
  * Called during system maintenance (CLEANUP_INTERVAL_SEC) to free RAM from orphan queries.
  */
 export function sweepExpiredDnsCache(): number {
   const now = Date.now();
   let count = 0;
   for (const [key, entry] of dnsCache) {
-    if (entry && typeof entry.expiresAt === "number" && now >= entry.expiresAt) {
+    const usableUntil = entry && (typeof entry.staleUntil === "number" ? entry.staleUntil : entry.expiresAt);
+    if (entry && typeof usableUntil === "number" && now >= usableUntil) {
       dnsCache.delete(key);
       count++;
     }

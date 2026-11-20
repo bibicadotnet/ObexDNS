@@ -214,10 +214,25 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # CONFIG_CACHE_LIMIT=5000
 
 # Maximum number of resolved DNS query answers cached in RAM (default: 50000).
-# Expired TTL records are lazy-evicted on query and swept from RAM every CLEANUP_INTERVAL_SEC.
+# Records past their lazy-cache window (DNS_STALE_WINDOW_SEC) are evicted on query and swept from RAM every CLEANUP_INTERVAL_SEC.
 # Số bản ghi DNS query tối đa được cache trong RAM L1 (mặc định: 50000).
-# Bản ghi hết hạn TTL sẽ tự xoá khi có truy vấn hoặc được dọn sạch định kỳ theo CLEANUP_INTERVAL_SEC.
+# Bản ghi quá khoảng lazy cache (DNS_STALE_WINDOW_SEC) sẽ tự xoá khi có truy vấn hoặc được dọn sạch định kỳ theo CLEANUP_INTERVAL_SEC.
 # DNS_CACHE_LIMIT=50000
+
+# Lazy cache: how long (seconds) an expired DNS answer may still be served at once, while a background query
+# fetches the fresh answer and overwrites the same cache entry (default: 3600 = 1 hour, 0 = off).
+# Longer = more instant answers for rarely visited sites, but the first visit after a long pause may get an outdated IP.
+# Entries nobody asks for again are removed when this window ends (CLEANUP_INTERVAL_SEC) or by DNS_CACHE_LIMIT.
+# Lazy cache: thời gian (giây) một đáp án DNS đã hết TTL vẫn được trả ngay, trong khi một truy vấn chạy ngầm lấy giá trị mới và ghi đè vào đúng entry đó (mặc định: 3600 = 1 giờ, 0 = tắt).
+# Càng dài thì trang ít vào càng được trả nhanh, nhưng lần vào đầu tiên sau một quãng nghỉ dài có thể nhận IP cũ.
+# Bản ghi không còn ai truy vấn sẽ bị xoá khi hết khoảng này (theo CLEANUP_INTERVAL_SEC) hoặc khi vượt DNS_CACHE_LIMIT.
+# DNS_STALE_WINDOW_SEC=3600
+
+# Lazy cache: TTL (seconds) that clients receive for an answer served after it expired (default: 30, 1-300).
+# The refreshed answer then keeps the TTL given by the upstream. Lower = a wrong old IP is corrected sooner.
+# Lazy cache: TTL (giây) trả cho client với đáp án được dùng sau khi đã hết hạn (mặc định: 30, từ 1 đến 300).
+# Đáp án mới sau khi làm mới giữ nguyên TTL do upstream trả về. Càng thấp thì IP cũ (nếu sai) càng sớm được sửa.
+# DNS_STALE_ANSWER_TTL_SEC=30
 
 # Maximum number of Profile Key mappings cached in RAM (default: 10000).
 # Số lượng khoá Profile Key tối đa được ánh xạ trong RAM L1 (mặc định: 10000).

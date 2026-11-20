@@ -1,12 +1,44 @@
 import { Context, DNSQuery, ProfileSettings, ResolutionResult } from "../types";
 import { DEFAULT_FAIL_OPEN_UPSTREAM } from "../constants/presets";
-import { buildResponse } from "../utils/dns";
+import { buildResponse, capResponseTtl } from "../utils/dns";
 import { dnsCache, pipelineCache, getProfileGeneration } from "./cache";
 import { pipelineConfig } from "./config";
 import { pipelineResolver, ecsCacheScope } from "./resolver";
 import { pipelineFilter } from "./filter";
 import { recordCacheHit, isLogWriteSilenced } from "./logBatcher";
 import { resolveClientGeoCountry } from "../utils/geoip";
+import { scheduleStaleRefresh, staleAnswerTtl } from "./lazyRefresh";
+
+interface DnsCacheHit {
+  key: string;
+  entry: any;
+  /** True when the entry is past its TTL but still inside the lazy-cache window. */
+  stale: boolean;
+}
+
+/**
+ * Looks the keys up in order. A fresh entry wins immediately; otherwise the first entry that is only stale is
+ * used (lazy cache). Entries past their stale window, or malformed, are removed on the spot.
+ */
+function lookupDnsCache(keys: string[], now: number): DnsCacheHit | undefined {
+  let staleHit: DnsCacheHit | undefined;
+  for (const key of keys) {
+    const entry = dnsCache.get(key);
+    if (!entry) continue;
+    if (!(entry.answer instanceof Uint8Array)) {
+      dnsCache.delete(key);
+      continue;
+    }
+    if (now < entry.expiresAt) return { key, entry, stale: false };
+    const usableUntil = typeof entry.staleUntil === "number" ? entry.staleUntil : entry.expiresAt;
+    if (now < usableUntil) {
+      staleHit ??= { key, entry, stale: true };
+      continue;
+    }
+    dnsCache.delete(key);
+  }
+  return staleHit;
+}
 
 /**
  * Registers a cache hit in the in-memory rollup counters.
@@ -46,6 +78,18 @@ function countCacheHit(
   }
 }
 
+/**
+ * Lazy-cache refresh: resolves the same query again with the profile's current settings and lets the normal
+ * resolver overwrite the cache entry. No log row is written (see `isBackgroundRefresh`), and a failed refresh
+ * leaves the old entry in place until its stale window ends.
+ */
+async function refreshStaleEntry(request: Request, query: DNSQuery, context: Context): Promise<void> {
+  const refreshContext: Context = { ...context, isBackgroundRefresh: true, startTime: Date.now() };
+  const config = await pipelineConfig.load(refreshContext, () => {});
+  if (!config) return;
+  await pipelineResolver.resolve(request, query, refreshContext, config.settings, "PASS");
+}
+
 export const pipeline = {
   clearCache: pipelineCache.clear,
   clearCacheMany: pipelineCache.clearMany,
@@ -67,26 +111,28 @@ export const pipeline = {
     }
 
     // Unscoped entry first, then the entry scoped to this client's ECS subnet.
+    // An expired entry is still used for a while (lazy cache) and refreshed in the background.
     const cacheBaseKey = `${context.profileId}:${query.name}:${query.type}`;
-    let cached = dnsCache.get(cacheBaseKey);
-    if (cached && (Date.now() >= cached.expiresAt || !(cached.answer instanceof Uint8Array))) {
-      dnsCache.delete(cacheBaseKey);
-      cached = undefined;
-    }
+    const hit = lookupDnsCache([cacheBaseKey, `${cacheBaseKey}|${ecsCacheScope(request)}`], Date.now());
+    const cached = hit?.entry;
 
-    if (!cached) {
-      const ecsKey = `${cacheBaseKey}|${ecsCacheScope(request)}`;
-      cached = dnsCache.get(ecsKey);
-      if (cached && (Date.now() >= cached.expiresAt || !(cached.answer instanceof Uint8Array))) {
-        dnsCache.delete(ecsKey);
-        cached = undefined;
+    if (hit && cached && cached.answer instanceof Uint8Array) {
+      if (hit.stale) {
+        // The query buffer may be reused by the transport once this call returns: keep a private copy.
+        const refreshQuery: DNSQuery = { ...query, raw: query.raw.slice() };
+        scheduleStaleRefresh(
+          hit.key,
+          cached,
+          () => refreshStaleEntry(request, refreshQuery, context),
+          context.env,
+          context.ctx
+        );
       }
-    }
-
-    if (cached && cached.answer instanceof Uint8Array) {
       // 这里的 cached.answer 已经是完整的 DNS 报文
       // 关键：DNS ID 必须匹配原始查询。ID 位于报文的前 2 字节。
-      const response = new Uint8Array(cached.answer);
+      // A stale answer carries a short TTL so the client comes back soon for the refreshed one.
+      const staleTtl = hit.stale ? staleAnswerTtl(context.env) : 0;
+      const response = hit.stale ? capResponseTtl(cached.answer, staleTtl) : new Uint8Array(cached.answer);
       if (response.length >= 2 && query.raw.length >= 2) {
         response[0] = query.raw[0];
         response[1] = query.raw[1];
@@ -102,7 +148,7 @@ export const pipeline = {
 
       return {
         answer: response,
-        ttl: Math.ceil((cached.expiresAt - Date.now()) / 1000),
+        ttl: hit.stale ? staleTtl : Math.ceil((cached.expiresAt - Date.now()) / 1000),
         action: cached.action,
         reason: cached.reason,
         latency,
