@@ -73,7 +73,11 @@ export const LogsContent: React.FC<LogsContentProps> = ({
         onScroll={checkScroll}
         className={clsx("flex-1 overflow-y-auto", isMobile ? "px-1" : "px-0")}
       >
-        {logs.length === 0 && !loading ? (
+        {logs.length === 0 && loading ? (
+          <div className="py-20 flex items-center justify-center">
+            <Spinner />
+          </div>
+        ) : logs.length === 0 ? (
           <div className="py-20">
             <Callout
               title={

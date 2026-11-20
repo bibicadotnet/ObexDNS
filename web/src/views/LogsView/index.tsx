@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Spinner } from "@blueprintjs/core";
 
 import type { LogEntry, LogsViewProps } from "./types";
@@ -16,6 +16,9 @@ export const LogsView: React.FC<LogsViewProps> = ({ profileId, onQuickAction, to
   const isMobile = useIsMobile();
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+  // The full-page spinner is only for the very first load. Later reloads (e.g. a search that returns no rows)
+  // must keep the header mounted, otherwise the search box is destroyed and loses focus/typed text.
+  const [initialLoadDone, setInitialLoadDone] = useState<boolean>(false);
 
   const {
     // states
@@ -80,9 +83,13 @@ export const LogsView: React.FC<LogsViewProps> = ({ profileId, onQuickAction, to
     toasterRef
   });
 
+  useEffect(() => {
+    if (!loading) setInitialLoadDone(true);
+  }, [loading]);
+
   const nowStr = new Date().toLocaleString("sv-SE").replace(" ", "T").slice(0, 16);
 
-  if (loading && logs.length === 0) {
+  if (!initialLoadDone && loading && logs.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
         <Spinner />
