@@ -33,8 +33,8 @@ export const BestEffortEchCard: React.FC<BestEffortEchCardProps> = ({ settings, 
   };
 
   return (
-    <Card elevation={Elevation.ONE} className="dark:bg-gray-900 dark:border-gray-800">
-      <div className="flex items-center justify-between mb-3">
+    <Card elevation={Elevation.ONE} className="h-full min-w-0 dark:bg-gray-900 dark:border-gray-800">
+      <div className="flex items-center justify-between min-h-[30px] mb-4">
         <H5 className="flex items-center gap-2 m-0 font-bold text-purple-600 dark:text-purple-400">
           <Lock size={18} /> {t("settings.echTitle")}
         </H5>

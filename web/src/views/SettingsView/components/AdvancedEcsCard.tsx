@@ -81,10 +81,12 @@ export const AdvancedEcsCard: React.FC<AdvancedEcsCardProps> = ({ settings, setS
   };
 
   return (
-    <Card elevation={Elevation.ONE} className="dark:bg-gray-900 dark:border-gray-800">
-      <H5 className="flex items-center gap-2 mb-3 font-bold">
-        <Globe size={18} className="text-orange-500" /> {t("settings.ecsTitle")}
-      </H5>
+    <Card elevation={Elevation.ONE} className="h-full min-w-0 dark:bg-gray-900 dark:border-gray-800">
+      <div className="flex items-center justify-between min-h-[30px] mb-4">
+        <H5 className="flex items-center gap-2 m-0 font-bold">
+          <Globe size={18} className="text-orange-500" /> {t("settings.ecsTitle")}
+        </H5>
+      </div>
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-6">
           <Switch

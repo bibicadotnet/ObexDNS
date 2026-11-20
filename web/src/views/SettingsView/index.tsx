@@ -307,8 +307,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
         exportProfile={exportProfile}
       />
 
-      {/* Paired by matching natural heights: Upstream + ECH (row 1), LogRetention + ECS (row 2) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+      {/* Row 1: Upstream + ECH, row 2: LogRetention + ECS. Cards in a row are stretched to the same height. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
         <UpstreamCard settings={settings} setSettings={handleSettingsChange} />
         <BestEffortEchCard settings={settings} setSettings={handleSettingsChange} />
         <LogRetentionCard
