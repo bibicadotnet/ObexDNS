@@ -1,5 +1,5 @@
 import React from "react";
-import { ButtonGroup, Button, PopoverNext, H5, FormGroup, InputGroup, Intent } from "@blueprintjs/core";
+import { ButtonGroup, Button, PopoverNext, H5, FormGroup, InputGroup, Intent, Tooltip } from "@blueprintjs/core";
 import { Calendar } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TimeRange } from "../types";
@@ -51,8 +51,11 @@ export const TimeRangeSelector: React.FC<TimeRangeSelectorProps> = ({
     <div className="overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0">
       <ButtonGroup minimal={isMobile} variant={isMobile ? undefined : "minimal"}>
         {visibleRanges.map((r) => (
-          <Button key={r} active={range === r} onClick={() => setRange(r)} text={r.toUpperCase()} small={isMobile} />
+          <Tooltip key={r} content={t(`analytics.range${r}`)} placement="bottom" hoverOpenDelay={300} compact>
+            <Button active={range === r} onClick={() => setRange(r)} text={r.toUpperCase()} small={isMobile} />
+          </Tooltip>
         ))}
+        <Tooltip content={t("analytics.rangeCustom")} placement="bottom" hoverOpenDelay={300} compact>
         <PopoverNext
           content={
             <div className="p-4 space-y-2 w-64">
@@ -107,6 +110,7 @@ export const TimeRangeSelector: React.FC<TimeRangeSelectorProps> = ({
         >
           <Button active={range === "custom"} icon={<Calendar size={14} />} text={isMobile ? "" : t("analytics.custom")} small={isMobile} />
         </PopoverNext>
+        </Tooltip>
       </ButtonGroup>
     </div>
   );

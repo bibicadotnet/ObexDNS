@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Tag, Button, Intent, Switch, InputGroup, Alert, OverlayToaster } from "@blueprintjs/core";
+import { Tag, Button, Intent, Switch, InputGroup, Alert, OverlayToaster, Tooltip } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import type { TimeRange } from "../types";
 import type { AccessPoint } from "../../../types/auth";
@@ -128,29 +128,39 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
             <h2 className="bp6-heading flex flex-wrap items-center gap-2 text-xl md:text-2xl m-0">
               {t("logs.title")}{" "}
               {(!isMobile || !isCollapsed) && (
-                <Tag minimal round>
-                  {range === "custom" ? t("analytics.custom") : range.toUpperCase()}
-                </Tag>
+                <Tooltip content={t(`analytics.range${range === "custom" ? "Custom" : range}`)} placement="bottom" hoverOpenDelay={200} compact>
+                  <Tag minimal round>
+                    {range === "custom" ? t("analytics.custom") : range.toUpperCase()}
+                  </Tag>
+                </Tooltip>
               )}
               {stats && (
                 <>
-                  <Tag minimal round>
-                    {stats.total.toLocaleString()}
-                  </Tag>
-                  <Tag minimal round intent={Intent.SUCCESS}>
-                    {stats.pass.toLocaleString()}
-                  </Tag>
-                  <Tag minimal round intent={Intent.DANGER}>
-                    {stats.block.toLocaleString()}
-                  </Tag>
-                  <Tag minimal round intent={Intent.WARNING}>
-                    {stats.redirect.toLocaleString()}
-                  </Tag>
-                  {Boolean(stats.fail) && (
-                    <Tag minimal round intent={Intent.DANGER} icon="error">
+                  <Tooltip content={t("logs.statTotal")} placement="bottom" hoverOpenDelay={200} compact>
+                    <Tag minimal round>
+                      {stats.total.toLocaleString()}
+                    </Tag>
+                  </Tooltip>
+                  <Tooltip content={t("logs.statPass")} placement="bottom" hoverOpenDelay={200} compact>
+                    <Tag minimal round intent={Intent.SUCCESS}>
+                      {stats.pass.toLocaleString()}
+                    </Tag>
+                  </Tooltip>
+                  <Tooltip content={t("logs.statBlock")} placement="bottom" hoverOpenDelay={200} compact>
+                    <Tag minimal round intent={Intent.DANGER}>
+                      {stats.block.toLocaleString()}
+                    </Tag>
+                  </Tooltip>
+                  <Tooltip content={t("logs.statRedirect")} placement="bottom" hoverOpenDelay={200} compact>
+                    <Tag minimal round intent={Intent.WARNING}>
+                      {stats.redirect.toLocaleString()}
+                    </Tag>
+                  </Tooltip>
+                  <Tooltip content={t("logs.statFail")} placement="bottom" hoverOpenDelay={200} compact>
+                    <Tag minimal round icon="error">
                       {(stats.fail ?? 0).toLocaleString()}
                     </Tag>
-                  )}
+                  </Tooltip>
                 </>
               )}
             </h2>

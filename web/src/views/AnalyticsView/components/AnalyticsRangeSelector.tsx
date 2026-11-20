@@ -7,6 +7,7 @@ import {
   FormGroup,
   InputGroup,
   HTMLSelect,
+  Tooltip,
   Intent
 } from "@blueprintjs/core";
 import { Calendar } from "lucide-react";
@@ -77,13 +78,15 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
     <div className="flex justify-between items-center bg-white dark:bg-gray-900 p-2 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
       <ButtonGroup variant="minimal">
         {visibleRanges.map((r) => (
-          <Button
-            key={r}
-            active={range === r}
-            onClick={() => setRange(r)}
-            text={r.toUpperCase()}
-          />
+          <Tooltip key={r} content={t(`analytics.range${r}`)} placement="bottom" hoverOpenDelay={300} compact>
+            <Button
+              active={range === r}
+              onClick={() => setRange(r)}
+              text={r.toUpperCase()}
+            />
+          </Tooltip>
         ))}
+        <Tooltip content={t("analytics.rangeCustom")} placement="bottom" hoverOpenDelay={300} compact>
         <PopoverNext
           content={
             <div className="p-4 space-y-4 w-64">
@@ -139,6 +142,7 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
             text={t("analytics.custom")}
           />
         </PopoverNext>
+        </Tooltip>
       </ButtonGroup>
       <div className="flex items-center gap-2">
         {accessPoints.length > 0 && (

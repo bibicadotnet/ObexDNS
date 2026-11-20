@@ -67,8 +67,10 @@ export const LogsList: React.FC<LogsListProps> = ({
               intent={
                 log.action === "PASS"
                   ? Intent.SUCCESS
-                  : log.action === "BLOCK" || log.action === "FAIL"
+                  : log.action === "BLOCK"
                   ? Intent.DANGER
+                  : log.action === "FAIL"
+                  ? Intent.NONE
                   : Intent.WARNING
               }
               className="text-[10px] shrink-0"

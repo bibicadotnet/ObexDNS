@@ -101,8 +101,10 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                 intent={
                   selectedLog.action === "PASS"
                     ? Intent.SUCCESS
-                    : selectedLog.action === "BLOCK" || selectedLog.action === "FAIL"
+                    : selectedLog.action === "BLOCK"
                     ? Intent.DANGER
+                    : selectedLog.action === "FAIL"
+                    ? Intent.NONE
                     : Intent.WARNING
                 }
               >
