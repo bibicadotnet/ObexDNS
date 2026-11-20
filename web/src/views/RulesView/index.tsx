@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { Callout, Intent, ButtonGroup, Button, Tag, PopoverNext, Spinner } from "@blueprintjs/core";
+import React, { useState, useEffect } from "react";
+import { Callout, Intent, ButtonGroup, Button, Spinner } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { clsx } from "clsx";
@@ -15,7 +15,6 @@ import {
   addProfileRule,
   updateProfileRule,
   deleteProfileRule,
-  getClientInfo,
 } from "../../services";
 
 export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPrefillUsed, toasterRef }) => {
@@ -47,45 +46,6 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
   });
 
   const [editRule, setEditRule] = useState<Rule | null>(null);
-  const [substituteDomain, setSubstituteDomain] = useState<string>("www.okx.com");
-  const [isPromptOpen, setIsPromptOpen] = useState(false);
-
-  useEffect(() => {
-    getClientInfo()
-      .then((info) => {
-        if (info.substituteDomain) {
-          setSubstituteDomain(info.substituteDomain);
-        }
-      })
-      .catch((e) => console.warn("Failed to fetch clientInfo for substituteDomain:", e));
-  }, []);
-
-  const hasSelfRedirect = useMemo(() => {
-    const currentHost = window.location.hostname.trim().toLowerCase();
-    if (!currentHost) return false;
-    return rules.some((r) => {
-      if (r.type !== "REDIRECT") return false;
-      const pattern = r.pattern.trim().toLowerCase();
-      return pattern === currentHost || pattern === `*.${currentHost}`;
-    });
-  }, [rules]);
-
-  const handleApplySelfRedirect = () => {
-    setIsPromptOpen(false);
-    setNewRule({
-      type: "REDIRECT",
-      pattern: window.location.hostname,
-      include_subdomains: false,
-      v_a: "",
-      v_aaaa: "",
-      v_txt: "",
-      v_cname: substituteDomain || "www.okx.com",
-    });
-    setTimeout(() => {
-      document.getElementById("rule-pattern")?.focus();
-    }, 100);
-  };
-
   useEffect(() => {
     if (prefill) {
       setNewRule({
@@ -284,46 +244,6 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
             <p className="bp6-text-muted mt-2!">{t("rules.subtitle")}</p>
           </div>
 
-          {!loading && !hasSelfRedirect && (
-            <div className="flex items-center gap-3 self-start md:self-auto">
-              <PopoverNext
-                isOpen={isPromptOpen}
-                onInteraction={setIsPromptOpen}
-                placement="bottom-end"
-                portalClassName="z-20000"
-                content={
-                  <div className="p-4 w-72 sm:w-80 space-y-3 text-sm">
-                    <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed m-0">
-                      {t("rules.addSelfRedirectPrompt", "是否增加指向本站的 CNAME 规则，用于地区网络优化（中国大陆用户推荐）？")}
-                    </p>
-                    <div className="flex justify-end gap-2 pt-1">
-                      <Button
-                        size="small"
-                        variant="minimal"
-                        text={t("common.no", "否")}
-                        onClick={() => setIsPromptOpen(false)}
-                      />
-                      <Button
-                        size="small"
-                        intent={Intent.PRIMARY}
-                        text={t("common.yes", "是")}
-                        onClick={handleApplySelfRedirect}
-                      />
-                    </div>
-                  </div>
-                }
-              >
-                <Tag
-                  minimal
-                  interactive
-                  intent={Intent.PRIMARY}
-                  className="cursor-pointer select-none font-medium"
-                >
-                  {t("rules.addSelfRedirectTag", "增加本站重定向？")}
-                </Tag>
-              </PopoverNext>
-            </div>
-          )}
         </div>
       </div>
 
