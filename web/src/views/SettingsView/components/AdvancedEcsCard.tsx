@@ -86,22 +86,26 @@ export const AdvancedEcsCard: React.FC<AdvancedEcsCardProps> = ({ settings, setS
         <Globe size={18} className="text-orange-500" /> {t("settings.ecsTitle")}
       </H5>
       <div className="space-y-4">
-        <Switch
-          label={t("settings.sendEcs")}
-          checked={ecs.enabled}
-          onChange={(e) =>
-            setSettings({
-              ...settings,
-              ecs: { ...ecs, enabled: e.currentTarget.checked },
-            })
-          }
-        />
-        <Switch
-          label={t("settings.customSubnet")}
-          disabled={!ecs.enabled}
-          checked={customMode}
-          onChange={(e) => handleCustomToggle(e.currentTarget.checked)}
-        />
+        <div className="flex flex-wrap items-center gap-6">
+          <Switch
+            label={t("settings.sendEcs")}
+            checked={ecs.enabled}
+            className="mb-0!"
+            onChange={(e) =>
+              setSettings({
+                ...settings,
+                ecs: { ...ecs, enabled: e.currentTarget.checked },
+              })
+            }
+          />
+          <Switch
+            label={t("settings.customSubnet")}
+            disabled={!ecs.enabled}
+            checked={customMode}
+            className="mb-0!"
+            onChange={(e) => handleCustomToggle(e.currentTarget.checked)}
+          />
+        </div>
 
         <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-800">
           <FormGroup
