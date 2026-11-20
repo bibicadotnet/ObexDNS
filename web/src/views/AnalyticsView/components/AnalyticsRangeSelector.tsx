@@ -11,6 +11,7 @@ import {
   Intent
 } from "@blueprintjs/core";
 import { Calendar } from "lucide-react";
+import { RefreshButton } from "../../../components/RefreshButton";
 import { useTranslation } from "react-i18next";
 import type { TimeRange } from "../types";
 import type { AccessPoint } from "../../../services";
@@ -160,16 +161,7 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
           />
         )}
         {onRefresh && (
-          <Button
-            icon="refresh"
-            variant="minimal"
-            onClick={onRefresh}
-            loading={loading}
-            disabled={refreshWaitSec > 0}
-            text={refreshWaitSec > 0 ? `${refreshWaitSec}s` : undefined}
-            title={refreshWaitSec > 0 ? t("common.refreshWait", { seconds: refreshWaitSec }) : t("analytics.refresh")}
-            aria-label={t("analytics.refresh")}
-          />
+          <RefreshButton onClick={onRefresh} remainingSec={refreshWaitSec} loading={loading} />
         )}
       </div>
     </div>

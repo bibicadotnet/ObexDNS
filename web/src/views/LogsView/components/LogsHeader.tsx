@@ -9,6 +9,7 @@ import { StatusFilter } from "./StatusFilter";
 import { AccessPointFilter } from "./AccessPointFilter";
 import { DestCountryFilter } from "./DestCountryFilter";
 import { IspFilter } from "./IspFilter";
+import { RefreshButton } from "../../../components/RefreshButton";
 import { useRefreshCooldown } from "../../../hooks/useRefreshCooldown";
 
 export interface LogsHeaderProps {
@@ -221,14 +222,10 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
                 onChange={(e) => setRealtimeRefresh((e.target as HTMLInputElement).checked)}
                 className="mb-0!"
               />
-              <Button
-                icon="refresh"
+              <RefreshButton
                 onClick={handleRefresh}
+                remainingSec={refreshCooldown.remainingSec}
                 loading={loading || syncing}
-                disabled={refreshCooldown.active}
-                text={refreshCooldown.active ? `${refreshCooldown.remainingSec}s` : undefined}
-                title={refreshCooldown.active ? t("common.refreshWait", { seconds: refreshCooldown.remainingSec }) : undefined}
-                variant="minimal"
                 small={isMobile}
               />
             </div>

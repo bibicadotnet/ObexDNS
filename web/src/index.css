@@ -150,3 +150,9 @@
   fill: #334155 !important;
   fill-opacity: 1 !important;
 }
+
+/* RefreshButton cooldown: the ring empties over the pause length (set inline via animation-duration). */
+@keyframes refresh-ring-drain {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: var(--ring-c); }
+}
