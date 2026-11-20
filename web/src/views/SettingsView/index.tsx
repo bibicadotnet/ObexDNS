@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import type {  Profile, ProfileSettings, SettingsViewProps, TestResponse  } from "./types";
 import { SettingsHeader } from "./components/SettingsHeader";
 import { UpstreamCard } from "./components/UpstreamCard";
-import { DefaultPolicyCard } from "./components/DefaultPolicyCard";
 import { LogRetentionCard } from "./components/LogRetentionCard";
 import { AdvancedEcsCard } from "./components/AdvancedEcsCard";
 import { BestEffortEchCard } from "./components/BestEffortEchCard";
@@ -308,19 +307,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
         exportProfile={exportProfile}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <UpstreamCard settings={settings} setSettings={handleSettingsChange} />
-        <DefaultPolicyCard settings={settings} setSettings={handleSettingsChange} />
-        <LogRetentionCard
-          settings={settings}
-          setSettings={handleSettingsChange}
-          isAdmin={currentUser?.role === "admin"}
-          maxRetentionDays={currentUser?.max_log_retention_days ?? (currentUser?.role === "admin" ? 30 : 7)}
-          profileId={profileId}
-          toasterRef={toasterRef}
-        />
-        <AdvancedEcsCard settings={settings} setSettings={handleSettingsChange} />
-        <BestEffortEchCard settings={settings} setSettings={handleSettingsChange} />
+      {/* Two independent columns, so a tall card never leaves a gap under its neighbour. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        <div className="space-y-6">
+          <UpstreamCard settings={settings} setSettings={handleSettingsChange} />
+          <AdvancedEcsCard settings={settings} setSettings={handleSettingsChange} />
+        </div>
+        <div className="space-y-6">
+          <LogRetentionCard
+            settings={settings}
+            setSettings={handleSettingsChange}
+            isAdmin={currentUser?.role === "admin"}
+            maxRetentionDays={currentUser?.max_log_retention_days ?? (currentUser?.role === "admin" ? 30 : 7)}
+            profileId={profileId}
+            toasterRef={toasterRef}
+          />
+          <BestEffortEchCard settings={settings} setSettings={handleSettingsChange} />
+        </div>
       </div>
 
       <DnsTestCard
