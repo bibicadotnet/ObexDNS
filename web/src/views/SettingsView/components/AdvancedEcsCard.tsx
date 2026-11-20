@@ -161,14 +161,6 @@ export const AdvancedEcsCard: React.FC<AdvancedEcsCardProps> = ({ settings, setS
               {t("settings.ecsSubnetRequired", "Enter an IPv4 and/or IPv6 subnet to use a custom subnet.")}
             </p>
           )}
-          {fieldsEnabled && (
-            <p className="text-xs opacity-60">
-              {t(
-                "settings.ecsPrefixHint",
-                "Just enter an IP: /24 (IPv4) or /48 (IPv6) is added automatically. Saved when you press Enter or leave the field."
-              )}
-            </p>
-          )}
         </div>
         <p className="text-xs opacity-60">{t("settings.ecsUpstreamHint")}</p>
       </div>

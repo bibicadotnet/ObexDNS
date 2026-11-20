@@ -80,11 +80,6 @@ export const UpstreamCard: React.FC<UpstreamCardProps> = ({ settings, setSetting
         />
       </FormGroup>
       <p className="text-xs opacity-60">{t("settings.upstreamDesc")}</p>
-      <p className="text-xs opacity-60 mt-1">
-        {draft.trim() !== committed
-          ? t("settings.upstreamPendingHint", "Press Enter or click outside to verify and save. The upstream must answer a test query.")
-          : t("settings.upstreamVerifiedHint", "A changed upstream is verified with a real DNS query before it is saved.")}
-      </p>
     </Card>
   );
 };
