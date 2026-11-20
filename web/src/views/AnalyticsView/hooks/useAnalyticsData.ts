@@ -67,6 +67,9 @@ export function useAnalyticsData(
   const [accessPointIdFilter, setAccessPointIdFilter] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Query scope (profile + range + access point) that the dataset in `data` belongs to.
+  // The E2EE merge fallbacks reuse the previous dataset, which is only valid within the same scope.
+  const dataScopeRef = useRef<string | null>(null);
   const serverFlagsRef = useRef<AnalyticsValidationFlags>({
     serverHasValidClients: false,
     serverHasValidTopAllowed: false,
@@ -140,6 +143,7 @@ export function useAnalyticsData(
         // Step -1: Check L1 in-memory client cache for instant preview (0ms latency, 0 server reads)
         const cached = analyticsCache.get(cacheKey);
         if (cached && !signal.aborted) {
+          dataScopeRef.current = cacheKey;
           setData(cached.data);
           setLoading(false);
           // If cached data is fresh (within soft TTL), skip server network fetch entirely
@@ -147,6 +151,20 @@ export function useAnalyticsData(
             return;
           }
         }
+      }
+
+      // Switching access point / range: drop the previous scope's dataset so that the
+      // "keep previous value when the server returns nothing readable" fallbacks (E2EE)
+      // cannot leak another device's top domains and clients into this view.
+      if (dataScopeRef.current !== cacheKey) {
+        dataScopeRef.current = cacheKey;
+        serverFlagsRef.current = {
+          serverHasValidClients: false,
+          serverHasValidTopAllowed: false,
+          serverHasValidTopBlocked: false,
+          serverHasDestinations: false
+        };
+        setData(null);
       }
 
       setLoading(true);

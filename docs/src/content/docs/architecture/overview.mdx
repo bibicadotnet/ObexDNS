@@ -185,6 +185,7 @@ sequenceDiagram
     Ingress->>Pipeline: Parse Binary DNS Message
     Pipeline->>Pipeline: Check Local Response Cache (TTL)
     alt Cache Hit
+        Pipeline-)Batcher: [RAM only] Increment hit counter (profile, access point, client, domain)
         Pipeline-->>Ingress: Return Cached Answer
         Ingress-->>Client: Deliver Response
     else Cache Miss
@@ -205,6 +206,8 @@ sequenceDiagram
         Batcher->>Batcher: Micro-batch Aggregation & Encrypted Write
     end
 ```
+
+**Cache hits and statistics.** A cache hit never writes a detailed log row: only misses (and every BLOCK, which is not cached) appear in the Logs list. Hits are still counted. Each hit increments an in-memory counter keyed like `hourly_rollups` (profile, metric, hour, key, access point), and the counters are flushed every 15 seconds with `count = count + n`. The number of rows written depends on the number of distinct keys, not on the number of queries, so Analytics totals, block ratio, top domains and per-device statistics include cache hits without extra database writes. Hits are only counted when a miss would have been logged (retention above 0, and `skip_log_on_pass` not hiding PASS queries).
 
 ---
 

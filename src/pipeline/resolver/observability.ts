@@ -1,7 +1,7 @@
 import { Context, DNSQuery, ProfileSettings, ResolutionResult } from "../../types";
 import { fetchGeoIP, resolveClientGeoCountry } from "../../utils/geoip";
 import { dnsCache, getProfileGeneration } from "../cache";
-import { enqueueLog, shouldLogQuery } from "../logBatcher";
+import { enqueueLog, shouldLogQuery, isLogPolicyEnabled } from "../logBatcher";
 import { UpstreamHttpError, ParsedDNSAnswerRecord } from "./types";
 
 /**
@@ -42,17 +42,24 @@ export function recordSuccessAndCache(
   const currentGen = getProfileGeneration(context.profileId);
   const isGenerationValid = context.profileGeneration === undefined || context.profileGeneration === currentGen;
 
+  let cacheEntry: Record<string, any> | undefined;
   if (answer.length > 0 && isGenerationValid) {
     // Answers resolved with a per-client ECS subnet are keyed by that subnet so they are
     // never served to clients in other networks.
     const baseKey = `${context.profileId}:${query.name}:${query.type}`;
-    dnsCache.set(ecsScope ? `${baseKey}|${ecsScope}` : baseKey, {
+    cacheEntry = {
       answer,
       ttl: minTTL,
       action,
       reason: effectiveReason,
-      expiresAt: Date.now() + minTTL * 1000
-    });
+      expiresAt: Date.now() + minTTL * 1000,
+      // Cache hits are counted into the hourly rollups (not logged) only when a miss
+      // would have been logged for this profile. Profile setting changes clear dnsCache.
+      countHits: !context.noLog && isLogPolicyEnabled(settings, action),
+      destCountryCode: null,
+      destCountry: null
+    };
+    dnsCache.set(ecsScope ? `${baseKey}|${ecsScope}` : baseKey, cacheEntry);
   }
 
   // 2. Skip everything below (including GeoIP lookups) when the log would be discarded.
@@ -78,6 +85,13 @@ export function recordSuccessAndCache(
           resolveClientGeoCountry(request, clientIp).catch(() => "UNKNOWN"),
           firstIp ? fetchGeoIP(firstIp).catch(() => null) : Promise.resolve(null)
         ]);
+
+        // Remember the destination country on the cache entry so later cache hits
+        // can be counted into the destination rollups without another GeoIP lookup.
+        if (cacheEntry && destGeo?.country_code) {
+          cacheEntry.destCountryCode = destGeo.country_code.toUpperCase();
+          cacheEntry.destCountry = destGeo.country || null;
+        }
 
         enqueueLog(
           {

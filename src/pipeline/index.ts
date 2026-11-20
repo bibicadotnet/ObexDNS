@@ -5,6 +5,46 @@ import { dnsCache, pipelineCache, getProfileGeneration } from "./cache";
 import { pipelineConfig } from "./config";
 import { pipelineResolver, ecsCacheScope } from "./resolver";
 import { pipelineFilter } from "./filter";
+import { recordCacheHit, isLogWriteSilenced } from "./logBatcher";
+import { resolveClientGeoCountry } from "../utils/geoip";
+
+/**
+ * Registers a cache hit in the in-memory rollup counters.
+ * Client and access point are known here, so per-device statistics stay accurate.
+ */
+function countCacheHit(
+  request: Request,
+  query: DNSQuery,
+  context: Context,
+  cached: { action: string; destCountryCode?: string | null; destCountry?: string | null }
+): void {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const clientIp = request.headers.get("CF-Connecting-IP") || "127.0.0.1";
+  const record = (geoCountry: string) =>
+    recordCacheHit(
+      {
+        profileId: context.profileId,
+        accessPointId: context.accessPointId,
+        timestamp,
+        action: cached.action,
+        domain: query.name,
+        clientIp,
+        geoCountry,
+        destCountryCode: cached.destCountryCode,
+        destCountry: cached.destCountry
+      },
+      context.env,
+      context.ctx
+    );
+
+  // Same country resolution as logged queries; usually answered from the CF header without I/O.
+  const task = resolveClientGeoCountry(request, clientIp)
+    .catch(() => "UNKNOWN")
+    .then(record);
+  if (context.ctx && typeof context.ctx.waitUntil === "function") {
+    context.ctx.waitUntil(task);
+  }
+}
 
 export const pipeline = {
   clearCache: pipelineCache.clear,
@@ -53,6 +93,13 @@ export const pipeline = {
       }
 
       const latency = Date.now() - context.startTime;
+
+      // Cache hits write no log row, but they are real queries: count them in RAM and let the
+      // 15s flush add them to hourly_rollups so Analytics (totals, block ratio, per-device) stays correct.
+      if (cached.countHits && !context.noLog && !isLogWriteSilenced()) {
+        countCacheHit(request, query, context, cached);
+      }
+
       return {
         answer: response,
         ttl: Math.ceil((cached.expiresAt - Date.now()) / 1000),

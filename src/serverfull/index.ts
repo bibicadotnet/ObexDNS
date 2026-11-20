@@ -14,7 +14,7 @@ import { UdpDnsServer } from './udp';
 import { DotDnsServer } from './dot';
 import { HttpServer, HttpsServer } from './http';
 import { inspectTlsCertificate, getCertbotDiagnosticOptions } from './cert';
-import { flushLogBatch } from '../pipeline/logBatcher';
+import { flushAllPending } from '../pipeline/logBatcher';
 import worker from '../index';
 import { ExecutionContext } from '../types';
 import { isUsableJwtSecret, isStrongJwtSecret } from '../lib/jwt';
@@ -303,7 +303,7 @@ async function bootstrap(): Promise<void> {
     ]);
 
     try {
-      await flushLogBatch(env);
+      await flushAllPending(env);
     } catch {
       /* ignore */
     }

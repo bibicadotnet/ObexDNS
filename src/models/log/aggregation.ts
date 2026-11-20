@@ -2,6 +2,17 @@ import { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import { SystemSettingsModel } from "../systemSettings";
 import { ResolutionLog } from "../../types";
 
+/** One pre-aggregated hourly_rollups row delta (added to the stored count on conflict). */
+export interface RollupItem {
+  profileId: string;
+  metricType: string;
+  hourTimestamp: number;
+  key: string;
+  subKey: string;
+  accessPointId: string;
+  count: number;
+}
+
 /**
  * Model responsible for maintaining and computing hourly rollups
  * across resolution logs, clients, destinations, and domains in a unified table.
@@ -51,20 +62,16 @@ export class LogAggregationModel {
    * to drastically reduce database write row count.
    *
    * @param logs - Array of raw unencrypted resolution logs.
+   * @param actionOnlyProfileIds - Profiles with E2EE enabled: only the privacy-neutral `action`
+   *   totals are rolled up for them. Domains, client IPs and destination countries are plaintext at
+   *   this point and must never reach the server-side rollup table.
    * @returns Array of D1PreparedStatements to be committed atomically with log batch.
    */
-  createRollupUpsertStatements(logs: ResolutionLog[]): D1PreparedStatement[] {
+  createRollupUpsertStatements(
+    logs: ResolutionLog[],
+    actionOnlyProfileIds?: ReadonlySet<string>
+  ): D1PreparedStatement[] {
     if (!logs || logs.length === 0) return [];
-
-    interface RollupItem {
-      profileId: string;
-      metricType: string;
-      hourTimestamp: number;
-      key: string;
-      subKey: string;
-      accessPointId: string;
-      count: number;
-    }
 
     const map = new Map<string, RollupItem>();
 
@@ -91,6 +98,9 @@ export class LogAggregationModel {
           });
         }
       }
+
+      // E2EE profiles: nothing beyond the action totals may be stored in plaintext.
+      if (actionOnlyProfileIds?.has(log.profile_id)) continue;
 
       // 2. Domain metric (for top allowed and blocked domains)
       if (log.domain && log.domain !== '[Encrypted]') {
@@ -161,8 +171,21 @@ export class LogAggregationModel {
       }
     }
 
+    return this.createUpsertStatementsFromItems(map.values());
+  }
+
+  /**
+   * Builds atomic `count = count + n` UPSERT statements for already aggregated rollup deltas.
+   * Shared by the log flush path (cache misses) and the in-memory cache-hit counter flush,
+   * so both land on exactly the same hourly_rollups keys.
+   *
+   * @param items - Rollup deltas keyed by (profile, metric, hour, key, sub_key, access point).
+   * @returns Array of D1PreparedStatements.
+   */
+  createUpsertStatementsFromItems(items: Iterable<RollupItem>): D1PreparedStatement[] {
     const statements: D1PreparedStatement[] = [];
-    for (const item of map.values()) {
+    for (const item of items) {
+      if (item.count <= 0) continue;
       statements.push(
         this.db.prepare(`
           INSERT INTO hourly_rollups (profile_id, metric_type, hour_timestamp, key, sub_key, access_point_id, count)
@@ -180,7 +203,6 @@ export class LogAggregationModel {
         )
       );
     }
-
     return statements;
   }
 

@@ -257,6 +257,12 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     LOG_CLEANUP_YIELD_SLEEP_MS: process.env.LOG_CLEANUP_YIELD_SLEEP_MS !== undefined && process.env.LOG_CLEANUP_YIELD_SLEEP_MS !== ''
       ? Number(process.env.LOG_CLEANUP_YIELD_SLEEP_MS)
       : 10,
+    CACHE_HIT_FLUSH_CHUNK_SIZE: process.env.CACHE_HIT_FLUSH_CHUNK_SIZE !== undefined && process.env.CACHE_HIT_FLUSH_CHUNK_SIZE !== ''
+      ? Number(process.env.CACHE_HIT_FLUSH_CHUNK_SIZE)
+      : 200,
+    LOG_QUEUE_MAX_ROWS: process.env.LOG_QUEUE_MAX_ROWS !== undefined && process.env.LOG_QUEUE_MAX_ROWS !== ''
+      ? Number(process.env.LOG_QUEUE_MAX_ROWS)
+      : 10000,
     LOG_CLEANUP_BATCH_LIMIT: process.env.LOG_CLEANUP_BATCH_LIMIT !== undefined && process.env.LOG_CLEANUP_BATCH_LIMIT !== ''
       ? Number(process.env.LOG_CLEANUP_BATCH_LIMIT)
       : 0, // 0 = unmetered chunked loop with yield (dọn sạch 100% rác)

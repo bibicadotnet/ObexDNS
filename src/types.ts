@@ -74,6 +74,8 @@ export interface Env {
   AUTH_CACHE_TTL_SEC?: string | number;
   LOG_CLEANUP_CHUNK_SIZE?: string | number;
   LOG_CLEANUP_YIELD_SLEEP_MS?: string | number;
+  CACHE_HIT_FLUSH_CHUNK_SIZE?: string | number;
+  LOG_QUEUE_MAX_ROWS?: string | number;
   LOG_CLEANUP_BATCH_LIMIT?: string | number;
   LOG_CLEANUP_DAILY_BUDGET?: string | number;
   LOG_ORPHAN_KEY_MIN_AGE_SEC?: string | number;
