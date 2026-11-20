@@ -10,6 +10,7 @@ import { calculateTimeBoundaries } from "./timeBoundaries";
 import { prefetchDomainIcons } from "./utils/prefetchIcons";
 import { fetchServerLogs } from "./strategies/serverStrategy";
 import { queryInitialLocalLogs, queryMoreLocalLogs } from "./strategies/localDbStrategy";
+import { buildSummaryParams, summarizeActionCounts, type LogStats } from "./utils/stats";
 
 export const PAGE_SIZE = 50;
 export const PAGE_SIZE_IN_REALTIME = 25;
@@ -34,10 +35,8 @@ export interface UseLogsFetcherReturn {
   syncing: boolean;
   hasMore: boolean;
   setHasMore: React.Dispatch<React.SetStateAction<boolean>>;
-  stats: { total: number; pass: number; block: number; redirect: number } | null;
-  setStats: React.Dispatch<
-    React.SetStateAction<{ total: number; pass: number; block: number; redirect: number } | null>
-  >;
+  stats: LogStats | null;
+  setStats: React.Dispatch<React.SetStateAction<LogStats | null>>;
   prevLatestTimestamp: number | null;
   setPrevLatestTimestamp: React.Dispatch<React.SetStateAction<number | null>>;
   fetchLogs: (
@@ -66,12 +65,7 @@ export function useLogsFetcher({
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [syncing, setSyncing] = useState<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(true);
-  const [stats, setStats] = useState<{
-    total: number;
-    pass: number;
-    block: number;
-    redirect: number;
-  } | null>(null);
+  const [stats, setStats] = useState<LogStats | null>(null);
   const [prevLatestTimestamp, setPrevLatestTimestamp] = useState<number | null>(null);
 
   const logsRef = useRef<LogEntry[]>([]);
@@ -127,32 +121,45 @@ export function useLogsFetcher({
         let usedLocalDb = false;
 
         if (isInitial) {
-          if (!isAutoRefresh) setSyncing(true);
-
-          // Fetch authoritative server summary stats concurrently to ensure full-dataset accuracy
-          const statsParams = new URLSearchParams({ range: currentRange });
-          if (currentRange === "custom" && customRange.start && customRange.end) {
-            statsParams.set("start", String(since));
-            statsParams.set("end", String(until));
+          if (!isAutoRefresh) {
+            setSyncing(true);
+            // Never keep the previous range's counters on screen while the new ones load.
+            setStats(null);
           }
-          if (searchQuery) statsParams.set("search", searchQuery);
-          if (statusFilter) statsParams.set("status", statusFilter);
-          if (accessPointIdFilter) statsParams.set("access_point_id", accessPointIdFilter);
-          if (destCountryFilter) statsParams.set("dest_country", destCountryFilter);
-          if (ispFilter) statsParams.set("isp", ispFilter);
+
+          // The header counters must describe exactly the rows of the list below. Two sources can
+          // answer that: the server (authoritative for time/status/device) and the local SQLite
+          // copy (the only one that can see decrypted E2EE fields such as domain, country, ISP).
+          // They used to overwrite each other in whatever order they finished, which showed
+          // different numbers for the same query. Rule: the server wins unless a filter needs
+          // decrypted fields, in which case the local copy wins.
+          const needsLocalStats = Boolean(searchQuery || destCountryFilter || ispFilter);
+          let serverStatsApplied = false;
+          let localStatsApplied = false;
+          const applyLocalStats = (localStats: LogStats | undefined): void => {
+            if (!localStats || controller.signal.aborted) return;
+            if (!needsLocalStats && serverStatsApplied) return;
+            localStatsApplied = true;
+            setStats(localStats);
+          };
+
+          const statsParams = buildSummaryParams({
+            range: currentRange,
+            since,
+            until,
+            searchQuery,
+            statusFilter,
+            accessPointIdFilter,
+            destCountryFilter,
+            ispFilter
+          });
 
           getProfileAnalytics(profileId, "summary", statsParams.toString(), { signal: controller.signal })
             .then((statsData: Array<{ action: string; count: number }> | null) => {
               if (controller.signal.aborted || !statsData) return;
-              const summary = { total: 0, pass: 0, block: 0, redirect: 0 };
-              statsData.forEach((item) => {
-                const count = Number(item.count) || 0;
-                summary.total += count;
-                if (item.action === "PASS") summary.pass = count;
-                else if (item.action === "BLOCK") summary.block = count;
-                else if (item.action === "REDIRECT") summary.redirect = count;
-              });
-              setStats(summary);
+              if (needsLocalStats && localStatsApplied) return;
+              serverStatsApplied = true;
+              setStats(summarizeActionCounts(statsData));
             })
             .catch(() => {
               // Silently ignore network failures; local cached stats remain visible
@@ -175,9 +182,7 @@ export function useLogsFetcher({
               if (realtimeRefresh && immediate.rows.length > 0) {
                 logsWs.updateCursor(immediate.rows[0].timestamp, immediate.rows[0].id);
               }
-              if (immediate.stats) {
-                setStats(immediate.stats);
-              }
+              applyLocalStats(immediate.stats);
               setLoading(false);
             }
           );
@@ -197,9 +202,7 @@ export function useLogsFetcher({
             if (realtimeRefresh && localResult.result.rows.length > 0) {
               logsWs.updateCursor(localResult.result.rows[0].timestamp, localResult.result.rows[0].id);
             }
-            if (localResult.result.stats) {
-              setStats(localResult.result.stats);
-            }
+            applyLocalStats(localResult.result.stats);
           }
         } else {
           // ── Pagination (Load More) ──

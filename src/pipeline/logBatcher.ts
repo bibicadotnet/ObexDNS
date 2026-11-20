@@ -705,25 +705,30 @@ export function recordCacheHit(event: CacheHitEvent, env: Env, ctx?: ExecutionCo
     return;
   }
   const hourTs = Math.floor(event.timestamp / 3600) * 3600;
+  const minuteTs = Math.floor(event.timestamp / 60) * 60;
   const apId = event.accessPointId || "";
   const base = { profileId: event.profileId, hourTimestamp: hourTs, accessPointId: apId, count: 1 };
 
+  // Every hit is counted twice: in the regular hourly rollup key (used by ranges of 24h or more,
+  // together with logged queries) and in a `hit_*` key bucketed by MINUTE. Short ranges (10M, 1H)
+  // read exact log rows for logged queries and add these minute buckets for the cache hits, so they
+  // include hits without the hour-sized error of the hourly keys.
+  const add = (metricType: string, key: string, subKey: string): void => {
+    addRollupDelta(hitCounters, { ...base, metricType, key, subKey });
+    addRollupDelta(hitCounters, { ...base, hourTimestamp: minuteTs, metricType: `hit_${metricType}`, key, subKey });
+  };
+
   if (event.action) {
-    addRollupDelta(hitCounters, { ...base, metricType: "action", key: event.action, subKey: "" });
+    add("action", event.action, "");
   }
   if (event.domain && event.domain !== "[Encrypted]") {
-    addRollupDelta(hitCounters, { ...base, metricType: "domain", key: event.domain, subKey: event.action || "" });
+    add("domain", event.domain, event.action || "");
   }
   if (event.clientIp && event.clientIp !== "[Encrypted]") {
-    addRollupDelta(hitCounters, { ...base, metricType: "client", key: event.clientIp, subKey: event.geoCountry || "" });
+    add("client", event.clientIp, event.geoCountry || "");
   }
   if (event.destCountryCode) {
-    addRollupDelta(hitCounters, {
-      ...base,
-      metricType: "dest",
-      key: event.destCountryCode.toUpperCase(),
-      subKey: event.destCountry || ""
-    });
+    add("dest", event.destCountryCode.toUpperCase(), event.destCountry || "");
   }
 
   // No timer of its own: hits are written by flushLogBatch, in the same 15s cycle and the same
@@ -747,7 +752,7 @@ function takeHitItems(checkedProfiles: Set<string>, e2eeProfiles: Set<string>, l
     if (taken.length >= limit) break;
     if (!checkedProfiles.has(item.profileId)) continue;
     hitCounters.delete(k);
-    if (e2eeProfiles.has(item.profileId) && item.metricType !== "action") continue;
+    if (e2eeProfiles.has(item.profileId) && item.metricType !== "action" && item.metricType !== "hit_action") continue;
     taken.push(item);
   }
   return taken;

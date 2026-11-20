@@ -141,15 +141,14 @@ export function useAnalyticsData(
         analyticsCache.invalidateProfile(profileId);
       } else {
         // Step -1: Check L1 in-memory client cache for instant preview (0ms latency, 0 server reads)
+        // The cached dataset is only a preview: it is always revalidated below. Skipping the
+        // request for "fresh" entries made the Analytics tab show old numbers after switching
+        // away and back, or after toggling 10M / 1H / 24H.
         const cached = analyticsCache.get(cacheKey);
         if (cached && !signal.aborted) {
           dataScopeRef.current = cacheKey;
           setData(cached.data);
           setLoading(false);
-          // If cached data is fresh (within soft TTL), skip server network fetch entirely
-          if (!cached.isStale) {
-            return;
-          }
         }
       }
 
@@ -171,6 +170,31 @@ export function useAnalyticsData(
 
       const interval = calculateTimeInterval(selectedRange, customStart, customEnd);
 
+      // Start the authoritative server request right away so it overlaps the local SQLite work.
+      const queryParams = buildAnalyticsQueryParams(selectedRange, interval, apIdFilter);
+      const loadServerAnalytics = async (): Promise<AnalyticsData> => {
+        try {
+          return await getProfileAnalytics(profileId, "", queryParams, { signal });
+        } catch (unifiedErr) {
+          if (signal.aborted) throw unifiedErr;
+          // Fallback to separate endpoints if unified endpoint fails
+          const [summary, trend, topAllowed, topBlocked, clients, destinations] =
+            await Promise.all([
+              getProfileAnalytics(profileId, "summary", queryParams, { signal }),
+              getProfileAnalytics(profileId, "trend", queryParams, { signal }),
+              getProfileAnalytics(profileId, "top_allowed", queryParams, { signal }),
+              getProfileAnalytics(profileId, "top_blocked", queryParams, { signal }),
+              getProfileAnalytics(profileId, "clients", queryParams, { signal }),
+              getProfileAnalytics(profileId, "destinations", queryParams, { signal })
+            ]);
+          return { summary, trend, top_allowed: topAllowed, top_blocked: topBlocked, clients, destinations };
+        }
+      };
+      const serverRequest = loadServerAnalytics();
+      serverRequest.catch(() => {
+        // Handled where the result is awaited below
+      });
+
       // Step 0: Ensure local encrypted logs are re-decrypted if E2EE is unlocked
       try {
         if (e2ee.isProfileUnlocked(profileId) || e2ee.isUnlocked()) {
@@ -180,69 +204,48 @@ export function useAnalyticsData(
         // Non-critical local decryption check
       }
 
-      // Step 1: Attempt Local-First SQLite aggregation for instant preview (0ms latency)
+      // Step 1: Aggregate the local SQLite copy. It is NOT shown as a preview: it holds no DNS
+      // cache hits (and may be partially synced), so its totals differ from the server's and used to
+      // flash wrong numbers. It only backs the fields the server cannot read (E2EE) and acts as
+      // the fallback when the server is unreachable.
+      let localPreview: AnalyticsData | null = null;
       try {
         const isDbReady = await localDb.init();
         if (isDbReady && !signal.aborted) {
-          const localAnalytics = await localDb.queryAnalytics({
+          localPreview = await localDb.queryAnalytics({
             profileId,
             since: interval.since,
             until: interval.until,
             bucketSec: interval.bucketSec,
             accessPointId: apIdFilter || undefined
           });
-
-          if (localAnalytics.summary.some((s) => s.count > 0) && !signal.aborted) {
-            setData(localAnalytics);
-            setLoading(false);
-          }
         }
       } catch (localErr) {
-        console.warn("[useAnalyticsData] Local SQLite preview failed:", localErr);
+        console.warn("[useAnalyticsData] Local SQLite aggregation failed:", localErr);
       }
+      if (signal.aborted) return;
 
       // Step 2: Fetch Authoritative Analytics from Server
       try {
-        const queryParams = buildAnalyticsQueryParams(selectedRange, interval, apIdFilter);
-
-        let serverAnalytics: AnalyticsData | null = null;
-        try {
-          serverAnalytics = await getProfileAnalytics(profileId, "", queryParams);
-        } catch {
-          if (signal.aborted) return;
-          // Fallback to separate endpoints if unified endpoint fails
-          const [summary, trend, topAllowed, topBlocked, clients, destinations] =
-            await Promise.all([
-              getProfileAnalytics(profileId, "summary", queryParams),
-              getProfileAnalytics(profileId, "trend", queryParams),
-              getProfileAnalytics(profileId, "top_allowed", queryParams),
-              getProfileAnalytics(profileId, "top_blocked", queryParams),
-              getProfileAnalytics(profileId, "clients", queryParams),
-              getProfileAnalytics(profileId, "destinations", queryParams)
-            ]);
-          serverAnalytics = {
-            summary,
-            trend,
-            top_allowed: topAllowed,
-            top_blocked: topBlocked,
-            clients,
-            destinations
-          };
-        }
+        const serverAnalytics: AnalyticsData | null = await serverRequest;
 
         if (serverAnalytics && !signal.aborted) {
           const flags = inspectServerAnalytics(serverAnalytics);
           serverFlagsRef.current = flags;
 
-          setData((prev) => {
-            const nextData = mergeServerAnalytics(serverAnalytics!, prev, flags);
-            analyticsCache.set(cacheKey, nextData, selectedRange, customEnd);
-            return nextData;
-          });
+          // Fallback fields come from this request's own local aggregation, never from the
+          // previously displayed (cached, possibly older) dataset.
+          const nextData = mergeServerAnalytics(serverAnalytics, localPreview, flags);
+          analyticsCache.set(cacheKey, nextData, selectedRange, customEnd);
+          setData(nextData);
         }
       } catch (e) {
         if (!signal.aborted) {
           console.error("[useAnalyticsData] Failed to fetch server analytics:", e);
+          // Server unreachable: show the local copy rather than nothing.
+          if (localPreview && localPreview.summary.some((s) => s.count > 0)) {
+            setData((curr) => curr ?? localPreview);
+          }
         }
       } finally {
         if (!signal.aborted) {

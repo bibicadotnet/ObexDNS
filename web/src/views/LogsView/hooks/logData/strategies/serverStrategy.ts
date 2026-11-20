@@ -5,6 +5,7 @@
 
 import type { LogEntry, TimeRange } from "../../../types";
 import { getProfileLogs, getProfileAnalytics } from "../../../../../services";
+import { buildSummaryParams, summarizeActionCounts, type LogStats } from "../utils/stats";
 
 export interface ServerStrategyParams {
   profileId: string;
@@ -25,7 +26,7 @@ export interface ServerStrategyParams {
 
 export interface ServerStrategyResult {
   logs: LogEntry[];
-  stats: { total: number; pass: number; block: number; redirect: number } | null;
+  stats: LogStats | null;
 }
 
 /**
@@ -67,33 +68,22 @@ export async function fetchServerLogs(params: ServerStrategyParams): Promise<Ser
   let fetchStatsPromise: Promise<Array<{ action: string; count: number }> | null> = Promise.resolve(null);
 
   if (isInitial) {
-    const statsParams = new URLSearchParams({ range: currentRange });
-    if (currentRange === "custom" && customRange.start && customRange.end) {
-      statsParams.set("start", String(since));
-      statsParams.set("end", String(until));
-    }
-    if (searchQuery) statsParams.set("search", searchQuery);
-    if (statusFilter) statsParams.set("status", statusFilter);
-    if (accessPointIdFilter) statsParams.set("access_point_id", accessPointIdFilter);
-    if (destCountryFilter) statsParams.set("dest_country", destCountryFilter);
-    if (ispFilter) statsParams.set("isp", ispFilter);
+    const statsParams = buildSummaryParams({
+      range: currentRange,
+      since,
+      until,
+      searchQuery,
+      statusFilter,
+      accessPointIdFilter,
+      destCountryFilter,
+      ispFilter
+    });
     fetchStatsPromise = getProfileAnalytics(profileId, "summary", statsParams.toString(), { signal });
   }
 
   const [logsData, statsData] = await Promise.all([fetchLogsPromise, fetchStatsPromise]);
 
-  let stats: { total: number; pass: number; block: number; redirect: number } | null = null;
-  if (statsData) {
-    const summary = { total: 0, pass: 0, block: 0, redirect: 0 };
-    statsData.forEach((item: { action: string; count: number }) => {
-      const count = item.count;
-      summary.total += count;
-      if (item.action === "PASS") summary.pass = count;
-      else if (item.action === "BLOCK") summary.block = count;
-      else if (item.action === "REDIRECT") summary.redirect = count;
-    });
-    stats = summary;
-  }
+  const stats = statsData ? summarizeActionCounts(statsData) : null;
 
   return {
     logs: logsData || [],

@@ -72,7 +72,7 @@ export const LogsList: React.FC<LogsListProps> = ({
               intent={
                 log.action === "PASS"
                   ? Intent.SUCCESS
-                  : log.action === "BLOCK"
+                  : log.action === "BLOCK" || log.action === "FAIL"
                   ? Intent.DANGER
                   : Intent.WARNING
               }

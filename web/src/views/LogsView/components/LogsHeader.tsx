@@ -32,7 +32,7 @@ export interface LogsHeaderProps {
   setIspFilter: (val: string | null) => void;
   searchQuery: string;
   setSearchQuery: (val: string) => void;
-  stats: { total: number; pass: number; block: number; redirect: number } | null;
+  stats: { total: number; pass: number; block: number; redirect: number; fail?: number } | null;
   logRetentionDays: number;
   onExport: () => void;
   exporting: boolean;
@@ -135,6 +135,11 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
                   <Tag minimal round intent={Intent.WARNING}>
                     {stats.redirect.toLocaleString()}
                   </Tag>
+                  {Boolean(stats.fail) && (
+                    <Tag minimal round intent={Intent.DANGER} icon="error">
+                      {(stats.fail ?? 0).toLocaleString()}
+                    </Tag>
+                  )}
                 </>
               )}
             </h2>

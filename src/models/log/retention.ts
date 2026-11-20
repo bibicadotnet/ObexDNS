@@ -4,6 +4,7 @@ import { SystemSettingsModel } from "../systemSettings";
 import { KemKeyModel } from "../kemKey";
 import { yieldToEventLoop } from "../../utils/yieldToEventLoop";
 import { envNumber } from "../../utils/envNumber";
+import { hitRetentionCutoff } from "./aggregation";
 
 /** Extra delete rounds that hand unused per-profile quota to profiles that still have expired rows. */
 const MAX_REDISTRIBUTION_ROUNDS = 5;
@@ -171,13 +172,22 @@ export class LogRetentionModel {
           // Specifying metric_type allows SQLite to utilize the composite primary key
           // (profile_id, metric_type, hour_timestamp) for instant index range seeks,
           // avoiding profile-wide table scans.
+          //
+          // Hourly rollups follow the profile's retention. The minute buckets of cache hits (`hit_*`) are
+          // only needed for the edge hours of a window and for windows under 24h, so they get a much
+          // shorter life of their own (HIT_RETENTION_SEC), but never outlive the profile's retention.
+          // Analytics aligns any window edge older than that to whole hours (see planRollupQuery).
+          const hitThreshold = Math.max(threshold, hitRetentionCutoff());
           const METRIC_TYPES = ['action', 'client', 'dest', 'domain'] as const;
-          for (const metric of METRIC_TYPES) {
-            rollupStatements.push(
-              this.db.prepare(
-                "DELETE FROM hourly_rollups WHERE profile_id = ? AND metric_type = ? AND hour_timestamp < ?"
-              ).bind(profile.id, metric, threshold)
-            );
+          const HIT_METRIC_TYPES = ['hit_action', 'hit_client', 'hit_dest', 'hit_domain'] as const;
+          for (const [metrics, cutoff] of [[METRIC_TYPES, threshold], [HIT_METRIC_TYPES, hitThreshold]] as const) {
+            for (const metric of metrics) {
+              rollupStatements.push(
+                this.db.prepare(
+                  "DELETE FROM hourly_rollups WHERE profile_id = ? AND metric_type = ? AND hour_timestamp < ?"
+                ).bind(profile.id, metric, cutoff)
+              );
+            }
           }
 
           // Delete bounded number of rows per profile per hourly cron run if budget remains

@@ -103,7 +103,7 @@ async function main() {
       await flushLogBatch(env, ctx);
       assert.strictEqual(pendingHitCounterRows(), 0);
       const metrics = new Set(rowsOf("flaky").map((r) => r.args[1]));
-      assert.deepStrictEqual([...metrics], ["action"], "E2EE profile must only get action totals");
+      assert.deepStrictEqual([...metrics].sort(), ["action", "hit_action"], "E2EE profile must only get action totals");
       assert.ok(!JSON.stringify(written).includes("hit.example"));
       console.log("  ok: failed key lookup -> nothing plaintext, counters kept, then action-only");
     }

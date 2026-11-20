@@ -94,6 +94,7 @@ export function handleQueryLogs(params: WorkerQueryLogsParams): WorkerQueryResul
       if (row.action === 'PASS') stats.pass = cnt;
       else if (row.action === 'BLOCK') stats.block = cnt;
       else if (row.action === 'REDIRECT') stats.redirect = cnt;
+      else if (row.action === 'FAIL') stats.fail = (stats.fail ?? 0) + cnt;
     }
   } finally {
     statStmt.finalize();

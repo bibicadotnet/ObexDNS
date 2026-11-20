@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { LogEntry } from "../../types";
 import { logsWs } from "../../../../services";
+import type { LogStats } from "./utils/stats";
 
 export interface UseRealtimeLogsParams {
   realtimeRefresh: boolean;
@@ -12,9 +13,7 @@ export interface UseRealtimeLogsParams {
   pageSize: number;
   logsRef: React.MutableRefObject<LogEntry[]>;
   setLogs: React.Dispatch<React.SetStateAction<LogEntry[]>>;
-  setStats: React.Dispatch<
-    React.SetStateAction<{ total: number; pass: number; block: number; redirect: number } | null>
-  >;
+  setStats: React.Dispatch<React.SetStateAction<LogStats | null>>;
   setPrevLatestTimestamp: React.Dispatch<React.SetStateAction<number | null>>;
 }
 
@@ -61,14 +60,20 @@ export function useRealtimeLogs({
 
       if (filteredNew.length === 0) return;
 
+      // Only rows that are really new (the stream can replay after a reconnect) and that match the
+      // active filters may change the list or the counters.
+      const known = new Set(logsRef.current.map((l) => `${l.timestamp}-${l.id}`));
+      const uniqueNew = filteredNew.filter((l) => !known.has(`${l.timestamp}-${l.id}`));
+      if (uniqueNew.length === 0) return;
+
       const oldLatest = logsRef.current.length > 0 ? logsRef.current[0].timestamp : null;
       setPrevLatestTimestamp(oldLatest);
 
       setLogs((prev) => {
         const existingIds = new Set(prev.map((l) => `${l.timestamp}-${l.id}`));
-        const uniqueNew = filteredNew.filter((l) => !existingIds.has(`${l.timestamp}-${l.id}`));
-        if (uniqueNew.length === 0) return prev;
-        return [...uniqueNew, ...prev].slice(0, pageSize);
+        const fresh = uniqueNew.filter((l) => !existingIds.has(`${l.timestamp}-${l.id}`));
+        if (fresh.length === 0) return prev;
+        return [...fresh, ...prev].slice(0, pageSize);
       });
 
       setStats((prev) => {
@@ -76,16 +81,19 @@ export function useRealtimeLogs({
         let addedPass = 0;
         let addedBlock = 0;
         let addedRedirect = 0;
-        for (const l of newLogs) {
+        let addedFail = 0;
+        for (const l of uniqueNew) {
           if (l.action === "PASS") addedPass++;
           else if (l.action === "BLOCK") addedBlock++;
           else if (l.action === "REDIRECT") addedRedirect++;
+          else if (l.action === "FAIL") addedFail++;
         }
         return {
-          total: prev.total + newLogs.length,
+          total: prev.total + uniqueNew.length,
           pass: prev.pass + addedPass,
           block: prev.block + addedBlock,
-          redirect: prev.redirect + addedRedirect
+          redirect: prev.redirect + addedRedirect,
+          fail: (prev.fail ?? 0) + addedFail
         };
       });
     });

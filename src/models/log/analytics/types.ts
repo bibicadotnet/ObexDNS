@@ -59,4 +59,9 @@ export interface DashboardAnalyticsResult {
   top_blocked: DomainCountResult[];
   clients: ClientCountResult[];
   destinations: DestinationCountResult[];
+  /** Set by the API: the window the numbers really cover (see describeAnalyticsWindow). */
+  aligned?: boolean;
+  too_old?: boolean;
+  aligned_since?: number | null;
+  aligned_until?: number | null;
 }

@@ -170,6 +170,7 @@ export interface ActionSummaryStats {
   pass: number;
   block: number;
   redirect: number;
+  fail?: number;
 }
 
 /**

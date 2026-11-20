@@ -53,7 +53,7 @@ export interface LocalQueryLogsParams {
 export interface LocalQueryResult {
   rows: LogEntry[];
   total: number;
-  stats?: { total: number; pass: number; block: number; redirect: number };
+  stats?: { total: number; pass: number; block: number; redirect: number; fail?: number };
 }
 
 /**

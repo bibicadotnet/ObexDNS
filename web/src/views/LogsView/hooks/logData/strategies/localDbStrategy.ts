@@ -5,6 +5,7 @@
 
 import type { LogEntry } from "../../../types";
 import { localDb } from "../../../../../services";
+import type { LogStats } from "../utils/stats";
 
 export interface LocalDbQueryParams {
   profileId: string;
@@ -21,7 +22,7 @@ export interface LocalDbQueryParams {
 export interface LocalDbInitialResult {
   rows: LogEntry[];
   hasMore: boolean;
-  stats?: { total: number; pass: number; block: number; redirect: number };
+  stats?: LogStats;
 }
 
 export interface LocalDbPaginationResult {

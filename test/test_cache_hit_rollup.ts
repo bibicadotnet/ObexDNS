@@ -69,8 +69,9 @@ async function main() {
     for (let i = 0; i < 1000; i++) recordCacheHit(ev(), env);
     await flushAllPending(env);
     const rows = flatten(batches);
-    // action, domain, client, dest -> 4 rows regardless of 1000 hits
-    assert.strictEqual(rows.length, 4);
+    // action, domain, client, dest (hourly) + the same four as minute-bucketed hit_* rows
+    // -> 8 rows regardless of 1000 hits
+    assert.strictEqual(rows.length, 8);
     for (const r of rows) assert.strictEqual(r[6], 1000);
     assert.ok(batches.flat().every((s) => s.sql.includes("count = count + excluded.count")));
     const byMetric = new Map(rows.map((r) => [r[1], r]));
@@ -78,7 +79,8 @@ async function main() {
     assert.deepStrictEqual(byMetric.get("domain")!.slice(0, 6), ["p1", "domain", 7200, "example.com", "PASS", "iphone"]);
     assert.deepStrictEqual(byMetric.get("client")!.slice(0, 6), ["p1", "client", 7200, "10.0.0.2", "LAN", "iphone"]);
     assert.deepStrictEqual(byMetric.get("dest")!.slice(0, 6), ["p1", "dest", 7200, "US", "United States", "iphone"]);
-    console.log("  ok: 1000 hits -> 4 upsert rows");
+    assert.deepStrictEqual(byMetric.get("hit_action")!.slice(0, 6), ["p1", "hit_action", 7200, "PASS", "", "iphone"]);
+    console.log("  ok: 1000 hits -> 8 upsert rows");
   }
 
   // 2. Per-device keys stay separate (iPad vs iPhone), as do hours.
@@ -159,8 +161,8 @@ async function main() {
     recordCacheHit(ev({ profileId: "plain" }), env);
     await flushAllPending(env);
     const rows = flatten(batches);
-    assert.deepStrictEqual(rows.filter((r) => r[0] === "enc").map((r) => r[1]), ["action"]);
-    assert.strictEqual(rows.filter((r) => r[0] === "plain").length, 4);
+    assert.deepStrictEqual(rows.filter((r) => r[0] === "enc").map((r) => r[1]).sort(), ["action", "hit_action"]);
+    assert.strictEqual(rows.filter((r) => r[0] === "plain").length, 8);
     console.log("  ok: E2EE profile -> action only (hits)");
   }
 

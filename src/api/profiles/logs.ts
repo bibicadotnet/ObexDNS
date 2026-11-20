@@ -5,6 +5,8 @@ import { handleProfileLogsWs } from "./logsWs";
 import { scheduleSpaceReclaim } from "../../utils/dbMaintenance";
 import { isServerfullEnv } from "../../utils/serverfullEnv";
 import { pipelineCache } from "../../pipeline/cache";
+import { alignRangeToMinutes, describeAnalyticsWindow } from "../../models/log/aggregation";
+import { analyticsCachePolicy } from "../../utils/analyticsCache";
 
 /**
  * Handle logs and analytics requests to /api/profiles/:id/logs and /api/profiles/:id/analytics
@@ -178,6 +180,10 @@ export async function handleProfileLogsAndAnalyticsRequest(
         default: since = until - 3600; interval = "(timestamp/60)*60"; break;
       }
     }
+    ({ since, until } = alignRangeToMinutes(since, until, !!(startParam && endParam)));
+
+    // Cache bucket/TTL grow with the size of the window (see analyticsCachePolicy).
+    const cachePolicy = analyticsCachePolicy(range, since, until, !!(startParam && endParam));
 
     const subResource = pathParts[4];
     const isServerfull = isServerfullEnv(env);
@@ -185,7 +191,9 @@ export async function handleProfileLogsAndAnalyticsRequest(
 
     if (subResource) {
       const exact = urlParams.get('exact') === 'true';
-      const subCacheKey = `analytics_sub:${profileId}:${subResource}:${urlParams.toString()}`;
+      // Relative ranges ("10m", "1h", ...) slide with the clock, so the key carries a time bucket whose
+      // length equals the TTL: a cached answer is never older than one bucket.
+      const subCacheKey = `analytics_sub:${profileId}:${subResource}:${urlParams.toString()}:${cachePolicy.windowKey}`;
       if (!exact && cache) {
         const cached = await cacheUtils.get<any>(cache, subCacheKey);
         if (cached) {
@@ -228,7 +236,7 @@ export async function handleProfileLogsAndAnalyticsRequest(
       }
 
       if (!exact && cache) {
-        await cacheUtils.set(cache, subCacheKey, data, 300, [`analytics-${profileId}`]);
+        await cacheUtils.set(cache, subCacheKey, data, cachePolicy.bucketSec, [`analytics-${profileId}`]);
       }
       return new Response(JSON.stringify(data), {
         headers: {
@@ -239,7 +247,8 @@ export async function handleProfileLogsAndAnalyticsRequest(
       });
     }
     
-    const cacheKey = `analytics:${profileId}:${since}:${until}:${interval}:${accessPointId || 'all'}`;
+    // `since`/`until` slide with the clock for relative ranges, so key on the range label and time bucket.
+    const cacheKey = `analytics:${profileId}:${cachePolicy.windowKey}:${interval}:${accessPointId || 'all'}`;
     if (cache) {
       const cached = await cacheUtils.get<any>(cache, cacheKey);
       if (cached) {
@@ -253,9 +262,19 @@ export async function handleProfileLogsAndAnalyticsRequest(
       }
     }
 
-    const analytics = await logModel.getAnalytics(profileId, since, until, interval, accessPointId);
+    const result = await logModel.getAnalytics(profileId, since, until, interval, accessPointId);
+    // Tell the client which window the numbers really cover, so a window that had to be aligned to whole
+    // hours (or has no exact answer at all) is not shown as if it were the one that was asked for.
+    const win = describeAnalyticsWindow(since, until);
+    const analytics = {
+      ...result,
+      aligned: win.aligned,
+      too_old: win.tooOld,
+      aligned_since: win.alignedSince,
+      aligned_until: win.alignedUntil
+    };
     if (cache) {
-      await cacheUtils.set(cache, cacheKey, analytics, 60, [`analytics-${profileId}`]);
+      await cacheUtils.set(cache, cacheKey, analytics, cachePolicy.bucketSec, [`analytics-${profileId}`]);
     }
 
     return new Response(JSON.stringify(analytics), {

@@ -42,6 +42,12 @@ export const StatusFilter: React.FC<StatusFilterProps> = ({
         text={t("logs.onlyRedirect")}
         onClick={() => setStatusFilter("REDIRECT")}
       />
+      <MenuItem
+        icon={statusFilter === "FAIL" ? "tick" : undefined}
+        intent={Intent.DANGER}
+        text={t("logs.onlyFail")}
+        onClick={() => setStatusFilter("FAIL")}
+      />
     </Menu>
   );
 
@@ -53,6 +59,8 @@ export const StatusFilter: React.FC<StatusFilterProps> = ({
         return { text: t("logs.statusBlock"), intent: Intent.DANGER };
       case "REDIRECT":
         return { text: t("logs.statusRedirect"), intent: Intent.WARNING };
+      case "FAIL":
+        return { text: t("logs.statusFail"), intent: Intent.DANGER };
       default:
         return { text: t("logs.allStatus"), intent: Intent.NONE };
     }

@@ -119,7 +119,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
         <span
           className={clsx("bp6-tag", "bp6-fill", "bp6-minimal", "bp6-round", {
             "bp6-intent-success": log.action === "PASS",
-            "bp6-intent-danger": log.action === "BLOCK",
+            "bp6-intent-danger": log.action === "BLOCK" || log.action === "FAIL",
             "bp6-intent-warning": log.action === "REDIRECT",
           })}
         >

@@ -19,6 +19,7 @@ import { useIsMobile } from "../../hooks/useIsMobile";
 import { useAnalyticsData } from "./hooks/useAnalyticsData";
 import { AnalyticsRangeSelector } from "./components/AnalyticsRangeSelector";
 import { AnalyticsMetricCards } from "./components/AnalyticsMetricCards";
+import { AnalyticsWindowNotice } from "./components/AnalyticsWindowNotice";
 import { ClientActivitySection } from "./components/ClientActivitySection";
 import { E2eeUnlockBanner } from "../LogsView/components/E2eeUnlockBanner";
 import { UnlockWithRecoveryDialog } from "../LogsView/components/UnlockWithRecoveryDialog";
@@ -124,6 +125,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toaster
           fetchData("custom", customRange.start, customRange.end, accessPointIdFilter);
         }}
       />
+
+      {/* The window the numbers really cover, when it differs from the requested one */}
+      <AnalyticsWindowNotice data={data} />
 
       {/* E2EE Unlock Banner when records are encrypted and locked */}
       {(isE2eeEnabled || hasEncryptedData) && !isE2eeUnlocked && (
