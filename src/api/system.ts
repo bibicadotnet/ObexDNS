@@ -5,7 +5,7 @@ import { getPresetEchFrontingDomains } from '../utils/ech/constants';
 import { fetchGeoIP, GeoIP } from '../utils/geoip';
 import { isPublicInternetIP, isIPv4, isIPv6 } from '../utils/validator';
 import { isServerfullEnv } from '../utils/serverfullEnv';
-import { iconCandidates } from '../utils/iconCandidates';
+import { fetchWebsiteIcon, iconHitResponse, iconMissResponse, normalizeIconDomain } from '../utils/websiteIcon';
 import {
   DEFAULT_SUBSTITUTE_DOMAIN,
   getPresetUpstreams,
@@ -175,37 +175,28 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
 
   if (url.pathname.startsWith('/api/icon/')) {
     // The client asks for "<domain>.ico"; the suffix is not part of the hostname.
-    const domain = url.pathname.replace('/api/icon/', '').replace(/\.ico$/i, '');
-    if (!domain || !/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain) || domain.includes('..') || domain.includes('/') || domain.includes('\\')) {
+    const host = normalizeIconDomain(url.pathname.slice('/api/icon/'.length));
+    if (!host) {
       return new Response("Invalid domain format", { status: 400 });
     }
-    
-    // Proxy request to DuckDuckGo. A subdomain without a favicon of its own falls back to its parent site
-    // (edge.microsoft.com -> microsoft.com); only a miss on every candidate is a 404.
-    for (const host of iconCandidates(domain)) {
+
+    // Both hits and misses are kept at the edge, so a busy log does not re-ask the icon providers.
+    const cacheKey = new Request(`${url.origin}/api/icon/${host}.ico`);
+    if (cache) {
       try {
-        const iconRes = await fetch(`https://icons.duckduckgo.com/ip3/${host}.ico`, { signal: AbortSignal.timeout(4000) });
-        if (!iconRes.ok) continue;
-
-        const newHeaders = new Headers(iconRes.headers);
-        newHeaders.set('Cache-Control', 'public, max-age=2592000'); // 30 days
-        newHeaders.delete('Access-Control-Allow-Origin'); // Ensure no upstream wildcard bleeds through
-
-        return new Response(iconRes.body, {
-          status: iconRes.status,
-          statusText: iconRes.statusText,
-          headers: newHeaders
-        });
-      } catch {
-        // Timeout / network error on this candidate: try the next one.
-      }
+        const cached = await cache.match(cacheKey);
+        if (cached) return cached;
+      } catch { /* cache unavailable: look it up */ }
     }
-    // Nothing found: remember the miss for a day only, so an icon added later (or a transient upstream
-    // failure) is not hidden for 30 days.
-    return new Response("Icon not found", {
-      status: 404,
-      headers: { 'Cache-Control': 'public, max-age=86400' }
-    });
+
+    const icon = await fetchWebsiteIcon(host);
+    const response = icon ? iconHitResponse(icon) : iconMissResponse();
+    if (cache) {
+      try {
+        await cache.put(cacheKey, response.clone());
+      } catch { /* not cacheable here: still serve it */ }
+    }
+    return response;
   }
 
   if (url.pathname === '/api/geoip') {

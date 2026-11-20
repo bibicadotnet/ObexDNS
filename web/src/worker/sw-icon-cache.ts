@@ -58,7 +58,12 @@ export async function fetchIcon(url: string): Promise<Response> {
  * Checks if a given request URL matches the DuckDuckGo icon prefix.
  */
 export function isIconRequest(url: string): boolean {
-  return url.startsWith(DUCKDUCKGO_ICON_PREFIX);
+  // event.request.url is absolute ("https://host/api/icon/..."), so compare the path, not the whole URL.
+  try {
+    return new URL(url, self.location.origin).pathname.startsWith(DUCKDUCKGO_ICON_PREFIX);
+  } catch {
+    return false;
+  }
 }
 
 /**
