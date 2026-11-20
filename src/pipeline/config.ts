@@ -15,6 +15,8 @@ export const pipelineConfig = {
     rules: Rule[];
     enabledSystemListIds?: number[];
     enabledCustomListIds?: number[];
+    /** True only for the emergency fail-open config (profile missing / DB down with nothing in RAM), not the profile's real settings. */
+    isFallback?: boolean;
   } | null> {
     const { profileId, env, ctx } = context;
 
@@ -115,9 +117,9 @@ export const pipelineConfig = {
           log_retention_days: 0,
           ecs: { enabled: true, use_client_ip: true }
         };
-        return { settings: fallbackSettings, rules: [], enabledSystemListIds: [], enabledCustomListIds: [] };
+        return { settings: fallbackSettings, rules: [], enabledSystemListIds: [], enabledCustomListIds: [], isFallback: true };
       }
-      
+
       const settings = JSON.parse(profile.settings);
 
       const enabledSystemListIds: number[] = [];
@@ -172,7 +174,7 @@ export const pipelineConfig = {
         log_retention_days: 0,
         ecs: { enabled: true, use_client_ip: true }
       };
-      return { settings: fallbackSettings, rules: [], enabledSystemListIds: [], enabledCustomListIds: [] };
+      return { settings: fallbackSettings, rules: [], enabledSystemListIds: [], enabledCustomListIds: [], isFallback: true };
     }
   }
 };

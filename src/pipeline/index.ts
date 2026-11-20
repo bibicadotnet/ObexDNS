@@ -83,11 +83,18 @@ function countCacheHit(
  * resolver overwrite the cache entry. No log row is written (see `isBackgroundRefresh`), and a failed refresh
  * leaves the old entry in place until its stale window ends.
  */
-async function refreshStaleEntry(request: Request, query: DNSQuery, context: Context): Promise<void> {
+async function refreshStaleEntry(
+  request: Request,
+  query: DNSQuery,
+  context: Context,
+  reason?: string
+): Promise<void> {
   const refreshContext: Context = { ...context, isBackgroundRefresh: true, startTime: Date.now() };
   const config = await pipelineConfig.load(refreshContext, () => {});
-  if (!config) return;
-  await pipelineResolver.resolve(request, query, refreshContext, config.settings, "PASS");
+  // Emergency fail-open config (DB down, nothing in RAM): its upstream is not the profile's own, so keep the old entry.
+  if (!config || config.isFallback) return;
+  // `reason` keeps the cached entry's reason (e.g. "Whitelist") across the refresh; ECH/DDR paths still set their own.
+  await pipelineResolver.resolve(request, query, refreshContext, config.settings, "PASS", reason);
 }
 
 export const pipeline = {
@@ -119,11 +126,12 @@ export const pipeline = {
     if (hit && cached && cached.answer instanceof Uint8Array) {
       if (hit.stale) {
         // The query buffer may be reused by the transport once this call returns: keep a private copy.
-        const refreshQuery: DNSQuery = { ...query, raw: query.raw.slice() };
+        // new Uint8Array(raw) always copies; Buffer.slice() (DoT) would only return a shared view.
+        const refreshQuery: DNSQuery = { ...query, raw: new Uint8Array(query.raw) };
         scheduleStaleRefresh(
           hit.key,
           cached,
-          () => refreshStaleEntry(request, refreshQuery, context),
+          () => refreshStaleEntry(request, refreshQuery, context, cached.reason),
           context.env,
           context.ctx
         );
