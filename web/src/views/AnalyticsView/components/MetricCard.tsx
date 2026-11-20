@@ -5,9 +5,11 @@ export interface MetricCardProps {
   title: string;
   value: string | number;
   icon: React.ReactNode;
+  /** Small secondary text next to the value (e.g. a percentage). */
+  hint?: string;
 }
 
-export const MetricCard: React.FC<MetricCardProps> = ({ title, value, icon }) => (
+export const MetricCard: React.FC<MetricCardProps> = ({ title, value, icon, hint }) => (
   <Card
     elevation={Elevation.ZERO}
     className="flex items-center gap-4 p-4 dark:bg-gray-900 dark:border-gray-800 border border-gray-100 shadow-sm"
@@ -15,7 +17,10 @@ export const MetricCard: React.FC<MetricCardProps> = ({ title, value, icon }) =>
     <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">{icon}</div>
     <div>
       <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">{title}</div>
-      <div className="text-xl font-bold dark:text-white">{value}</div>
+      <div className="text-xl font-bold dark:text-white">
+        {value}
+        {hint && <span className="ml-2 text-xs font-medium text-gray-500">{hint}</span>}
+      </div>
     </div>
   </Card>
 );

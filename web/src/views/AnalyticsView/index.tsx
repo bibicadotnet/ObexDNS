@@ -17,6 +17,7 @@ import { processTrendData } from "./utils";
 import { RankTable } from "./components/RankTable";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useAnalyticsData } from "./hooks/useAnalyticsData";
+import { validateCustomRange } from "../../utils/customRange";
 import { AnalyticsRangeSelector } from "./components/AnalyticsRangeSelector";
 import { AnalyticsMetricCards } from "./components/AnalyticsMetricCards";
 import { AnalyticsWindowNotice } from "./components/AnalyticsWindowNotice";
@@ -120,7 +121,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toaster
         accessPointIdFilter={accessPointIdFilter}
         setAccessPointIdFilter={setAccessPointIdFilter}
         loading={loading}
+        onRefresh={() => fetchData(range, customRange.start, customRange.end, accessPointIdFilter, true)}
         onApplyCustom={() => {
+          // Same rule as the selector (and the API): an impossible range is never sent.
+          if (!validateCustomRange(customRange.start, customRange.end, logRetentionDays).valid) return;
           setRange("custom");
           fetchData("custom", customRange.start, customRange.end, accessPointIdFilter);
         }}

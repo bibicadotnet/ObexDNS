@@ -3,6 +3,7 @@
  * @description State coordinator hook for DNS query logs retrieval, pagination, and real-time syncing.
  */
 
+import { isLocalDbNeeded } from "../../../../services/localDbPolicy";
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { LogEntry, TimeRange } from "../../types";
 import { logsWs, getProfileAnalytics } from "../../../../services";
@@ -105,6 +106,9 @@ export function useLogsFetcher({
       try {
         const limit = realtimeRefresh ? PAGE_SIZE_IN_REALTIME : PAGE_SIZE;
         const { since, until } = calculateTimeBoundaries(currentRange, customRange);
+        // Plain profiles are read from the server only; the local SQLite copy is for E2EE profiles.
+        const useLocal = await isLocalDbNeeded(profileId);
+        if (controller.signal.aborted) return;
         const queryParams = {
           profileId,
           searchQuery,
@@ -117,10 +121,10 @@ export function useLogsFetcher({
           limit
         };
 
-        // ── Step 1: Attempt Local-First SQLite execution ──
+        // ── Step 1: Attempt Local-First SQLite execution (E2EE profiles only) ──
         let usedLocalDb = false;
 
-        if (isInitial) {
+        if (useLocal && isInitial) {
           if (!isAutoRefresh) {
             setSyncing(true);
             // Never keep the previous range's counters on screen while the new ones load.
@@ -204,7 +208,7 @@ export function useLogsFetcher({
             }
             applyLocalStats(localResult.result.stats);
           }
-        } else {
+        } else if (useLocal) {
           // ── Pagination (Load More) ──
           const before = logsRef.current.length > 0
             ? logsRef.current[logsRef.current.length - 1].timestamp

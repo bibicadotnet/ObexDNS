@@ -7,7 +7,6 @@ import { SettingsHeader } from "./components/SettingsHeader";
 import { UpstreamCard } from "./components/UpstreamCard";
 import { DefaultPolicyCard } from "./components/DefaultPolicyCard";
 import { LogRetentionCard } from "./components/LogRetentionCard";
-import { LocalRetentionCard } from "./components/LocalRetentionCard";
 import { AdvancedEcsCard } from "./components/AdvancedEcsCard";
 import { BestEffortEchCard } from "./components/BestEffortEchCard";
 import { DnsTestCard } from "./components/DnsTestCard";
@@ -320,7 +319,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
           profileId={profileId}
           toasterRef={toasterRef}
         />
-        <LocalRetentionCard profileId={profileId} toasterRef={toasterRef} />
         <AdvancedEcsCard settings={settings} setSettings={handleSettingsChange} />
         <BestEffortEchCard settings={settings} setSettings={handleSettingsChange} />
       </div>

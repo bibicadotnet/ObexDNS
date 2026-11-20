@@ -1,3 +1,4 @@
+import { validateCustomRange } from "../../../utils/customRange";
 import { useEffect, useRef, useCallback } from "react";
 import type { TimeRange } from "../types";
 import { useProfileRetention } from "./logData/useProfileRetention";
@@ -102,8 +103,12 @@ export function useLogData({
     [loading, loadingMore, hasMore, loadMore, realtimeRefresh, isFetchingRef]
   );
 
+  // A custom range that is incomplete, reversed or entirely older than the retention has no logs: no request.
+  const customRangeValid =
+    range !== "custom" || validateCustomRange(customRange.start, customRange.end, logRetentionDays).valid;
+
   useEffect(() => {
-    if (range === "custom" && (!customRange.start || !customRange.end)) return;
+    if (!customRangeValid) return;
     const timer = setTimeout(
       () => {
         void fetchLogs(range, true);
@@ -111,7 +116,7 @@ export function useLogData({
       searchQuery ? 500 : 0
     );
     return () => clearTimeout(timer);
-  }, [range, customRange.start, customRange.end, searchQuery, fetchLogs]);
+  }, [range, customRange.start, customRange.end, customRangeValid, searchQuery, fetchLogs]);
 
   return {
     logs,

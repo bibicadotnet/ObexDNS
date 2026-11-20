@@ -3,6 +3,12 @@ import { ButtonGroup, Button, PopoverNext, H5, FormGroup, InputGroup, Intent } f
 import { Calendar } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TimeRange } from "../types";
+import {
+  clampCustomInput,
+  customRangeIssueKey,
+  retentionMinInput,
+  validateCustomRange
+} from "../../../utils/customRange";
 
 export interface TimeRangeSelectorProps {
   range: TimeRange;
@@ -36,6 +42,11 @@ export const TimeRangeSelector: React.FC<TimeRangeSelectorProps> = ({
   ];
   const visibleRanges = RANGE_PRESETS.filter(r => r.days <= logRetentionDays).map(r => r.key as TimeRange);
 
+  // Nothing older than the retention can hold logs: the pickers start there instead of letting the user ask for it.
+  const minStr = retentionMinInput(logRetentionDays);
+  const check = validateCustomRange(customRange.start, customRange.end, logRetentionDays);
+  const issueKey = customRangeIssueKey(check.issue);
+
   return (
     <div className="overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0">
       <ButtonGroup minimal={isMobile} variant={isMobile ? undefined : "minimal"}>
@@ -49,23 +60,42 @@ export const TimeRangeSelector: React.FC<TimeRangeSelectorProps> = ({
               <FormGroup label={t("analytics.startTime")}>
                 <InputGroup
                   type="datetime-local"
+                  min={minStr}
                   max={customRange.end || nowStr}
                   value={customRange.start}
-                  onChange={(e) => setCustomRange({ ...customRange, start: e.target.value })}
+                  intent={check.issue === "startAfterEnd" ? Intent.DANGER : Intent.NONE}
+                  onChange={(e) =>
+                    setCustomRange({
+                      ...customRange,
+                      start: clampCustomInput("start", e.target.value, logRetentionDays)
+                    })
+                  }
                 />
               </FormGroup>
               <FormGroup label={t("analytics.endTime")}>
                 <InputGroup
                   type="datetime-local"
-                  min={customRange.start}
+                  min={customRange.start || minStr}
                   max={nowStr}
                   value={customRange.end}
-                  onChange={(e) => setCustomRange({ ...customRange, end: e.target.value })}
+                  intent={issueKey ? Intent.DANGER : Intent.NONE}
+                  onChange={(e) =>
+                    setCustomRange({
+                      ...customRange,
+                      end: clampCustomInput("end", e.target.value, logRetentionDays)
+                    })
+                  }
                 />
               </FormGroup>
+              {issueKey && (
+                <div className="text-xs text-red-600 dark:text-red-400" role="alert">
+                  {t(issueKey, { days: logRetentionDays })}
+                </div>
+              )}
               <Button
                 fill
                 intent={Intent.PRIMARY}
+                disabled={!check.valid}
                 text={t("analytics.apply")}
                 onClick={() => {
                   setRange("custom");

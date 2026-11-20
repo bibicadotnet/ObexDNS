@@ -148,7 +148,12 @@ export class LogCoreModel {
       whereClauses.push("l.access_point_id = ?");
       params.push(options.access_point_id);
     }
-    if (options.status) {
+    // FAIL is written as a literal (not a bound parameter) so SQLite can match the partial index
+    // idx_logs_profile_fail_time (migration 0069); a parameter can never prove `action = 'FAIL'`.
+    const failOnly = options.status === "FAIL";
+    if (failOnly) {
+      whereClauses.push("l.action = 'FAIL'");
+    } else if (options.status) {
       whereClauses.push("l.action = ?");
       params.push(options.status);
     }
@@ -209,6 +214,19 @@ export class LogCoreModel {
         limit = 1000;
       }
       queryStr += ` ORDER BY l.timestamp DESC LIMIT ${limit}`;
+    }
+
+    if (failOnly) {
+      // The planner prefers the primary key here (it already yields timestamp order) and then walks the whole
+      // range looking for rare FAIL rows, so the partial index is requested explicitly. If the migration has not
+      // been applied yet the hint fails with "no such index": fall back to the plain query instead of erroring.
+      const hinted = queryStr.replace(/FROM logs l\b/, "FROM logs l INDEXED BY idx_logs_profile_fail_time");
+      try {
+        const { results } = await this.db.prepare(hinted).bind(...params).all<ResolutionLog>();
+        return results;
+      } catch (err) {
+        if (!/no such index/i.test(String((err as Error)?.message ?? err))) throw err;
+      }
     }
 
     const { results } = await this.db.prepare(queryStr).bind(...params).all<ResolutionLog>();

@@ -4,6 +4,7 @@
  * authoritative server analytics retrieval, and decrypted record merging.
  */
 
+import { isLocalDbNeeded } from "../../../services/localDbPolicy";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { OverlayToaster } from "@blueprintjs/core";
 import type { AnalyticsData, TimeRange } from "../types";
@@ -195,9 +196,13 @@ export function useAnalyticsData(
         // Handled where the result is awaited below
       });
 
+      // The local SQLite copy only serves E2EE profiles; a plain profile is answered by the server alone.
+      const useLocal = await isLocalDbNeeded(profileId);
+      if (signal.aborted) return;
+
       // Step 0: Ensure local encrypted logs are re-decrypted if E2EE is unlocked
       try {
-        if (e2ee.isProfileUnlocked(profileId) || e2ee.isUnlocked()) {
+        if (useLocal && (e2ee.isProfileUnlocked(profileId) || e2ee.isUnlocked())) {
           await localDb.reDecryptLocalLogs(profileId);
         }
       } catch {
@@ -210,7 +215,7 @@ export function useAnalyticsData(
       // the fallback when the server is unreachable.
       let localPreview: AnalyticsData | null = null;
       try {
-        const isDbReady = await localDb.init();
+        const isDbReady = useLocal && (await localDb.init());
         if (isDbReady && !signal.aborted) {
           localPreview = await localDb.queryAnalytics({
             profileId,
@@ -254,6 +259,7 @@ export function useAnalyticsData(
       }
 
       // Step 3: Download missing time intervals into local SQLite and refresh aggregations
+      if (!useLocal) return;
       try {
         const isUnlocked = e2ee.isProfileUnlocked(profileId) || e2ee.isUnlocked();
 

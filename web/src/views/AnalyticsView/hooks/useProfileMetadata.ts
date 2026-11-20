@@ -5,10 +5,12 @@
 
 import { useState, useEffect } from "react";
 import {
+  getMe,
   getProfileAccessPoints,
   getProfileDetails,
   type AccessPoint
 } from "../../../services";
+import { effectiveRetentionDays } from "../../../utils/customRange";
 
 export interface UseProfileMetadataReturn {
   accessPoints: AccessPoint[];
@@ -40,16 +42,12 @@ export function useProfileMetadata(profileId: string): UseProfileMetadataReturn 
 
   useEffect(() => {
     let active = true;
-    getProfileDetails(profileId)
-      .then((res) => {
+    Promise.all([getProfileDetails(profileId), getMe().catch(() => null)])
+      .then(([res, me]) => {
         if (!active) return;
         try {
           const settings = JSON.parse(res.settings || "{}");
-          setLogRetentionDays(
-            settings.log_retention_days !== undefined
-              ? Number(settings.log_retention_days)
-              : 30
-          );
+          setLogRetentionDays(effectiveRetentionDays(settings.log_retention_days, me?.max_log_retention_days));
         } catch (e) {
           console.error("[useProfileMetadata] Failed to parse settings:", e);
         }

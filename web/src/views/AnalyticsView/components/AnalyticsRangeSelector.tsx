@@ -7,13 +7,19 @@ import {
   FormGroup,
   InputGroup,
   HTMLSelect,
-  Spinner,
   Intent
 } from "@blueprintjs/core";
 import { Calendar } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TimeRange } from "../types";
 import type { AccessPoint } from "../../../services";
+import {
+  clampCustomInput,
+  customRangeIssueKey,
+  retentionMinInput,
+  toLocalInputValue,
+  validateCustomRange
+} from "../../../utils/customRange";
 
 export interface AnalyticsRangeSelectorProps {
   range: TimeRange;
@@ -26,6 +32,8 @@ export interface AnalyticsRangeSelectorProps {
   setAccessPointIdFilter: (id: string | null) => void;
   loading: boolean;
   onApplyCustom: () => void;
+  /** Re-requests the current range from the server, bypassing the client cache. */
+  onRefresh?: () => void;
   syncing?: boolean;
   syncProgress?: number;
   onSync?: () => void;
@@ -50,10 +58,16 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
   accessPointIdFilter,
   setAccessPointIdFilter,
   loading,
-  onApplyCustom
+  onApplyCustom,
+  onRefresh
 }) => {
   const { t } = useTranslation();
-  const nowStr = new Date().toLocaleString("sv-SE").replace(" ", "T").slice(0, 16);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const nowStr = toLocalInputValue(nowSec);
+  // Nothing older than the retention can hold logs: the pickers start there instead of letting the user ask for it.
+  const minStr = retentionMinInput(logRetentionDays, nowSec);
+  const check = validateCustomRange(customRange.start, customRange.end, logRetentionDays, nowSec);
+  const issueKey = customRangeIssueKey(check.issue);
 
   const visibleRanges = RANGE_PRESETS.filter((r) => r.days <= logRetentionDays).map(
     (r) => r.key as TimeRange
@@ -77,27 +91,42 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
               <FormGroup label={t("analytics.startTime")}>
                 <InputGroup
                   type="datetime-local"
+                  min={minStr}
                   max={customRange.end || nowStr}
                   value={customRange.start}
+                  intent={check.issue === "startAfterEnd" ? Intent.DANGER : Intent.NONE}
                   onChange={(e) =>
-                    setCustomRange({ ...customRange, start: e.target.value })
+                    setCustomRange({
+                      ...customRange,
+                      start: clampCustomInput("start", e.target.value, logRetentionDays)
+                    })
                   }
                 />
               </FormGroup>
               <FormGroup label={t("analytics.endTime")}>
                 <InputGroup
                   type="datetime-local"
-                  min={customRange.start}
+                  min={customRange.start || minStr}
                   max={nowStr}
                   value={customRange.end}
+                  intent={issueKey ? Intent.DANGER : Intent.NONE}
                   onChange={(e) =>
-                    setCustomRange({ ...customRange, end: e.target.value })
+                    setCustomRange({
+                      ...customRange,
+                      end: clampCustomInput("end", e.target.value, logRetentionDays)
+                    })
                   }
                 />
               </FormGroup>
+              {issueKey && (
+                <div className="text-xs text-red-600 dark:text-red-400" role="alert">
+                  {t(issueKey, { days: logRetentionDays })}
+                </div>
+              )}
               <Button
                 fill
                 intent={Intent.PRIMARY}
+                disabled={!check.valid}
                 text={t("analytics.apply")}
                 onClick={onApplyCustom}
               />
@@ -123,7 +152,16 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
             minimal
           />
         )}
-        {loading && <Spinner size={16} />}
+        {onRefresh && (
+          <Button
+            icon="refresh"
+            variant="minimal"
+            onClick={onRefresh}
+            loading={loading}
+            title={t("analytics.refresh")}
+            aria-label={t("analytics.refresh")}
+          />
+        )}
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { isLocalDbNeeded } from "../../../services/localDbPolicy";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Intent, OverlayToaster } from "@blueprintjs/core";
@@ -55,7 +56,7 @@ export function useLogExport({
 
       // 1. Local-First: Prioritize querying client-side SQLite storage (OPFS / in-memory)
       try {
-        const isDbReady = await localDb.init();
+        const isDbReady = (await isLocalDbNeeded(profileId)) && (await localDb.init());
         if (isDbReady) {
           const localResult = await localDb.queryLogs({
             profileId,

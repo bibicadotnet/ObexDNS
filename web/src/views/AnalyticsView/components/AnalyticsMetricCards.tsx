@@ -1,5 +1,5 @@
 import React from "react";
-import { Zap, ShieldAlert, RotateCcw, Shield, Globe } from "lucide-react";
+import { Zap, ShieldAlert, RotateCcw, Shield, Globe, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MetricCard } from "./MetricCard";
 import type { AnalyticsData } from "../types";
@@ -14,6 +14,9 @@ export const AnalyticsMetricCards: React.FC<AnalyticsMetricCardsProps> = ({ data
   const total = data?.summary.reduce((acc, s) => acc + s.count, 0) || 0;
   const blocked = data?.summary.find((s) => s.action === "BLOCK")?.count || 0;
   const redirected = data?.summary.find((s) => s.action === "REDIRECT")?.count || 0;
+  // Failed resolutions (upstream errors / timeouts), stored as action "FAIL".
+  const failed = data?.summary.find((s) => s.action === "FAIL")?.count || 0;
+  const failRate = total > 0 ? ((failed / total) * 100).toFixed(1) : "0.0";
   const blockRate = total > 0 ? ((blocked / total) * 100).toFixed(1) : "0.0";
 
   const cards = [
@@ -33,6 +36,12 @@ export const AnalyticsMetricCards: React.FC<AnalyticsMetricCardsProps> = ({ data
       icon: <RotateCcw className="text-amber-500" size={20} />
     },
     {
+      title: t("analytics.failed"),
+      value: failed.toLocaleString(),
+      hint: `${failRate}%`,
+      icon: <AlertTriangle className="text-orange-500" size={20} />
+    },
+    {
       title: t("analytics.blockRate"),
       value: `${blockRate}%`,
       icon: <Shield className="text-green-500" size={20} />
@@ -45,13 +54,14 @@ export const AnalyticsMetricCards: React.FC<AnalyticsMetricCardsProps> = ({ data
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2 lg:gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2 lg:gap-4">
       {cards.map((config, index) => (
         <MetricCard
           key={index}
           title={config.title}
           value={config.value}
           icon={config.icon}
+          hint={config.hint}
         />
       ))}
     </div>

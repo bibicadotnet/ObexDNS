@@ -165,7 +165,10 @@ export class LogTrafficAnalytics {
       queryStr += " AND access_point_id = ?";
       params.push(accessPointId);
     }
-    if (status) {
+    if (status === "FAIL") {
+      // Literal so SQLite can answer from the partial index idx_logs_profile_fail_time (migration 0069).
+      queryStr += " AND action = 'FAIL'";
+    } else if (status) {
       queryStr += " AND action = ?";
       params.push(status);
     }
