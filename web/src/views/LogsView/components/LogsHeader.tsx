@@ -157,7 +157,7 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
                     </Tag>
                   </Tooltip>
                   <Tooltip content={t("logs.statFail")} placement="bottom" hoverOpenDelay={200} compact>
-                    <Tag minimal round icon="error">
+                    <Tag minimal round>
                       {(stats.fail ?? 0).toLocaleString()}
                     </Tag>
                   </Tooltip>
