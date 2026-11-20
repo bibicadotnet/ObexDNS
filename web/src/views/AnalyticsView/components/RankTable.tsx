@@ -2,6 +2,7 @@ import React from "react";
 import { Card, Elevation, H5, HTMLTable, Tag, Intent } from "@blueprintjs/core";
 import { Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { DomainIcon } from "../../LogsView/components/DomainIcon";
 
 export interface RankTableProps {
   title: string;
@@ -26,7 +27,7 @@ const RankTableImpl: React.FC<RankTableProps> = ({ title, data, intent }) => {
     },
     {
       key: "domain",
-      cellClassName: "font-medium text-sm truncate max-w-50",
+      cellClassName: "font-medium text-sm max-w-50",
       render: (d: { domain: string; count: number }): React.ReactNode => {
         if (d.domain === "[Encrypted]") {
           return (
@@ -44,7 +45,12 @@ const RankTableImpl: React.FC<RankTableProps> = ({ title, data, intent }) => {
             </span>
           );
         }
-        return d.domain;
+        return (
+          <span className="flex items-center gap-2 min-w-0" title={d.domain}>
+            <DomainIcon domain={d.domain} />
+            <span className="truncate">{d.domain}</span>
+          </span>
+        );
       },
     },
     {
