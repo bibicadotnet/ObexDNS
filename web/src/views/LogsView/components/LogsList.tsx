@@ -55,6 +55,8 @@ export const LogsList: React.FC<LogsListProps> = ({
                   src={`/api/icon/${log.domain.replace(/^\*\./, "")}.ico`}
                   className="w-4 h-4 rounded-sm shrink-0"
                   alt=""
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   onError={(e) => (e.currentTarget.style.opacity = "0")}
                 />

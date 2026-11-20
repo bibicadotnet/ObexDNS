@@ -109,13 +109,8 @@ export function useLogData({
 
   useEffect(() => {
     if (!customRangeValid) return;
-    const timer = setTimeout(
-      () => {
-        void fetchLogs(range, true);
-      },
-      searchQuery ? 500 : 0
-    );
-    return () => clearTimeout(timer);
+    // The search box already debounces what it commits, so a changed query is fetched right away.
+    void fetchLogs(range, true);
   }, [range, customRange.start, customRange.end, customRangeValid, searchQuery, fetchLogs]);
 
   return {

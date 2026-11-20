@@ -59,12 +59,14 @@ export function calculateTimeInterval(
  * @param selectedRange - Current time range.
  * @param interval - Calculated since and until timestamps.
  * @param apIdFilter - Optional access point filter identifier.
+ * @param fresh - Ask the server to skip its cached answer (the manual Refresh button).
  * @returns Query parameter string including leading question mark.
  */
 export function buildAnalyticsQueryParams(
   selectedRange: TimeRange,
   interval: { since: number; until: number },
-  apIdFilter?: string | null
+  apIdFilter?: string | null,
+  fresh = false
 ): string {
   let queryParams = `?range=${selectedRange}`;
   if (selectedRange === "custom") {
@@ -73,5 +75,6 @@ export function buildAnalyticsQueryParams(
   if (apIdFilter) {
     queryParams += `&access_point_id=${encodeURIComponent(apIdFilter)}`;
   }
+  if (fresh) queryParams += "&fresh=true";
   return queryParams;
 }

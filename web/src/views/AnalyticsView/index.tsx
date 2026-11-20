@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useMemo } from "react";
 import {
   Card,
   Elevation,
@@ -98,6 +98,12 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toaster
         data.clients?.some((c) => c.client_ip === "[Encrypted]"))
   );
 
+  // Re-bucketing the trend is only needed when the dataset or the range changes, not on every render.
+  const chartData = useMemo(
+    () => processTrendData(data, range, { start: customRange.start, end: customRange.end }),
+    [data, range, customRange.start, customRange.end]
+  );
+
   if (loading && !data) {
     return (
       <div className="p-20 flex justify-center">
@@ -105,8 +111,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toaster
       </div>
     );
   }
-
-  const chartData = processTrendData(data, range, customRange);
 
   return (
     <div className={clsx("max-w-7xl mx-auto space-y-6", isMobile ? "p-0" : "p-6")}>

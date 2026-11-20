@@ -9,7 +9,7 @@ export interface ClientActivitySectionProps {
   clients?: AnalyticsData["clients"];
 }
 
-export const ClientActivitySection: React.FC<ClientActivitySectionProps> = ({ clients }) => {
+const ClientActivitySectionImpl: React.FC<ClientActivitySectionProps> = ({ clients }) => {
   const { t } = useTranslation();
 
   return (
@@ -58,3 +58,5 @@ export const ClientActivitySection: React.FC<ClientActivitySectionProps> = ({ cl
     </Section>
   );
 };
+
+export const ClientActivitySection = React.memo(ClientActivitySectionImpl);

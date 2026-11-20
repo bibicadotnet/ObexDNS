@@ -9,7 +9,7 @@ export interface MetricCardProps {
   hint?: string;
 }
 
-export const MetricCard: React.FC<MetricCardProps> = ({ title, value, icon, hint }) => (
+const MetricCardImpl: React.FC<MetricCardProps> = ({ title, value, icon, hint }) => (
   <Card
     elevation={Elevation.ZERO}
     className="flex items-center gap-4 p-4 dark:bg-gray-900 dark:border-gray-800 border border-gray-100 shadow-sm"
@@ -24,3 +24,5 @@ export const MetricCard: React.FC<MetricCardProps> = ({ title, value, icon, hint
     </div>
   </Card>
 );
+
+export const MetricCard = React.memo(MetricCardImpl);

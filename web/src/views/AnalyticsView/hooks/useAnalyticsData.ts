@@ -172,7 +172,7 @@ export function useAnalyticsData(
       const interval = calculateTimeInterval(selectedRange, customStart, customEnd);
 
       // Start the authoritative server request right away so it overlaps the local SQLite work.
-      const queryParams = buildAnalyticsQueryParams(selectedRange, interval, apIdFilter);
+      const queryParams = buildAnalyticsQueryParams(selectedRange, interval, apIdFilter, force);
       const loadServerAnalytics = async (): Promise<AnalyticsData> => {
         try {
           return await getProfileAnalytics(profileId, "", queryParams, { signal });

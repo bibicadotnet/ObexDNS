@@ -73,14 +73,7 @@ export function handleQueryLogs(params: WorkerQueryLogsParams): WorkerQueryResul
 
   const whereClause = conditions.join(' AND ');
 
-  // 1. Get total count
-  const countObj = db.selectObject(
-    `SELECT count(*) as total FROM local_logs WHERE ${whereClause};`,
-    binds
-  ) as { total?: number } | undefined;
-  const total = countObj?.total ? Number(countObj.total) : 0;
-
-  // 2. Calculate action summary stats (PASS, BLOCK, REDIRECT)
+  // 1. One GROUP BY scan gives both the per-action stats and the total (same WHERE clause as the page query)
   const stats: ActionSummaryStats = { total: 0, pass: 0, block: 0, redirect: 0 };
   const statStmt = db.prepare(
     `SELECT action, count(*) as count FROM local_logs WHERE ${whereClause} GROUP BY action;`
@@ -100,7 +93,7 @@ export function handleQueryLogs(params: WorkerQueryLogsParams): WorkerQueryResul
     statStmt.finalize();
   }
 
-  // 3. Get paginated rows
+  // 2. Get paginated rows
   const queryBinds: (string | number)[] = [...binds, limit, offset];
   const rows: WorkerLogEntry[] = [];
 
@@ -119,6 +112,8 @@ export function handleQueryLogs(params: WorkerQueryLogsParams): WorkerQueryResul
   } finally {
     stmt.finalize();
   }
+
+  const total = stats.total;
 
   return { rows, total, stats };
 }

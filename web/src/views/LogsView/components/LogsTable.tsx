@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useMemo } from "react";
 import { HTMLTable, Tag } from "@blueprintjs/core";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
@@ -23,6 +23,33 @@ interface ColumnConfig {
   render: (log: LogEntry, idx: number) => React.ReactNode;
 }
 
+interface LogRowProps {
+  log: LogEntry;
+  columns: ColumnConfig[];
+  idx: number;
+  isNew: boolean;
+  isLast: boolean;
+  lastLogElementRef: (node: HTMLDivElement | null) => void;
+  onSelect: (log: LogEntry) => void;
+}
+
+// A row only re-renders when its own log / highlight / position changes, so typing in the search box,
+// toggling a filter or appending a page does not rebuild the hundreds of rows already on screen.
+const LogRow = React.memo<LogRowProps>(({ log, columns, idx, isNew, isLast, lastLogElementRef, onSelect }) => (
+  <tr
+    onClick={() => onSelect(log)}
+    className={clsx("cursor-pointer", { "animate-row-glow": isNew })}
+    ref={isLast ? lastLogElementRef : null}
+  >
+    {columns.map((col) => (
+      <td key={col.key} className={clsx("px-4 py-3", col.cellClassName)}>
+        {col.render(log, idx)}
+      </td>
+    ))}
+  </tr>
+));
+LogRow.displayName = "LogRow";
+
 export const LogsTable: React.FC<LogsTableProps> = ({
   logs,
   setSelectedLog,
@@ -33,7 +60,16 @@ export const LogsTable: React.FC<LogsTableProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const columns: ColumnConfig[] = [
+  const onSelect = useCallback(
+    (log: LogEntry) => {
+      setSelectedLog(log);
+      setIsDrawerOpen(true);
+    },
+    [setSelectedLog, setIsDrawerOpen]
+  );
+
+  // Rebuilt only when the language changes, which keeps the rows' `columns` prop stable.
+  const columns: ColumnConfig[] = useMemo(() => [
     {
       key: "time",
       header: t("logs.tableTime"),
@@ -60,6 +96,8 @@ export const LogsTable: React.FC<LogsTableProps> = ({
                 src={`/api/icon/${log.domain.replace(/^\*\./, "")}.ico`}
                 className="w-4 h-4 rounded-sm shrink-0"
                 alt=""
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
               />
             )}
@@ -134,7 +172,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
       cellClassName: "text-xs text-gray-500 italic truncate",
       render: (log: LogEntry): React.ReactNode => log.reason || "-",
     },
-  ];
+  ], [t]);
 
   return (
     <div className="min-w-full inline-block align-middle py-0">
@@ -156,28 +194,18 @@ export const LogsTable: React.FC<LogsTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {logs.map((log, idx) => {
-              const isNew = realtimeRefresh && prevLatestTimestamp !== null && log.timestamp > prevLatestTimestamp;
-              return (
-                <tr
-                  key={log.id}
-                  onClick={() => {
-                    setSelectedLog(log);
-                    setIsDrawerOpen(true);
-                  }}
-                  className={clsx("cursor-pointer", {
-                    "animate-row-glow": isNew,
-                  })}
-                  ref={idx === logs.length - 1 ? lastLogElementRef : null}
-                >
-                  {columns.map((col) => (
-                    <td key={col.key} className={clsx("px-4 py-3", col.cellClassName)}>
-                      {col.render(log, idx)}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
+            {logs.map((log, idx) => (
+              <LogRow
+                key={log.id}
+                log={log}
+                columns={columns}
+                idx={idx}
+                isNew={realtimeRefresh && prevLatestTimestamp !== null && log.timestamp > prevLatestTimestamp}
+                isLast={idx === logs.length - 1}
+                lastLogElementRef={lastLogElementRef}
+                onSelect={onSelect}
+              />
+            ))}
           </tbody>
         </HTMLTable>
       </div>

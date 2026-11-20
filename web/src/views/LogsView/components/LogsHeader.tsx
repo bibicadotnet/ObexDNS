@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Tag, Button, Intent, Switch, InputGroup, Alert, OverlayToaster } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import type { TimeRange } from "../types";
@@ -75,6 +75,17 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isClearAlertOpen, setIsClearAlertOpen] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
+
+  // Typing is kept in local state and only committed (trimmed) after a short pause: every committed value
+  // triggers a server query, and every keystroke used to re-render the whole logs view as well.
+  const [searchInput, setSearchInput] = useState(searchQuery);
+  useEffect(() => {
+    const next = searchInput.trim();
+    if (next === searchQuery) return;
+    const timer = setTimeout(() => setSearchQuery(next), next === "" ? 0 : 350);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new input restarts the pause
+  }, [searchInput]);
 
   const handleClearLogs = async () => {
     setClearingLogs(true);
@@ -253,9 +264,9 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
               <InputGroup
                 leftIcon="search"
                 placeholder={t("logs.searchPlaceholder")}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                rightElement={searchQuery ? <Button icon="cross" minimal onClick={() => setSearchQuery("")} /> : undefined}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                rightElement={searchInput ? <Button icon="cross" minimal onClick={() => setSearchInput("")} /> : undefined}
                 fill
               />
             </div>

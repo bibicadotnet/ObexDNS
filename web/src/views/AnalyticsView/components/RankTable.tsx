@@ -15,7 +15,7 @@ interface ColumnConfig {
   render: (row: { domain: string; count: number }, index: number) => React.ReactNode;
 }
 
-export const RankTable: React.FC<RankTableProps> = ({ title, data, intent }) => {
+const RankTableImpl: React.FC<RankTableProps> = ({ title, data, intent }) => {
   const { t } = useTranslation();
 
   const columns: ColumnConfig[] = [
@@ -84,3 +84,6 @@ export const RankTable: React.FC<RankTableProps> = ({ title, data, intent }) => 
     </Card>
   );
 };
+
+/** Re-renders only when its own rows change, not on every loading flag flip of the page. */
+export const RankTable = React.memo(RankTableImpl);

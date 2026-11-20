@@ -226,16 +226,19 @@ export async function handleProfileLogsAndAnalyticsRequest(
     // Cache bucket/TTL grow with the size of the window (see analyticsCachePolicy).
     const cachePolicy = analyticsCachePolicy(range, since, until, !!(startParam && endParam));
 
+    // Manual Refresh: skip the cached answer (the new one still replaces it).
+    const fresh = urlParams.get('fresh') === 'true';
     const subResource = pathParts[4];
     const isServerfull = isServerfullEnv(env);
     const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;
 
     if (subResource) {
       const exact = urlParams.get('exact') === 'true';
+      urlParams.delete('fresh'); // not part of the cache key
       // Relative ranges ("10m", "1h", ...) slide with the clock, so the key carries a time bucket whose
       // length equals the TTL: a cached answer is never older than one bucket.
       const subCacheKey = `analytics_sub:${profileId}:${subResource}:${urlParams.toString()}:${cachePolicy.windowKey}`;
-      if (!exact && cache) {
+      if (!exact && !fresh && cache) {
         const cached = await cacheUtils.get<any>(cache, subCacheKey);
         if (cached) {
           return new Response(JSON.stringify(cached), {
@@ -301,7 +304,7 @@ export async function handleProfileLogsAndAnalyticsRequest(
     
     // `since`/`until` slide with the clock for relative ranges, so key on the range label and time bucket.
     const cacheKey = `analytics:${profileId}:${cachePolicy.windowKey}:${interval}:${accessPointId || 'all'}`;
-    if (cache) {
+    if (cache && !fresh) {
       const cached = await cacheUtils.get<any>(cache, cacheKey);
       if (cached) {
         return new Response(JSON.stringify(cached), {
