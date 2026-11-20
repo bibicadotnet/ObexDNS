@@ -1,5 +1,6 @@
 {
   "common": {
+    "refreshWait": "Bitte {{seconds}} s warten, bevor Sie erneut aktualisieren",
     "account": "Konto",
     "logout": "Abmelden",
     "selectProfile": "Profil auswählen",

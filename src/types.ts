@@ -81,6 +81,7 @@ export interface Env {
   LOG_ORPHAN_KEY_MIN_AGE_SEC?: string | number;
   LOG_ORPHAN_KEY_BATCH_LIMIT?: string | number;
   DOMAIN_ROLLUP_MIN_COUNT?: string | number;
+  REFRESH_COOLDOWN_SEC?: string | number;
   SERVERFULL_DOT_DOMAIN?: string;
   SERVERFULL_DB_PATH?: string;
   DOT_DOMAIN?: string;

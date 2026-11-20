@@ -9,6 +9,22 @@ import type {
 } from "./types";
 import { localDb } from "./localDb";
 
+/** Thrown when the server refuses a manual Refresh because the previous one was too recent (HTTP 429). */
+export class RefreshCooldownError extends Error {
+  readonly retryAfterSec: number;
+
+  constructor(retryAfterSec: number) {
+    super("refresh_cooldown");
+    this.name = "RefreshCooldownError";
+    this.retryAfterSec = retryAfterSec;
+  }
+}
+
+function refreshCooldownFrom(res: Response): RefreshCooldownError {
+  const wait = Number(res.headers.get("Retry-After"));
+  return new RefreshCooldownError(Number.isFinite(wait) && wait > 0 ? Math.ceil(wait) : 0);
+}
+
 /**
  * 包装 fetch 方法，当请求 Profile 相关接口遇到 404 (不存在或无权限) 时，直接引导前端至 404 界面
  */
@@ -244,6 +260,7 @@ export async function rotateProfileAccessPointToken(profileId: string, apId: str
 export async function getProfileLogs(profileId: string, queryParams: string, options?: { signal?: AbortSignal }): Promise<LogEntry[]> {
   const query = queryParams.startsWith("?") ? queryParams.slice(1) : queryParams;
   const res = await profileFetch(`/api/profiles/${profileId}/logs?${query}`, { signal: options?.signal });
+  if (res.status === 429) throw refreshCooldownFrom(res);
   if (!res.ok) throw new Error("Failed to fetch logs");
   return res.json();
 }
@@ -283,6 +300,7 @@ export async function getProfileAnalytics(profileId: string, type: string, query
   const query = queryParams.startsWith("?") ? queryParams.slice(1) : queryParams;
   const path = type ? `/${type}` : "";
   const res = await profileFetch(`/api/profiles/${profileId}/analytics${path}?${query}`, { signal: options?.signal });
+  if (res.status === 429) throw refreshCooldownFrom(res);
   if (!res.ok) throw new Error(`Failed to fetch analytics${type ? ` for ${type}` : ""}`);
   return res.json();
 }

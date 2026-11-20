@@ -14,6 +14,8 @@ export interface AuthConfig {
   turnstile_enabled_login?: boolean;
   turnstile_enabled_signup?: boolean;
   optional_session_expiration_days?: number;
+  /** Minimum pause in seconds between two manual Refresh clicks (REFRESH_COOLDOWN_SEC, 0 = no limit). */
+  refresh_cooldown_sec?: number;
   has_users?: boolean;
   registration_enabled?: boolean;
   app_name?: string;

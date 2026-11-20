@@ -6,7 +6,7 @@
 import { isLocalDbNeeded } from "../../../../services/localDbPolicy";
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { LogEntry, TimeRange } from "../../types";
-import { logsWs, getProfileAnalytics } from "../../../../services";
+import { logsWs, getProfileAnalytics, RefreshCooldownError } from "../../../../services";
 import { calculateTimeBoundaries } from "./timeBoundaries";
 import { prefetchDomainIcons } from "./utils/prefetchIcons";
 import { fetchServerLogs } from "./strategies/serverStrategy";
@@ -44,7 +44,9 @@ export interface UseLogsFetcherReturn {
     currentRange: TimeRange,
     isInitial?: boolean,
     isAutoRefresh?: boolean,
-    forceSync?: boolean
+    forceSync?: boolean,
+    /** True only for the Refresh button: the server then applies its refresh pause (REFRESH_COOLDOWN_SEC). */
+    manualRefresh?: boolean
   ) => Promise<void>;
   isFetchingRef: React.MutableRefObject<boolean>;
   logsRef: React.MutableRefObject<LogEntry[]>;
@@ -90,7 +92,8 @@ export function useLogsFetcher({
       currentRange: TimeRange,
       isInitial: boolean = true,
       isAutoRefresh: boolean = false,
-      forceSync: boolean = false
+      forceSync: boolean = false,
+      manualRefresh: boolean = false
     ): Promise<void> => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -188,7 +191,8 @@ export function useLogsFetcher({
               }
               applyLocalStats(immediate.stats);
               setLoading(false);
-            }
+            },
+            manualRefresh
           );
 
           if (controller.signal.aborted) return;
@@ -259,6 +263,7 @@ export function useLogsFetcher({
           ispFilter,
           searchQuery,
           lastTimestamp,
+          fresh: manualRefresh,
           signal: controller.signal
         });
 
@@ -288,7 +293,10 @@ export function useLogsFetcher({
           prefetchDomainIcons(serverResult.logs);
         }
       } catch (e: unknown) {
-        if ((e as Error).name !== "AbortError") {
+        if (e instanceof RefreshCooldownError) {
+          // Refresh pressed again before the server's pause ended (e.g. from another tab): the list stays as it is.
+          console.warn("[useLogsFetcher] Refresh refused, retry in", e.retryAfterSec, "s");
+        } else if ((e as Error).name !== "AbortError") {
           console.error(e);
         }
       } finally {

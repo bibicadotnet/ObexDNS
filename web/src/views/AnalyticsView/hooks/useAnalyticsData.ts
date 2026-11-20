@@ -10,6 +10,7 @@ import type { OverlayToaster } from "@blueprintjs/core";
 import type { AnalyticsData, TimeRange } from "../types";
 import {
   getProfileAnalytics,
+  RefreshCooldownError,
   localDb,
   e2ee,
   type AccessPoint
@@ -177,16 +178,19 @@ export function useAnalyticsData(
         try {
           return await getProfileAnalytics(profileId, "", queryParams, { signal });
         } catch (unifiedErr) {
-          if (signal.aborted) throw unifiedErr;
-          // Fallback to separate endpoints if unified endpoint fails
+          // A refused Refresh (server pause still running) is final: the separate endpoints would be refused too.
+          if (signal.aborted || unifiedErr instanceof RefreshCooldownError) throw unifiedErr;
+          // Fallback to separate endpoints if unified endpoint fails. The refresh pause is already used up by
+          // the request above, so the fallback must not ask for a fresh read again.
+          const fallbackParams = queryParams.replace("&fresh=true", "");
           const [summary, trend, topAllowed, topBlocked, clients, destinations] =
             await Promise.all([
-              getProfileAnalytics(profileId, "summary", queryParams, { signal }),
-              getProfileAnalytics(profileId, "trend", queryParams, { signal }),
-              getProfileAnalytics(profileId, "top_allowed", queryParams, { signal }),
-              getProfileAnalytics(profileId, "top_blocked", queryParams, { signal }),
-              getProfileAnalytics(profileId, "clients", queryParams, { signal }),
-              getProfileAnalytics(profileId, "destinations", queryParams, { signal })
+              getProfileAnalytics(profileId, "summary", fallbackParams, { signal }),
+              getProfileAnalytics(profileId, "trend", fallbackParams, { signal }),
+              getProfileAnalytics(profileId, "top_allowed", fallbackParams, { signal }),
+              getProfileAnalytics(profileId, "top_blocked", fallbackParams, { signal }),
+              getProfileAnalytics(profileId, "clients", fallbackParams, { signal }),
+              getProfileAnalytics(profileId, "destinations", fallbackParams, { signal })
             ]);
           return { summary, trend, top_allowed: topAllowed, top_blocked: topBlocked, clients, destinations };
         }
@@ -246,7 +250,11 @@ export function useAnalyticsData(
         }
       } catch (e) {
         if (!signal.aborted) {
-          console.error("[useAnalyticsData] Failed to fetch server analytics:", e);
+          if (e instanceof RefreshCooldownError) {
+            console.warn("[useAnalyticsData] Refresh refused, retry in", e.retryAfterSec, "s");
+          } else {
+            console.error("[useAnalyticsData] Failed to fetch server analytics:", e);
+          }
           // Server unreachable: show the local copy rather than nothing.
           if (localPreview && localPreview.summary.some((s) => s.count > 0)) {
             setData((curr) => curr ?? localPreview);

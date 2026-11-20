@@ -9,6 +9,7 @@ import { StatusFilter } from "./StatusFilter";
 import { AccessPointFilter } from "./AccessPointFilter";
 import { DestCountryFilter } from "./DestCountryFilter";
 import { IspFilter } from "./IspFilter";
+import { useRefreshCooldown } from "../../../hooks/useRefreshCooldown";
 
 export interface LogsHeaderProps {
   profileId: string;
@@ -17,7 +18,7 @@ export interface LogsHeaderProps {
   customRange: { start: string; end: string };
   setCustomRange: (cr: { start: string; end: string }) => void;
   nowStr: string;
-  fetchLogs: (range: TimeRange, initial: boolean, isAutoRefresh?: boolean, forceSync?: boolean) => void;
+  fetchLogs: (range: TimeRange, initial: boolean, isAutoRefresh?: boolean, forceSync?: boolean, manualRefresh?: boolean) => void;
   isMobile: boolean;
   realtimeRefresh: boolean;
   setRealtimeRefresh: (val: boolean) => void;
@@ -75,6 +76,14 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isClearAlertOpen, setIsClearAlertOpen] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
+  // The Refresh button re-reads from the server past every cache, so it can only be used once per pause.
+  const refreshCooldown = useRefreshCooldown(`logs:${profileId}`);
+
+  const handleRefresh = () => {
+    if (refreshCooldown.active) return;
+    refreshCooldown.start();
+    fetchLogs(range, true, false, true, true);
+  };
 
   // Typing is kept in local state and only committed (trimmed) after a short pause: every committed value
   // triggers a server query, and every keystroke used to re-render the whole logs view as well.
@@ -214,8 +223,11 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
               />
               <Button
                 icon="refresh"
-                onClick={() => fetchLogs(range, true, false, true)}
+                onClick={handleRefresh}
                 loading={loading || syncing}
+                disabled={refreshCooldown.active}
+                text={refreshCooldown.active ? `${refreshCooldown.remainingSec}s` : undefined}
+                title={refreshCooldown.active ? t("common.refreshWait", { seconds: refreshCooldown.remainingSec }) : undefined}
                 variant="minimal"
                 small={isMobile}
               />

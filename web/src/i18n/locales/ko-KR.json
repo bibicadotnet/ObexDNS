@@ -1,5 +1,6 @@
 {
   "common": {
+    "refreshWait": "다시 새로고침하려면 {{seconds}}초 기다려 주세요",
     "account": "계정",
     "logout": "로그아웃",
     "selectProfile": "설정 선택",

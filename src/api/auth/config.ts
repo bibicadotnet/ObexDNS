@@ -2,6 +2,7 @@ import { Env } from "../../types";
 import { UserModel } from "../../models/user";
 import { SystemSettingsModel } from "../../models/systemSettings";
 import { USERNAME_REGEX } from "../../utils/validator";
+import { getRefreshCooldownSec } from "../../utils/refreshCooldown";
 
 /**
  * Handle public authentication configuration and checks
@@ -39,6 +40,7 @@ export async function handleAuthConfigRequest(request: Request, env: Env): Promi
       turnstile_enabled_signup: signupEnabled === 'true',
       turnstile_enabled_login: loginEnabled === 'true',
       optional_session_expiration_days: Number(env.OPTIONAL_SESSION_EXPIRATION_DAYS) || 7,
+      refresh_cooldown_sec: getRefreshCooldownSec(env),
       has_users: hasUsers,
       registration_enabled: registrationEnabled !== 'false',
       app_name: appName,

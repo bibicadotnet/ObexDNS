@@ -77,6 +77,7 @@ export class LocalDbSyncEngine {
    * @param targetSince - Optional historical boundary for initial load.
    * @param signal - Optional AbortSignal to cancel requests.
    * @param force - If true, bypasses the 15-second throttle cooldown.
+   * @param fresh - Manual Refresh: marks the first request so the server applies its refresh pause.
    * @returns Promise resolving to the number of newly inserted logs.
    */
   async syncProfileLogs(
@@ -84,7 +85,8 @@ export class LocalDbSyncEngine {
     onProgress?: (syncedCount: number, total: number) => void,
     targetSince?: number,
     signal?: AbortSignal,
-    force: boolean = false
+    force: boolean = false,
+    fresh: boolean = false
   ): Promise<number> {
     if (this.inFlightSyncs.has(profileId)) {
       return this.inFlightSyncs.get(profileId)!;
@@ -124,6 +126,8 @@ export class LocalDbSyncEngine {
         let url = `/api/profiles/${profileId}/logs?start=${since}&end=${now}&limit=100`;
         if (currentBefore !== undefined) {
           url += `&before=${currentBefore}`;
+        } else if (fresh) {
+          url += "&fresh=true";
         }
 
         const { logs, inserted, oldestTimestamp } = await this.fetcher.fetchAndIngestBatch(

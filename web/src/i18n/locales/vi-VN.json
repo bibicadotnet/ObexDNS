@@ -1,5 +1,6 @@
 {
   "common": {
+    "refreshWait": "Vui lòng đợi {{seconds}} giây trước khi làm mới lại",
     "account": "Tài khoản",
     "logout": "Đăng xuất",
     "selectProfile": "Chọn cấu hình",

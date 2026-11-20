@@ -1,5 +1,6 @@
 {
   "common": {
+    "refreshWait": "Подождите {{seconds}} с перед повторным обновлением",
     "account": "Аккаунт",
     "logout": "Выйти",
     "selectProfile": "Выбрать профиль",

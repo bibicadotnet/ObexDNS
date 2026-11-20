@@ -37,7 +37,8 @@ export async function queryInitialLocalLogs(
   params: LocalDbQueryParams,
   signal: AbortSignal,
   forceSync: boolean,
-  onImmediateLocalHit?: (result: LocalDbInitialResult) => void
+  onImmediateLocalHit?: (result: LocalDbInitialResult) => void,
+  manualRefresh: boolean = false
 ): Promise<{ success: boolean; result?: LocalDbInitialResult }> {
   const isDbReady = await localDb.init();
   if (!isDbReady || signal.aborted) {
@@ -87,7 +88,8 @@ export async function queryInitialLocalLogs(
       undefined,
       since,
       signal,
-      forceSync
+      forceSync,
+      manualRefresh
     );
 
     if (!signal.aborted && (inserted > 0 || localResult.rows.length === 0)) {

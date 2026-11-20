@@ -404,6 +404,10 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # Ngưỡng số lượng truy vấn tối thiểu của một tên miền để tổng hợp vào báo cáo thống kê theo giờ (mặc định: 1, lọc bỏ tên miền rác chỉ xuất hiện 1 lần).
 # DOMAIN_ROLLUP_MIN_COUNT=1
 
+# Minimum pause in seconds between two manual clicks on the Refresh button of Query Logs and Analytics (default: 3, 0 = no limit). Applies per user, per profile and per tab; during the pause the button is disabled with a countdown and the server answers 429. Normal loading, scrolling, searching and filtering are not affected.
+# Thời gian nghỉ tối thiểu (giây) giữa hai lần bấm nút Refresh ở tab Query Logs và Analytics (mặc định: 3, 0 = không giới hạn). Tính riêng cho từng người dùng, từng profile và từng tab; trong lúc chờ nút bị khoá kèm đếm ngược và server trả về 429. Việc tải, cuộn, tìm kiếm và lọc thông thường không bị ảnh hưởng.
+# REFRESH_COOLDOWN_SEC=3
+
 # ------------------------------------------------------------------------------
 # 12. Authentication Rate Limits / Giới hạn tần suất xác thực và chống dò mật khẩu
 # ------------------------------------------------------------------------------

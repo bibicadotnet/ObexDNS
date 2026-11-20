@@ -1,5 +1,6 @@
 {
   "common": {
+    "refreshWait": "请等待 {{seconds}} 秒后再刷新",
     "account": "账号",
     "logout": "登出",
     "selectProfile": "选择配置",

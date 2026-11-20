@@ -1,5 +1,6 @@
 {
   "common": {
+    "refreshWait": "Espera {{seconds}} s antes de volver a actualizar",
     "account": "Cuenta",
     "logout": "Cerrar sesión",
     "selectProfile": "Seleccionar perfil",

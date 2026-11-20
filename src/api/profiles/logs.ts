@@ -9,6 +9,7 @@ import { alignRangeToMinutes, describeAnalyticsWindow } from "../../models/log/a
 import { analyticsCachePolicy } from "../../utils/analyticsCache";
 import { effectiveLogRetentionDays, resolveCustomRange, retentionThreshold, roleRetentionCap } from "../../utils/logRange";
 import { envNumber } from "../../utils/envNumber";
+import { checkRefreshCooldown, refreshCooldownResponse } from "../../utils/refreshCooldown";
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
@@ -159,6 +160,13 @@ export async function handleProfileLogsAndAnalyticsRequest(
       return new Response(JSON.stringify(logDetail), { headers: { 'Content-Type': 'application/json' } });
     }
 
+    // Manual Refresh button: refused while the pause since the previous one is still running (REFRESH_COOLDOWN_SEC).
+    // Only the first page counts; "load more" pages of the same refresh follow it.
+    if (urlParams.get('fresh') === 'true' && !before) {
+      const wait = checkRefreshCooldown(env, 'logs', user.id, profileId);
+      if (wait > 0) return refreshCooldownResponse(wait);
+    }
+
     let limit = parseInt(urlParams.get('limit') || '50', 10);
     if (isNaN(limit) || limit <= 0) {
       limit = 50;
@@ -228,6 +236,10 @@ export async function handleProfileLogsAndAnalyticsRequest(
 
     // Manual Refresh: skip the cached answer (the new one still replaces it).
     const fresh = urlParams.get('fresh') === 'true';
+    if (fresh) {
+      const wait = checkRefreshCooldown(env, 'analytics', user.id, profileId);
+      if (wait > 0) return refreshCooldownResponse(wait);
+    }
     const subResource = pathParts[4];
     const isServerfull = isServerfullEnv(env);
     const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;

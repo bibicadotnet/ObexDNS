@@ -35,6 +35,8 @@ export interface AnalyticsRangeSelectorProps {
   onApplyCustom: () => void;
   /** Re-requests the current range from the server, bypassing the client cache. */
   onRefresh?: () => void;
+  /** Seconds left before Refresh can be used again; the button stays disabled while above 0. */
+  refreshWaitSec?: number;
   syncing?: boolean;
   syncProgress?: number;
   onSync?: () => void;
@@ -60,7 +62,8 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
   setAccessPointIdFilter,
   loading,
   onApplyCustom,
-  onRefresh
+  onRefresh,
+  refreshWaitSec = 0
 }) => {
   const { t } = useTranslation();
   const nowSec = Math.floor(Date.now() / 1000);
@@ -162,7 +165,9 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
             variant="minimal"
             onClick={onRefresh}
             loading={loading}
-            title={t("analytics.refresh")}
+            disabled={refreshWaitSec > 0}
+            text={refreshWaitSec > 0 ? `${refreshWaitSec}s` : undefined}
+            title={refreshWaitSec > 0 ? t("common.refreshWait", { seconds: refreshWaitSec }) : t("analytics.refresh")}
             aria-label={t("analytics.refresh")}
           />
         )}

@@ -1,5 +1,6 @@
 {
   "common": {
+    "refreshWait": "再度更新するまで {{seconds}} 秒お待ちください",
     "account": "アカウント",
     "logout": "ログアウト",
     "selectProfile": "設定を選択",

@@ -1,5 +1,6 @@
 {
   "common": {
+    "refreshWait": "Veuillez patienter {{seconds}} s avant d'actualiser à nouveau",
     "account": "Compte",
     "logout": "Déconnexion",
     "selectProfile": "Sélectionner un profil",

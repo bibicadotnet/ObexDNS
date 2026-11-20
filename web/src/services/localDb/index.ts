@@ -79,9 +79,10 @@ export class LocalDbService {
     onProgress?: (syncedCount: number, total: number) => void,
     targetSince?: number,
     signal?: AbortSignal,
-    force: boolean = false
+    force: boolean = false,
+    fresh: boolean = false
   ): Promise<number> {
-    return this.syncEngine.syncProfileLogs(profileId, onProgress, targetSince, signal, force);
+    return this.syncEngine.syncProfileLogs(profileId, onProgress, targetSince, signal, force, fresh);
   }
 
   /** Synchronizes missing raw logs for a specific time interval */

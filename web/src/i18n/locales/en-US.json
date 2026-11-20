@@ -1,5 +1,6 @@
 {
   "common": {
+    "refreshWait": "Please wait {{seconds}}s before refreshing again",
     "account": "Account",
     "logout": "Logout",
     "selectProfile": "Select Profile",

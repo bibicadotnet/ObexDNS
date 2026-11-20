@@ -16,6 +16,7 @@ import { clsx } from "clsx";
 import { processTrendData } from "./utils";
 import { RankTable } from "./components/RankTable";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useRefreshCooldown } from "../../hooks/useRefreshCooldown";
 import { useAnalyticsData } from "./hooks/useAnalyticsData";
 import { validateCustomRange } from "../../utils/customRange";
 import { AnalyticsRangeSelector } from "./components/AnalyticsRangeSelector";
@@ -65,6 +66,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toaster
     logRetentionDays,
     fetchData
   } = useAnalyticsData(profileId, toasterRef);
+  // Refresh re-reads the aggregation past every cache: one use per pause (REFRESH_COOLDOWN_SEC).
+  const refreshCooldown = useRefreshCooldown(`analytics:${profileId}`);
 
   const {
     isE2eeEnabled,
@@ -125,7 +128,12 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toaster
         accessPointIdFilter={accessPointIdFilter}
         setAccessPointIdFilter={setAccessPointIdFilter}
         loading={loading}
-        onRefresh={() => fetchData(range, customRange.start, customRange.end, accessPointIdFilter, true)}
+        onRefresh={() => {
+          if (refreshCooldown.active) return;
+          refreshCooldown.start();
+          void fetchData(range, customRange.start, customRange.end, accessPointIdFilter, true);
+        }}
+        refreshWaitSec={refreshCooldown.remainingSec}
         onApplyCustom={() => {
           // Same rule as the selector (and the API): an impossible range is never sent.
           if (!validateCustomRange(customRange.start, customRange.end, logRetentionDays).valid) return;

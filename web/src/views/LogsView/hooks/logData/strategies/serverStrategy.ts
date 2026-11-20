@@ -21,6 +21,8 @@ export interface ServerStrategyParams {
   ispFilter: string | null;
   searchQuery: string;
   lastTimestamp?: number;
+  /** Manual Refresh: the server applies its refresh pause to this request. */
+  fresh?: boolean;
   signal: AbortSignal;
 }
 
@@ -47,6 +49,7 @@ export async function fetchServerLogs(params: ServerStrategyParams): Promise<Ser
     ispFilter,
     searchQuery,
     lastTimestamp,
+    fresh,
     signal
   } = params;
 
@@ -63,6 +66,7 @@ export async function fetchServerLogs(params: ServerStrategyParams): Promise<Ser
   if (!isInitial && lastTimestamp !== undefined) {
     urlParams.set("before", String(lastTimestamp));
   }
+  if (fresh && isInitial) urlParams.set("fresh", "true");
 
   const fetchLogsPromise = getProfileLogs(profileId, urlParams.toString(), { signal });
   let fetchStatsPromise: Promise<Array<{ action: string; count: number }> | null> = Promise.resolve(null);
