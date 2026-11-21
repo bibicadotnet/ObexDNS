@@ -9,6 +9,49 @@ import { useDeploymentMode } from "../../../hooks/useDeploymentMode";
 import { useBranding } from "../../../hooks/useBranding";
 import { isDummyOrPlaceholderDomain } from "../../../services";
 
+
+/** Consistent panel layout: title (18px) -> description (14px muted) -> content blocks. */
+const PanelHeader: React.FC<{ title: React.ReactNode; desc?: React.ReactNode }> = ({ title, desc }) => (
+  <header className="space-y-2">
+    <H5 className="section-title">{title}</H5>
+    {desc && <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">{desc}</p>}
+  </header>
+);
+
+/** A labelled step: small semibold label above its content. */
+const Step: React.FC<{ label?: React.ReactNode; children: React.ReactNode }> = ({ label, children }) => (
+  <section className="space-y-2.5">
+    {label && <h6 className="subsection-title">{label}</h6>}
+    {children}
+  </section>
+);
+
+/** Command box with a copy button that stays visible on touch screens. */
+const CommandBlock: React.FC<{ command: string; onCopy: (text: string) => void }> = ({ command, onCopy }) => (
+  <div className="relative group">
+    <pre className="bg-gray-50 dark:bg-gray-800/70 py-3.5 pl-4 pr-12 rounded-lg overflow-x-auto text-[13px] leading-6 font-mono border border-gray-200 dark:border-gray-700">
+      <code>{command}</code>
+    </pre>
+    <Button
+      className="absolute top-1/2 -translate-y-1/2 right-2 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity"
+      icon="duplicate"
+      minimal
+      small
+      onClick={() => onCopy(command)}
+    />
+  </div>
+);
+
+const Notes: React.FC<{ items: React.ReactNode[] }> = ({ items }) => (
+  <ul className="space-y-1.5 text-[13px] leading-5 text-gray-500 dark:text-gray-400 list-disc pl-5 marker:text-gray-400">
+    {items.map((item, i) => (
+      <li key={i}>{item}</li>
+    ))}
+  </ul>
+);
+
+const PANEL = "space-y-6 md:pl-6 pt-4 md:pt-0";
+
 export interface SetupTabsProps {
   isMobile: boolean;
   copyToClipboard: (text: string) => void;
@@ -62,12 +105,20 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
           </span>
         }
         panel={
-          <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title mb-3!">{t("setup.browserTitle")}</H5>
-            <p className="text-sm">{t("setup.browserSteps")}</p>
-            <p className="text-xs opacity-50 cursor-pointer" onClick={() => copyToClipboard("chrome://settings/security")}>
-              {t("setup.browserTips", "or copy this URL to the address bar: ") + "chrome://settings/security"}
-            </p>
+          <div className={PANEL}>
+            <PanelHeader title={t("setup.browserTitle")} desc={t("setup.browserSteps")} />
+            <Step label={t("setup.browserTips", "or copy this URL to the address bar: ").replace(/:\s*$/, "")}>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <p className="text-[13px] text-gray-500 dark:text-gray-400">Chrome</p>
+                  <CommandBlock command="chrome://settings/security" onCopy={copyToClipboard} />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-[13px] text-gray-500 dark:text-gray-400">Edge</p>
+                  <CommandBlock command="edge://settings/privacy/security" onCopy={copyToClipboard} />
+                </div>
+              </div>
+            </Step>
           </div>
         }
       />
@@ -81,12 +132,10 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
           </span>
         }
         panel={
-          <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title mb-3!">{t("setup.appleTitle")}</H5>
-            <p className="text-sm">{t("setup.appleDesc")}</p>
-            <p className="text-xs opacity-50 text-center">{t("setup.appleWarning")}</p>
-            <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center">
-              <Icon icon="document" size={40} className="opacity-20 mb-4" />
+          <div className={PANEL}>
+            <PanelHeader title={t("setup.appleTitle")} desc={t("setup.appleDesc")} />
+            <div className="p-6 bg-gray-50 dark:bg-gray-800/70 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center">
+              <Icon icon="document" size={36} className="opacity-25 mb-4" />
               <Button
                 intent={Intent.PRIMARY}
                 text={t("setup.downloadConfig")}
@@ -120,7 +169,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
                 }}
               />
             </div>
-            <p className="text-xs opacity-50 mt-4! text-center">{t("setup.appleInstallHint")}</p>
+            <Notes items={[t("setup.appleWarning"), t("setup.appleInstallHint")]} />
           </div>
         }
       />
@@ -133,34 +182,14 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
           </span>
         }
         panel={
-          <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title mb-3!">
-              {t("setup.windowsTitle")}
-            </H5>
-            <p className="text-sm">{t("setup.windowsDesc")}</p>
+          <div className={PANEL}>
+            <PanelHeader title={t("setup.windowsTitle")} desc={t("setup.windowsDesc")} />
 
-            <div className="mt-4">
-              <p className="text-sm font-bold mb-2">{t("setup.windowsStep1")}</p>
-              <div className="relative group">
-                <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-xs font-mono border border-gray-200 dark:border-gray-700">
-                  <code>{`irm "${window.location.origin}/setup.ps1?key=${profileKey}" | iex`}</code>
-                </pre>
-                <Button
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                  icon="duplicate"
-                  minimal
-                  small
-                  onClick={() => {
-                    copyToClipboard(`irm "${window.location.origin}/setup.ps1?key=${profileKey}" | iex`);
-                  }}
-                />
-              </div>
-            </div>
+            <Step label={t("setup.windowsStep1")}>
+              <CommandBlock command={`irm "${window.location.origin}/setup.ps1?key=${profileKey}" | iex`} onCopy={copyToClipboard} />
+            </Step>
 
-            <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1 pt-1">
-              <p>• {t("setup.windowsNote1")}</p>
-              <p>• {t("setup.windowsNote2")}</p>
-            </div>
+            <Notes items={[t("setup.windowsNote1"), t("setup.windowsNote2")]} />
           </div>
         }
       />
@@ -174,31 +203,14 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
           </span>
         }
         panel={
-          <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title mb-3!">{t("setup.linuxTitle")}</H5>
-            <p className="text-sm">{t("setup.linuxDesc")}</p>
+          <div className={PANEL}>
+            <PanelHeader title={t("setup.linuxTitle")} desc={t("setup.linuxDesc")} />
 
-            <div className="mt-4">
-              <p className="text-sm font-bold mb-2">{t("setup.linuxStep1")}</p>
-              <div className="relative group">
-                <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-xs font-mono border border-gray-200 dark:border-gray-700">
-                  <code>{`curl -sL "${window.location.origin}/setup.sh?key=${profileKey}" | sudo bash`}</code>
-                </pre>
-                <Button
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                  icon="duplicate"
-                  minimal
-                  small
-                  onClick={() => {
-                    copyToClipboard(`curl -sL "${window.location.origin}/setup.sh?key=${profileKey}" | sudo bash`);
-                  }}
-                />
-              </div>
-            </div>
+            <Step label={t("setup.linuxStep1")}>
+              <CommandBlock command={`curl -sL "${window.location.origin}/setup.sh?key=${profileKey}" | sudo bash`} onCopy={copyToClipboard} />
+            </Step>
 
-            <div className="mt-4">
-              <p className="text-sm font-bold">{t("setup.linuxStep2")}</p>
-            </div>
+            <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">{t("setup.linuxStep2")}</p>
           </div>
         }
       />
@@ -212,37 +224,22 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
           </span>
         }
         panel={
-          <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title mb-3!">{t("setup.routerosTitle")}</H5>
-            <p className="text-sm">{t("setup.routerosDesc")}</p>
+          <div className={PANEL}>
+            <PanelHeader title={t("setup.routerosTitle")} desc={t("setup.routerosDesc")} />
 
-            <div className="mt-4">
-              <p className="text-sm font-bold mb-2">{t("setup.routerosStep1")}</p>
-              <div className="relative group">
-                <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-xs font-mono border border-gray-200 dark:border-gray-700">
-                  <code>{`/ip dns set use-doh-server="${window.location.origin}/${profileKey}" verify-doh-cert=yes`}</code>
-                </pre>
-                <Button
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                  icon="duplicate"
-                  minimal
-                  small
-                  onClick={() => {
-                    copyToClipboard(`/ip dns set use-doh-server="${window.location.origin}/${profileKey}" verify-doh-cert=yes`);
-                  }}
-                />
-              </div>
-            </div>
+            <Step label={t("setup.routerosStep1")}>
+              <CommandBlock command={`/ip dns set use-doh-server="${window.location.origin}/${profileKey}" verify-doh-cert=yes`} onCopy={copyToClipboard} />
+            </Step>
 
-            <p className="text-sm">{t("setup.routerosNote")}</p>
+            <Notes items={[t("setup.routerosNote")]} />
 
             <a
               href="https://help.mikrotik.com/docs/spaces/ROS/pages/37748767/DNS"
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1 text-xs text-blue-500 hover:underline"
+              className="inline-flex items-center gap-1.5 text-[13px] text-blue-500 hover:underline"
             >
-              <ExternalLink size={10} /> {t("setup.routerosDocs")}
+              <ExternalLink size={12} /> {t("setup.routerosDocs")}
             </a>
           </div>
         }
@@ -257,9 +254,8 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
           </span>
         }
         panel={
-          <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title mb-3!">{t("setup.androidTitle")}</H5>
-            <p className="text-sm">{t("setup.androidDesc")}</p>
+          <div className={PANEL}>
+            <PanelHeader title={t("setup.androidTitle")} desc={t("setup.androidDesc")} />
 
             {isCloudflare ? (
               <Callout intent={Intent.WARNING} icon="warning-sign" className="text-xs">
@@ -278,10 +274,10 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
 
                 return (
                   <div className="p-4 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
-                    <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">
                       {t("setup.androidDotTitle", "私有 DNS (DoT / DoQ)")}
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-[13px] leading-5 text-gray-500 dark:text-gray-400">
                       {t("setup.androidDotDesc", "支持 Android 原生“私有 DNS (DoT)”及各类现代 DoQ 客户端。提供商主机名：")}
                     </p>
 
