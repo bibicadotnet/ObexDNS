@@ -252,3 +252,8 @@ export function getSystemFilterUrls(env?: {
 }): string[] {
   return getSystemFilterEntries(env).map(e => e.url);
 }
+
+/** Maximum number of user-added (custom) lists per profile. Configurable via MAX_CUSTOM_LISTS_PER_PROFILE, default 5. */
+export function getMaxCustomLists(env?: { MAX_CUSTOM_LISTS_PER_PROFILE?: string | number }): number {
+  return Number(env?.MAX_CUSTOM_LISTS_PER_PROFILE) || 5;
+}

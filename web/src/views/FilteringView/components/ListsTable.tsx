@@ -9,6 +9,8 @@ import { parseSyncStatus, limitWarningText } from "../syncStatus";
 
 export interface ListsTableProps {
   lists: FilterList[];
+  /** Admin cap on custom lists; shown as "n/max" on the custom group heading. */
+  maxCustomLists?: number;
   onSelect: (list: FilterList) => void;
   /** Enables or disables a list directly from the table row. */
   onToggleEnabled: (id: number, enabled: boolean) => void;
@@ -29,7 +31,7 @@ interface ColumnConfig {
 /** Below this container width the table is replaced by cards, so there is never a horizontal scrollbar. */
 const TABLE_MIN_WIDTH = 720;
 
-export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggleEnabled, pendingIds }) => {
+export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, onSelect, onToggleEnabled, pendingIds }) => {
   const { t } = useTranslation();
   const [containerRef, containerWidth] = useContainerWidth();
   // 0 = not measured yet (first paint): assume the wide layout, the real width arrives before the browser paints.
@@ -39,13 +41,18 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
   // Group headings only appear when both kinds exist: a single kind reads fine as a plain list.
   const builtIn = lists.filter((l) => l.is_system).sort((a, b) => Number(!!b.is_default) - Number(!!a.is_default));
   const custom = lists.filter((l) => !l.is_system);
-  const groups: { key: string; title?: string; items: FilterList[] }[] =
+  const groups: { key: string; title?: string; items: FilterList[]; max?: number }[] =
     builtIn.length > 0 && custom.length > 0
       ? [
           { key: "builtin", title: t("filtering.groupBuiltIn", "Built-in lists"), items: builtIn },
-          { key: "custom", title: t("filtering.groupCustom", "Custom lists"), items: custom },
+          { key: "custom", title: t("filtering.groupCustom", "Custom lists"), items: custom, max: maxCustomLists },
         ]
       : [{ key: "all", items: [...builtIn, ...custom] }];
+
+  // "n/max" when the group has a cap (custom lists); amber once the cap is reached.
+  const countLabel = (g: { items: FilterList[]; max?: number }) => (g.max ? `${g.items.length}/${g.max}` : g.items.length);
+  const countIntent = (g: { items: FilterList[]; max?: number }) =>
+    g.max && g.items.length >= g.max ? Intent.WARNING : Intent.PRIMARY;
 
   const columns: ColumnConfig[] = [
     {
@@ -156,8 +163,8 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
               {group.title && (
                 <li className="flex items-center gap-2 px-1 pt-2">
                   <span className="text-xs font-semibold uppercase tracking-wide opacity-60">{group.title}</span>
-                  <Tag minimal round intent={Intent.PRIMARY} className="text-xs">
-                    {group.items.length}
+                  <Tag minimal round intent={countIntent(group)} className="text-xs">
+                    {countLabel(group)}
                   </Tag>
                 </li>
               )}
@@ -207,8 +214,8 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
                   <td colSpan={columns.length} className="pt-4! pb-1.5! bg-transparent!">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold uppercase tracking-wide opacity-60">{group.title}</span>
-                      <Tag minimal round intent={Intent.PRIMARY} className="text-xs">
-                        {group.items.length}
+                      <Tag minimal round intent={countIntent(group)} className="text-xs">
+                        {countLabel(group)}
                       </Tag>
                     </div>
                   </td>

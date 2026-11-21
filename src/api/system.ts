@@ -13,6 +13,7 @@ import {
   getDefaultProfileFilterUrls
 } from '../constants/presets';
 import { systemListsManager } from '../lib/filtering/systemListsManager';
+import { getMaxCustomLists } from '../constants/presets';
 
 /**
  * Handles system/utility routes like /api/clientinfo and /api/substitute
@@ -148,6 +149,10 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
   if (url.pathname === '/api/presets/upstreams') {
     const upstreams = getPresetUpstreams(env);
     return new Response(JSON.stringify(upstreams), { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  if (url.pathname === '/api/presets/limits') {
+    return new Response(JSON.stringify({ maxCustomLists: getMaxCustomLists(env) }), { headers: { 'Content-Type': 'application/json' } });
   }
 
   if (url.pathname === '/api/presets/filters') {

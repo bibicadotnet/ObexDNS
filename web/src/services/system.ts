@@ -113,6 +113,13 @@ export async function getPresetFilters(): Promise<any[]> {
   return res.json();
 }
 
+/** Per-profile limits configured by the admin (currently the custom list cap). */
+export async function getListLimits(): Promise<{ maxCustomLists: number }> {
+  const res = await fetch("/api/presets/limits");
+  if (!res.ok) throw new Error("Failed to fetch list limits");
+  return res.json();
+}
+
 export async function getPresetEchFrontingDomains(): Promise<string[]> {
   const res = await fetch("/api/presets/ech-fronting-domains");
   if (!res.ok) throw new Error("Failed to fetch preset ECH fronting domains");

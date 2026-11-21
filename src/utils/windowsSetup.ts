@@ -5,7 +5,8 @@
 
 export interface WindowsSetupOptions {
   origin: string;
-  key: string;
+  /** Profile / access point key. Omitted = default profile (DoH at /dns-query, DoT at the bare domain). */
+  key?: string;
   dotDomain?: string;
   packageUrl?: string;
 }
@@ -25,11 +26,13 @@ export function generateWindowsSetupScript(options: WindowsSetupOptions): string
   const defaultToolsUrl = 'https://github.com/bibicadotnet/ObexDNS/releases/download/windows-tools-setup/windows-tools-setup.zip';
   const packageUrl = options.packageUrl && options.packageUrl.trim() ? options.packageUrl.trim() : defaultToolsUrl;
 
-  const dohUpstream = `${cleanOrigin}/${options.key}`;
+  // No key: use the server's default profile (DoH canonical /dns-query, DoT on the bare domain).
+  const key = (options.key || '').trim();
+  const dohUpstream = key ? `${cleanOrigin}/${key}` : `${cleanOrigin}/dns-query`;
   const cleanDotDomain = (options.dotDomain || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
-  const dotUpstreamLine = cleanDotDomain ? `  - tls://${options.key}.${cleanDotDomain}` : '';
+  const dotUpstreamLine = cleanDotDomain ? `  - tls://${key ? `${key}.` : ''}${cleanDotDomain}` : '';
 
-  const reElevateUrl = `${cleanOrigin}/setup.ps1?key=${encodeURIComponent(options.key)}`;
+  const reElevateUrl = key ? `${cleanOrigin}/setup.ps1?key=${encodeURIComponent(key)}` : `${cleanOrigin}/setup.ps1`;
 
   return `# ${hostname} DoH/DoT + Zapret DPI bypass - Auto Installer
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(544)) {
@@ -217,22 +220,11 @@ foreach (\$t in 'Tiktok.com v16-webapp-prime.tiktok.com', 'Bilibili.com upos-hz-
 }
 
 # ---- Done ----
-\$msg = @"
-
-========================================
-Installation complete!
-========================================
-
-System DNS: 127.0.0.1 (${hostname} DoH/DoT + Zapret DPI bypass)
-Services:   running, auto-start on boot
-
-Install location: \$dir
-Restart services: \$dir\\${hostSlug}-restart.bat
-Uninstall:        \$dir\\uninstall.bat
-
-Press any key to exit...
-"@
-Say \$msg Green
+# Only what was just configured is highlighted (Cyan); green/yellow/red stay reserved for the CDN latency test above.
+Say "\`n========================================\`nInstallation complete!\`n========================================\`n" DarkGray
+Say "System DNS: 127.0.0.1 (${hostname} DoH/DoT + Zapret DPI bypass)\`nServices:   running, auto-start on boot\`n" Cyan
+Say "Install location: \$dir\`nRestart services: \$dir\\${hostSlug}-restart.bat\`nUninstall:        \$dir\\uninstall.bat\`n" Cyan
+Say 'Press any key to exit...' DarkGray
 \$null = \$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 `;
 }

@@ -10,7 +10,7 @@ import type {  FilteringViewProps, FilterList  } from "./types";
 import { AddListCard } from "./components/AddListCard";
 import { ListsTable } from "./components/ListsTable";
 import { ListDetailsDialog } from "./components/ListDetailsDialog";
-import { getProfileLists, addCustomProfileList, deleteCustomProfileList, syncProfileLists, syncSingleProfileList, toggleProfileList, addProfileRule } from "../../services";
+import { getProfileLists, addCustomProfileList, deleteCustomProfileList, syncProfileLists, syncSingleProfileList, toggleProfileList, addProfileRule, getListLimits } from "../../services";
 
 export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toasterRef }) => {
   const navigate = useNavigate();
@@ -20,6 +20,14 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const { t } = useTranslation();
+
+  /** Admin cap on custom lists per profile (MAX_CUSTOM_LISTS_PER_PROFILE); undefined until loaded. */
+  const [maxCustomLists, setMaxCustomLists] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    getListLimits()
+      .then((l) => setMaxCustomLists(l.maxCustomLists))
+      .catch((e) => console.warn("Failed to fetch list limits", e));
+  }, []);
 
   const [selectedList, setSelectedList] = useState<FilterList | null>(null);
 
@@ -351,6 +359,7 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
 
       <ListsTable
         lists={lists}
+        maxCustomLists={maxCustomLists}
         onSelect={setSelectedList}
         onToggleEnabled={setListEnabled}
         pendingIds={pendingToggleIds}

@@ -18,7 +18,7 @@ import { AdguardRulesModel } from "../../models/adguardRules";
 import { AdGuardProfileEngine } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
 import { customListsManager } from "../../lib/filtering/customListsManager";
-import { getDefaultProfileFilterUrls } from "../../constants/presets";
+import { getDefaultProfileFilterUrls, getMaxCustomLists } from "../../constants/presets";
 
 
 /** Max parallel list probes during bulk additions. */
@@ -337,7 +337,7 @@ export async function handleProfileListsRequest(
     }
 
     const body = await request.json() as any;
-    const MAX_CUSTOM_LISTS = Number(env?.MAX_CUSTOM_LISTS_PER_PROFILE) || 5;
+    const MAX_CUSTOM_LISTS = getMaxCustomLists(env);
     await systemListsManager.ensureLoaded(env.DB, false, env);
     const existingLists = await listModel.getLists(profileId);
     const currentCustomCount = existingLists.filter(l => !systemListsManager.isSystemUrl(l.url)).length;
