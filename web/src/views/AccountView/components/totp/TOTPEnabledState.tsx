@@ -68,7 +68,7 @@ export const TOTPEnabledState: React.FC<TOTPEnabledStateProps> = ({
       <div className="flex items-center justify-between gap-2 mb-4">
         <div className="flex items-center gap-2">
           <Smartphone size={20} className="text-blue-500" />
-          <H4 style={{ margin: 0 }}>
+          <H4 className="section-title">
             {t("account.totp.title", "Authenticator App (TOTP)")}
           </H4>
           <Tag intent={Intent.SUCCESS} minimal round>

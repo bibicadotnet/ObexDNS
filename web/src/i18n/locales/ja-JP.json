@@ -367,6 +367,8 @@
     "wildcardDisclaimer": "Adblock 形式の構文に対応しています：example.com（完全一致）、||example.com^ または *.example.com（ドメインとすべてのサブドメイン）、任意の位置のワイルドカード *（例：||ads*.example.com^）、/regex/（例：/^ad[0-9]+\\.example\\.com$/）。"
   },
   "analytics": {
+    "title": "統計",
+    "subtitle": "DNS クエリの処理状況（推移、上位ドメイン、通信先）を確認します。",
     "customRange": "カスタム期間",
     "startTime": "開始日時",
     "endTime": "終了日時",

@@ -366,6 +366,8 @@
     "wildcardDisclaimer": "Hỗ trợ cú pháp kiểu Adblock: example.com (khớp chính xác), ||example.com^ hoặc *.example.com (tên miền và mọi miền phụ), ký tự đại diện * ở mọi vị trí (ví dụ ||ads*.example.com^) và /regex/ (ví dụ /^ad[0-9]+\\.example\\.com$/)."
   },
   "analytics": {
+    "title": "Thống kê",
+    "subtitle": "Theo dõi cách truy vấn DNS được xử lý: xu hướng, tên miền hàng đầu và điểm đến của lưu lượng.",
     "customRange": "Khoảng thời gian tùy chỉnh",
     "startTime": "Thời gian bắt đầu",
     "endTime": "Thời gian kết thúc",

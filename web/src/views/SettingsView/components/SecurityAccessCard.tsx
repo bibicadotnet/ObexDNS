@@ -23,7 +23,7 @@ export const SecurityAccessCard: React.FC<SecurityAccessCardProps> = ({
 
   return (
     <Card elevation={Elevation.ONE} className="dark:bg-gray-900 dark:border-gray-800">
-      <H5 className="flex items-center gap-2 mb-4 font-bold text-red-500">
+      <H5 className="section-title flex items-center gap-2 mb-4! text-red-500">
         <Shield size={18} /> {t("settings.securityTitle", "Security & Access")}
       </H5>
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">

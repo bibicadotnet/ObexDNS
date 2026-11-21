@@ -77,7 +77,7 @@ export const ActiveSessionsCard: React.FC<ActiveSessionsCardProps> = ({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Monitor size={20} className="text-green-500" />
-          <H4 style={{ margin: 0 }}>{t("account.sessions.title", "Active Sessions")}</H4>
+          <H4 className="section-title">{t("account.sessions.title", "Active Sessions")}</H4>
         </div>
         <div className="flex items-center gap-2">
           {otherSessionsCount > 0 && (

@@ -366,6 +366,8 @@
     "wildcardDisclaimer": "Adblock-style syntax is supported: example.com (exact match), ||example.com^ or *.example.com (domain and all subdomains), * wildcards anywhere (e.g. ||ads*.example.com^) and /regex/ (e.g. /^ad[0-9]+\\.example\\.com$/)."
   },
   "analytics": {
+    "title": "Analytics",
+    "subtitle": "See how your DNS queries are handled: trends, top domains and where traffic goes.",
     "customRange": "Custom Range",
     "startTime": "Start Time",
     "endTime": "End Time",

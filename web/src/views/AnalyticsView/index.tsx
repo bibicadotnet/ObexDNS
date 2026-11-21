@@ -11,7 +11,7 @@ import {
 } from "@blueprintjs/core";
 import { MapPin } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { clsx } from "clsx";
+import { PageHeader } from "../../components/PageHeader";
 
 import { processTrendData } from "./utils";
 import { RankTable } from "./components/RankTable";
@@ -116,7 +116,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toaster
   }
 
   return (
-    <div className={clsx("max-w-7xl mx-auto space-y-6", isMobile ? "p-0" : "p-6")}>
+    <div className="w-full min-w-0 max-w-7xl mx-auto px-1 md:px-8 space-y-6">
+      <PageHeader
+        className="mb-0"
+        title={t("analytics.title")}
+        subtitle={t("analytics.subtitle")}
+        titleExtra={loading && data ? <Spinner size={18} /> : undefined}
+      />
+
       {/* Time Range & Access Point Selector */}
       <AnalyticsRangeSelector
         range={range}
@@ -164,7 +171,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toaster
 
       {/* Trend Chart */}
       <Card elevation={Elevation.ONE} className="dark:bg-gray-900 dark:border-gray-800 relative">
-        <H5 className="mb-4 font-bold flex items-center gap-2">
+        <H5 className="section-title mb-4! flex items-center gap-2">
           {t("analytics.queryTrend")}
           <Tag minimal round>
             {range === "custom" ? t("analytics.custom") : range.toUpperCase()}

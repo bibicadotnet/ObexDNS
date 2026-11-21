@@ -17,7 +17,7 @@ export const E2eeHeader: React.FC<E2eeHeaderProps> = ({ isLogsE2eeEnabled }) => 
           size={20}
           className={isLogsE2eeEnabled ? "text-emerald-500" : "text-gray-400"}
         />
-        <H4 style={{ margin: 0 }}>
+        <H4 className="section-title">
           {t("account.e2ee.title", "E2EE")}
         </H4>
         <Tag

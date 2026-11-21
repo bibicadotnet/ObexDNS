@@ -367,6 +367,8 @@
     "wildcardDisclaimer": "Adblock 스타일 구문을 지원합니다: example.com(정확히 일치), ||example.com^ 또는 *.example.com(도메인 및 모든 서브도메인), 임의 위치의 * 와일드카드(예: ||ads*.example.com^), /regex/(예: /^ad[0-9]+\\.example\\.com$/)."
   },
   "analytics": {
+    "title": "통계",
+    "subtitle": "DNS 쿼리 처리 현황(추세, 상위 도메인, 트래픽 목적지)을 확인합니다.",
     "customRange": "사용자 지정 범위",
     "startTime": "시작 시간",
     "endTime": "종료 시간",

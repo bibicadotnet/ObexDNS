@@ -66,7 +66,7 @@ export const ActivityLogCard: React.FC<ActivityLogCardProps> = ({
       >
         <div className="flex items-center gap-2">
           <Activity size={20} className="text-purple-500" />
-          <H4 style={{ margin: 0 }}>
+          <H4 className="section-title">
             {t("account.activity.title", "Account Activity")}
           </H4>
           {entries.length > 0 && (

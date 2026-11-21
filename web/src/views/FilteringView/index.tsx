@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "../../hooks/useIsMobile";
-import { clsx } from "clsx";
+import { PageHeader } from "../../components/PageHeader";
 
 import type {  FilteringViewProps, FilterList  } from "./types";
 import { AddListCard } from "./components/AddListCard";
@@ -299,11 +299,13 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
   }, [profileId]);
 
   return (
-    <div className={clsx("md:px-8 w-full min-w-0 max-w-5xl mx-auto", isMobile ? "p-1" : "px-8")}>
-      <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-        <div className="w-full md:w-auto flex-1">
-          {isMobile ? (
-            <ButtonGroup minimal fill={isMobile}>
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8">
+      <PageHeader
+        title={t("filtering.title")}
+        subtitle={t("filtering.subtitle")}
+        switcher={
+          isMobile ? (
+            <ButtonGroup minimal fill>
               <Button
                 active={false}
                 onClick={() => navigate(`/dash/${profileId}/rules`)}
@@ -317,20 +319,18 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
                 large
               />
             </ButtonGroup>
-          ) : (
-            <h1 className="bp6-heading">{t("filtering.title")}</h1>
-          )}
-          <p className="bp6-text-muted mt-2!">{t("filtering.subtitle")}</p>
-        </div>
-        <Button
-          icon={<RefreshCw size={16} />}
-          text={t("filtering.syncAll")}
-          onClick={syncLists}
-          loading={syncing || loading}
-          disabled={syncing || loading || lists.length === 0}
-          className={isMobile ? "w-full" : ""}
-        />
-      </div>
+          ) : undefined
+        }
+        actions={
+          <Button
+            icon={<RefreshCw size={16} />}
+            text={t("filtering.syncAll")}
+            onClick={syncLists}
+            loading={syncing || loading}
+            disabled={syncing || loading || lists.length === 0}
+          />
+        }
+      />
 
       <Callout intent={Intent.WARNING} icon="info-sign" className="mb-6">
         <p>

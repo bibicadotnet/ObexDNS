@@ -23,7 +23,7 @@ export const AddRuleCard: React.FC<AddRuleCardProps> = ({ newRule, setNewRule, a
   const { t } = useTranslation();
 
   return (
-    <Card elevation={Elevation.ONE} className="mb-8 p-6">
+    <Card elevation={Elevation.ONE} className="mb-6 p-4 sm:p-6">
       <div className="flex flex-col gap-5">
         <div className="flex flex-col lg:flex-row justify-between gap-4 items-start lg:items-end">
           <div className="w-full lg:w-48">
@@ -70,7 +70,7 @@ export const AddRuleCard: React.FC<AddRuleCardProps> = ({ newRule, setNewRule, a
         </div>
 
         {newRule.type === "REDIRECT" && (
-          <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="bg-gray-50 dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-4 text-blue-600 dark:text-blue-400">
               <Globe size={16} />
               <span className="text-xs font-bold uppercase tracking-wider">{t("rules.redirectSettings")}</span>

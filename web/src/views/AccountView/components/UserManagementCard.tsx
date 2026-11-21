@@ -118,7 +118,7 @@ export const UserManagementCard: React.FC<UserManagementCardProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <ShieldCheck size={20} className="text-red-500" />
-          <H4 style={{ margin: 0 }}>{t("account.userManagement")}</H4>
+          <H4 className="section-title">{t("account.userManagement")}</H4>
         </div>
         <div className="flex items-center gap-4 flex-wrap">
           <Switch

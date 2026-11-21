@@ -6,6 +6,13 @@ import { clsx } from "clsx";
 import type { LogEntry } from "../types";
 import { LogsList } from "./LogsList";
 import { LogsTable } from "./LogsTable";
+import type { LogsTableDensity } from "./LogsTable";
+import { useContainerWidth } from "../../../hooks/useContainerWidth";
+
+/** Container widths (px) where the table gains columns. Below CARDS_BELOW the log list is shown as cards. */
+const CARDS_BELOW = 720;
+const MEDIUM_FROM = 900;
+const FULL_FROM = 1100;
 
 interface LogsContentProps {
   logs: LogEntry[];
@@ -40,6 +47,13 @@ export const LogsContent: React.FC<LogsContentProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
+  const [measureRef, containerWidth] = useContainerWidth();
+
+  // Layout follows the width actually available (the sidebar eats 256px on desktop), not the window width.
+  // 0 = not measured yet: fall back to the window-based flag for the first paint.
+  const showCards = containerWidth > 0 ? containerWidth < CARDS_BELOW : isMobile;
+  const density: LogsTableDensity =
+    containerWidth >= FULL_FROM ? "full" : containerWidth >= MEDIUM_FROM ? "medium" : "compact";
 
   const checkScroll = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -71,8 +85,9 @@ export const LogsContent: React.FC<LogsContentProps> = ({
       <div
         ref={scrollContainerRef}
         onScroll={checkScroll}
-        className={clsx("flex-1 overflow-y-auto", isMobile ? "px-1" : "px-0")}
+        className={clsx("flex-1 overflow-y-auto overflow-x-hidden", showCards ? "px-2" : "px-0")}
       >
+        <div ref={measureRef} className="w-full min-w-0">
         {logs.length === 0 && loading ? (
           <div className="py-20 flex items-center justify-center">
             <Spinner />
@@ -97,7 +112,7 @@ export const LogsContent: React.FC<LogsContentProps> = ({
                 : t("logs.noRecordsDesc")}
             </Callout>
           </div>
-        ) : isMobile ? (
+        ) : showCards ? (
           <LogsList
             logs={logs}
             setSelectedLog={setSelectedLog}
@@ -108,6 +123,7 @@ export const LogsContent: React.FC<LogsContentProps> = ({
           />
         ) : (
           <LogsTable
+            density={density}
             logs={logs}
             setSelectedLog={setSelectedLog}
             setIsDrawerOpen={setIsDrawerOpen}
@@ -116,6 +132,7 @@ export const LogsContent: React.FC<LogsContentProps> = ({
             realtimeRefresh={realtimeRefresh}
           />
         )}
+        </div>
 
         <div className="p-6 flex flex-col items-center">
           {loadingMore ? (

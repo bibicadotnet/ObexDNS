@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Divider, Tag, Intent, Callout, type OverlayToaster } from "@blueprintjs/core";
 import { ShieldCheck, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { clsx } from "clsx";
+import { PageHeader } from "../../components/PageHeader";
 
 import type { UserInfo } from "./types";
 import {
@@ -26,7 +26,6 @@ import { ChangePasswordCard } from "./components/ChangePasswordCard";
 import { SessionLockCard } from "./components/SessionLockCard";
 import { E2eeCard } from "./components/E2eeCard";
 import { USERNAME_REGEX } from "../../utils/auth";
-import { useIsMobile } from "../../hooks/useIsMobile";
 
 export interface AccountViewProps {
   onSavingChange?: (saving: boolean) => void;
@@ -46,7 +45,6 @@ export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toaste
   const [loading, setLoading] = useState(true);
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const { t, i18n } = useTranslation();
-  const isMobile = useIsMobile();
 
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [editUsername, setEditUsername] = useState("");
@@ -190,23 +188,24 @@ export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toaste
     return <div className="p-8 text-center">{t("common.loading")}</div>;
 
   return (
-    <div className={clsx("max-w-5xl mx-auto space-y-8", isMobile ? "p-0" : "px-8")}>
-      <div className="flex justify-between items-end">
-        <div>
-          <h2 className="bp6-heading">{t("account.title")}</h2>
-          <p className="bp6-text-muted">{t("account.subtitle")}</p>
-        </div>
-        {me && (
-          <Tag
-            large
-            round
-            intent={me.role === "admin" ? Intent.DANGER : Intent.PRIMARY}
-            icon={<ShieldCheck size={16} />}
-          >
-            {me.role === "admin" ? t("account.roleAdmin") : t("account.roleUser")}
-          </Tag>
-        )}
-      </div>
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8 space-y-6">
+      <PageHeader
+        className="mb-0"
+        title={t("account.title")}
+        subtitle={t("account.subtitle")}
+        actions={
+          me && (
+            <Tag
+              large
+              round
+              intent={me.role === "admin" ? Intent.DANGER : Intent.PRIMARY}
+              icon={<ShieldCheck size={16} />}
+            >
+              {me.role === "admin" ? t("account.roleAdmin") : t("account.roleUser")}
+            </Tag>
+          )
+        }
+      />
 
       {/* Non-blocking Security Warning for Weak JWT_SECRET (Admin only) */}
       {me?.role === "admin" && me?.jwt_secret_warning && (

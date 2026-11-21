@@ -296,7 +296,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
     );
 
   return (
-    <div className="p-0 sm:px-4 lg:px-8 max-w-5xl mx-auto space-y-8 pb-20">
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8 space-y-6 pb-20">
       <SettingsHeader
         profile={profile}
         isEditingName={isEditingName}
@@ -307,10 +307,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
         exportProfile={exportProfile}
       />
 
-      {/* Row 1: Upstream + ECH, row 2: LogRetention + ECS. Cards in a row are stretched to the same height. */}
+      {/* Row 1: Upstream + ECH, row 2: ECS + LogRetention. Cards in a row are stretched to the same height. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
         <UpstreamCard settings={settings} setSettings={handleSettingsChange} />
         <BestEffortEchCard settings={settings} setSettings={handleSettingsChange} />
+        <AdvancedEcsCard settings={settings} setSettings={handleSettingsChange} />
         <LogRetentionCard
           settings={settings}
           setSettings={handleSettingsChange}
@@ -319,7 +320,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
           profileId={profileId}
           toasterRef={toasterRef}
         />
-        <AdvancedEcsCard settings={settings} setSettings={handleSettingsChange} />
       </div>
 
       <DnsTestCard

@@ -2,6 +2,7 @@ import React from "react";
 import { HTMLTable, Tag, Intent, Switch, Tooltip } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { formatDateTime } from "../../../utils/date";
+import { useContainerWidth } from "../../../hooks/useContainerWidth";
 import type { FilterList } from "../types";
 import { getListDisplay } from "../utils";
 import { parseSyncStatus, limitWarningText } from "../syncStatus";
@@ -25,14 +26,19 @@ interface ColumnConfig {
   render: (list: FilterList) => React.ReactNode;
 }
 
+/** Below this container width the table is replaced by cards, so there is never a horizontal scrollbar. */
+const TABLE_MIN_WIDTH = 720;
+
 export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggleEnabled, pendingIds }) => {
   const { t } = useTranslation();
+  const [containerRef, containerWidth] = useContainerWidth();
+  // 0 = not measured yet (first paint): assume the wide layout, the real width arrives before the browser paints.
+  const showCards = containerWidth > 0 && containerWidth < TABLE_MIN_WIDTH;
 
   const columns: ColumnConfig[] = [
     {
       key: "name",
       header: t("filtering.tableName", "List"),
-      // whitespace-normal: the table is nowrap, but the description must wrap onto several lines
       cellClassName: "max-w-xl whitespace-normal",
       render: (list: FilterList): React.ReactNode => {
         // The source URL is intentionally not shown here: it lives in the details dialog.
@@ -68,7 +74,7 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
     {
       key: "lastSync",
       header: t("filtering.tableLastSync"),
-      cellClassName: "text-xs opacity-60",
+      cellClassName: "text-xs opacity-60 whitespace-nowrap",
       render: (list: FilterList): React.ReactNode =>
         list.last_synced_at
           ? formatDateTime(new Date(list.last_synced_at * 1000))
@@ -77,6 +83,7 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
     {
       key: "status",
       header: t("filtering.tableStatus"),
+      cellClassName: "whitespace-normal",
       stopRowClick: true,
       render: (list: FilterList): React.ReactNode => {
         const enabled = !!list.enabled;
@@ -94,7 +101,7 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
         }
 
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Switch
               className="mb-0!"
               checked={enabled}
@@ -125,9 +132,42 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
     },
   ];
 
+  if (showCards) {
+    const nameCol = columns.find((c) => c.key === "name")!;
+    const syncCol = columns.find((c) => c.key === "lastSync")!;
+    const statusCol = columns.find((c) => c.key === "status")!;
+    return (
+      <div ref={containerRef} className="w-full min-w-0 pb-4">
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {lists.map((list) => (
+            <li
+              key={list.id}
+              onClick={() => onSelect(list)}
+              className="cursor-pointer rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800/60"
+              // Accent bar on the left edge of recommended lists, same as the table
+              style={list.is_default ? { boxShadow: "inset 3px 0 0 var(--bp6-intent-primary-color, #2d72d2)" } : undefined}
+            >
+              {nameCol.render(list)}
+              <div
+                className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
+                // The switch must not open the details dialog
+                onClick={(e) => e.stopPropagation()}
+              >
+                {statusCol.render(list)}
+                <span className="text-xs opacity-60">
+                  {t("filtering.tableLastSync")}: {syncCol.render(list)}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full max-w-full overflow-x-auto pb-4">
-      <HTMLTable interactive striped className="w-full min-w-max whitespace-nowrap">
+    <div ref={containerRef} className="w-full min-w-0 pb-4">
+      <HTMLTable interactive striped className="w-full">
         <thead>
           <tr>
             {columns.map((col) => (

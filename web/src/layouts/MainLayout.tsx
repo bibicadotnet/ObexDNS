@@ -147,10 +147,10 @@ export const MainLayout = ({
         {/* Page Content */}
         <div className="flex-1 min-h-0 flex flex-col relative z-0 isolate" style={{ isolation: "isolate" }}>
           {location.pathname.endsWith("/logs") ? (
-            <div className="flex-1 overflow-y-auto">{children}</div>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
           ) : (
-            <div className="flex-1 overflow-y-auto pt-14">
-              <div className="p-2 md:p-4 pb-24 md:pb-8">{children}</div>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden pt-14">
+              <div className="p-2 md:p-4 pb-24 md:pb-8 min-w-0">{children}</div>
             </div>
           )}
         </div>

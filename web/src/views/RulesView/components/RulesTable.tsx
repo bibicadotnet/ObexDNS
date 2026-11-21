@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from "react";
-import { HTMLTable, Tag, Intent } from "@blueprintjs/core";
+import { HTMLTable, Tag, Intent, HTMLSelect, Button } from "@blueprintjs/core";
 import { ShieldX, CheckCircle, ArrowRightLeft, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { clsx } from "clsx";
 import { formatDateTime } from "../../../utils/date";
+import { useContainerWidth } from "../../../hooks/useContainerWidth";
 import type { Rule } from "../types";
 
 export interface RulesTableProps {
@@ -13,6 +14,9 @@ export interface RulesTableProps {
 }
 
 type SortField = "action" | "pattern" | "details" | "created_at";
+
+/** Below this container width the table is replaced by cards, so there is never a horizontal scrollbar. */
+const TABLE_MIN_WIDTH = 640;
 type SortOrder = "asc" | "desc";
 
 interface ColumnConfig {
@@ -27,6 +31,9 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
   const { t } = useTranslation();
   const [sortField, setSortField] = useState<SortField>("created_at");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [containerRef, containerWidth] = useContainerWidth();
+  // 0 = not measured yet (first paint): assume the wide layout, the real width arrives before the browser paints.
+  const showCards = containerWidth > 0 && containerWidth < TABLE_MIN_WIDTH;
 
   const handleHeaderClick = (field: SortField) => {
     if (sortField === field) {
@@ -165,8 +172,56 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
     },
   ];
 
+  const column = (key: SortField) => columns.find((c) => c.key === key)!;
+
+  const sortOptions = columns.map((col) => ({ value: col.key, label: String(col.header) }));
+
+  if (showCards) {
+    return (
+      <div ref={containerRef} className="w-full min-w-0 pb-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <HTMLSelect
+            minimal
+            value={sortField}
+            options={sortOptions}
+            onChange={(e) => {
+              const field = e.target.value as SortField;
+              setSortField(field);
+              setSortOrder(field === "created_at" ? "desc" : "asc");
+            }}
+            aria-label={t("rules.clickToSort", "点击排序")}
+          />
+          <Button
+            variant="minimal"
+            icon={sortOrder === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+            onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
+            aria-label={t("rules.clickToSort", "点击排序")}
+          />
+        </div>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {sortedRules.map((rule) => (
+            <li key={rule.id}>
+              <button
+                type="button"
+                onClick={() => startEdit(rule)}
+                className="w-full min-w-0 cursor-pointer rounded-lg border border-gray-200 bg-white p-3 text-left transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800/60"
+              >
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <div className="shrink-0">{column("action").render(rule)}</div>
+                  <span className="truncate text-xs text-gray-500">{column("created_at").render(rule)}</span>
+                </div>
+                <div className="break-all font-mono text-sm font-bold">{rule.pattern}</div>
+                <div className="mt-1.5 min-w-0 break-all">{column("details").render(rule)}</div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full max-w-full overflow-x-auto pb-4">
+    <div ref={containerRef} className="w-full min-w-0 pb-4">
       <HTMLTable interactive striped className="w-full">
         <thead>
           <tr>
@@ -216,4 +271,3 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
     </div>
   );
 };
-

@@ -67,7 +67,7 @@ export const PersonalInfoCard: React.FC<PersonalInfoCardProps> = ({
     <Card elevation={Elevation.ONE}>
       <div className="flex items-center gap-2 mb-4">
         <User size={20} className="text-blue-500" />
-        <H4 style={{ margin: 0 }}>{t("account.personalInfo")}</H4>
+        <H4 className="section-title">{t("account.personalInfo")}</H4>
       </div>
       <div className="space-y-4">
         <FormGroup label={t("account.username")}>

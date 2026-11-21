@@ -367,6 +367,8 @@
     "wildcardDisclaimer": "支援 Adblock 風格語法：example.com（精確比對）、||example.com^ 或 *.example.com（網域及所有子網域）、任意位置的 * 萬用字元（如 ||ads*.example.com^）以及 /正規表示式/（如 /^ad[0-9]+\\.example\\.com$/）。"
   },
   "analytics": {
+    "title": "統計",
+    "subtitle": "查看 DNS 查詢的處理情況：趨勢、熱門網域與流量去向。",
     "customRange": "自訂時間範圍",
     "startTime": "開始時間",
     "endTime": "結束時間",

@@ -76,7 +76,7 @@ export const DatabaseMigrationCard: React.FC<DatabaseMigrationCardProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Database size={20} className="text-gray-500" />
-          <H4 style={{ margin: 0 }}>{t("account.databaseSettings", "数据库 (管理员)")}</H4>
+          <H4 className="section-title">{t("account.databaseSettings", "数据库 (管理员)")}</H4>
         </div>
         {migrations ? (
           <Tag

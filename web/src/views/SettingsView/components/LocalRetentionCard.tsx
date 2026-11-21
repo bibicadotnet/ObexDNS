@@ -81,7 +81,7 @@ export const LocalRetentionCard: React.FC<LocalRetentionCardProps> = ({ profileI
 
   return (
     <Card elevation={Elevation.ONE} className="dark:bg-gray-900 dark:border-gray-800">
-      <H5 className="flex items-center gap-2 mb-4 font-bold">
+      <H5 className="section-title flex items-center gap-2 mb-4!">
         <Database size={18} className="text-cyan-500" /> {t("settings.localRetentionTitle", "本地存储与留存")}
       </H5>
       <div className="space-y-4">

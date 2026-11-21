@@ -48,8 +48,8 @@ export const TimeRangeSelector: React.FC<TimeRangeSelectorProps> = ({
   const issueKey = customRangeIssueKey(check.issue);
 
   return (
-    <div className="overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0">
-      <ButtonGroup minimal={isMobile} variant={isMobile ? undefined : "minimal"}>
+    <div className="max-w-full">
+      <ButtonGroup minimal={isMobile} variant={isMobile ? undefined : "minimal"} className="flex-wrap">
         {visibleRanges.map((r) => (
           <Tooltip key={r} content={t(`analytics.range${r}`)} placement="bottom" hoverOpenDelay={300} compact>
             <Button active={range === r} onClick={() => setRange(r)} text={r.toUpperCase()} small={isMobile} />

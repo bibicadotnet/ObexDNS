@@ -98,7 +98,7 @@ export const LogsView: React.FC<LogsViewProps> = ({ profileId, onQuickAction, to
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-gray-50/30 dark:bg-gray-950/10 max-w-7xl mx-auto w-full pt-14">
+    <div className="h-full min-w-0 flex flex-col overflow-hidden bg-gray-50/30 dark:bg-gray-950/10 max-w-7xl mx-auto w-full pt-14">
       <LogsHeader
         profileId={profileId}
         range={range}

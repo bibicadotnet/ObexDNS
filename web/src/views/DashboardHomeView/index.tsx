@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Button, Intent, H3 } from "@blueprintjs/core";
+import { Button, Intent } from "@blueprintjs/core";
 import { Plus, Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -78,12 +78,7 @@ export const DashboardHomeView = ({
       <div className="flex-1 flex flex-col items-center justify-start md:justify-center p-4 pt-8 md:pt-4">
         <div className="w-full max-w-md">
           <div className="flex justify-between items-center mb-6">
-            <H3
-              className="dark:text-white font-bold"
-              style={{ marginBottom: 0 }}
-            >
-              {t("common.selectProfile")}
-            </H3>
+            <h1 className="page-title">{t("common.selectProfile")}</h1>
             <div className="flex gap-1">
               <Button
                 variant="minimal"

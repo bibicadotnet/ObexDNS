@@ -145,7 +145,7 @@ export const ChangePasswordCard: React.FC<ChangePasswordCardProps> = ({ me, onRe
       {/* Row 1: Title */}
       <div className="flex items-center gap-2 mb-4">
         <Key size={20} className="text-orange-500" />
-        <H4 style={{ margin: 0 }}>{t("account.changePassword", "Change Password")}</H4>
+        <H4 className="section-title">{t("account.changePassword", "Change Password")}</H4>
       </div>
 
       {/* Row 2: Verification method selector */}

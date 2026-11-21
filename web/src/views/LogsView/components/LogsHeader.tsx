@@ -131,11 +131,11 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
 
   return (
     <div className={`p-4 ${isMobile && isCollapsed ? "space-y-0" : "space-y-4"} shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800`}>
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         {/* Title & Collapse button */}
-        <div className="flex items-center justify-between w-full md:w-auto">
-          <div>
-            <h2 className="bp6-heading flex flex-wrap items-center gap-2 text-xl md:text-2xl m-0">
+        <div className="flex items-center justify-between gap-2 min-w-0 flex-1 basis-60">
+          <div className="min-w-0">
+            <h1 className="page-title flex flex-wrap items-center gap-2">
               {t("logs.title")}{" "}
               {(!isMobile || !isCollapsed) && (
                 <Tooltip content={t(`analytics.range${range === "custom" ? "Custom" : range}`)} placement="bottom" hoverOpenDelay={200} compact>
@@ -173,8 +173,8 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
                   </Tooltip>
                 </>
               )}
-            </h2>
-            {!isMobile && <p className="bp6-text-muted mt-1">{t("logs.subtitle")}</p>}
+            </h1>
+            {!isMobile && <p className="page-subtitle">{t("logs.subtitle")}</p>}
           </div>
           {isMobile && (
             <Button
@@ -187,7 +187,7 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
 
         {/* Range Selector */}
         {(!isMobile || !isCollapsed) && (
-          <div className="flex flex-col items-stretch md:items-end gap-2">
+          <div className="flex flex-col items-stretch sm:items-end gap-2 min-w-0 max-w-full">
             <TimeRangeSelector
               range={range}
               setRange={setRange}
@@ -235,10 +235,10 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
 
       {/* Filters & Search */}
       {(!isMobile || !isCollapsed) && (
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          <div className="grid grid-cols-2 md:flex md:items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center gap-2 min-w-0">
             {hasActiveFilters && (
-              <div className="col-span-2 md:contents">
+              <div className="col-span-2 sm:contents">
                 <Button
                   icon="filter-remove"
                   onClick={handleClearFilters}
@@ -278,8 +278,8 @@ export const LogsHeader: React.FC<LogsHeaderProps> = ({
               isMobile={isMobile}
             />
           </div>
-          <div className="flex items-center gap-2 flex-1 md:max-w-md justify-end">
-            <div className="flex-1 md:max-w-xs">
+          <div className="flex items-center gap-2 flex-1 basis-56 min-w-0 justify-end">
+            <div className="flex-1 min-w-0 sm:max-w-xs">
               <InputGroup
                 leftIcon="search"
                 placeholder={t("logs.searchPlaceholder")}

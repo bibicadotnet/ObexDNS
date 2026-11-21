@@ -28,10 +28,10 @@ export const SettingsHeader: React.FC<SettingsHeaderProps> = ({
   const [nameFocused, setNameFocused] = useState(false);
 
   return (
-    <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-      <div className="flex flex-col justify-start">
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      <div className="flex flex-col justify-start min-w-0 flex-1 basis-60">
         {isEditingName ? (
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2">
             <Tooltip
               content={t("common.profileNameFormatTip", "Profile Name tip: 1-30 characters, duplicates not allowed")}
               isOpen={nameFocused}
@@ -73,15 +73,15 @@ export const SettingsHeader: React.FC<SettingsHeaderProps> = ({
             />
           </div>
         ) : (
-          <div className="group flex items-center gap-2 mb-1 cursor-pointer" onClick={() => setIsEditingName(true)}>
-            <h2 className="bp6-heading mb-0">{profile?.name}</h2>
+          <div className="group flex items-center gap-2 cursor-pointer min-w-0" onClick={() => setIsEditingName(true)}>
+            <h1 className="page-title min-w-0 break-words">{profile?.name}</h1>
             <Button icon={<Edit2 size={14} />} minimal className="opacity-30 group-hover:opacity-100 transition-opacity" />
           </div>
         )}
-        <p className="bp6-text-muted">{t("settings.subtitle")}</p>
+        <p className="page-subtitle">{t("settings.subtitle")}</p>
       </div>
       <div className="flex gap-2 items-center">
-        <Button size="large" icon={<Download size={18} />} text={t("settings.export", "导出配置")} onClick={exportProfile} />
+        <Button icon={<Download size={16} />} text={t("settings.export", "导出配置")} onClick={exportProfile} />
       </div>
     </div>
   );

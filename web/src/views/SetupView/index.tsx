@@ -232,7 +232,7 @@ export const SetupView: React.FC<SetupViewProps> = ({ profileId, profileKey, pro
   }, [domainIps, clientInfo?.substituteDomain]);
 
   return (
-    <div className={`mx-auto space-y-8 pb-24 ${isMobile ? "p-1" : "px-8 max-w-5xl"}`}>
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8 space-y-6 pb-24">
       <SetupHeader isMobile={isMobile} />
 
       <VerifyConnectionCard

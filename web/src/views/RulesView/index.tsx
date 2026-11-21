@@ -2,13 +2,13 @@ import React, { useState, useEffect } from "react";
 import { Callout, Intent, ButtonGroup, Button, Spinner } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { clsx } from "clsx";
 
 import type { Rule, RulesViewProps, ProfileSettings } from "./types";
 import { AddRuleCard } from "./components/AddRuleCard";
 import { RulesTable } from "./components/RulesTable";
 import { EditRuleDialog } from "./components/EditRuleDialog";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { PageHeader } from "../../components/PageHeader";
 import {
   getProfileRules,
   getProfileDetails,
@@ -213,39 +213,33 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
   }, [profileId]);
 
   return (
-    <div className={clsx("md:px-8 w-full min-w-0 max-w-5xl mx-auto", isMobile ? "p-1" : "px-8")}>
-      <div className="mb-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="w-full md:w-auto flex-1">
-            {isMobile ? (
-              <div className="flex items-center gap-2">
-                <ButtonGroup minimal fill={isMobile} className="flex-1">
-                  <Button
-                    active={true}
-                    onClick={() => navigate(`/dash/${profileId}/rules`)}
-                    text={t("rules.title")}
-                    large
-                  />
-                  <Button
-                    active={false}
-                    onClick={() => navigate(`/dash/${profileId}/filter`)}
-                    text={t("filtering.title")}
-                    large
-                  />
-                </ButtonGroup>
-                {loading && <Spinner size={16} />}
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <h1 className="bp6-heading m-0">{t("rules.title")}</h1>
-                {loading && <Spinner size={20} />}
-              </div>
-            )}
-            <p className="bp6-text-muted mt-2!">{t("rules.subtitle")}</p>
-          </div>
-
-        </div>
-      </div>
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8">
+      <PageHeader
+        title={t("rules.title")}
+        subtitle={t("rules.subtitle")}
+        titleExtra={loading && !isMobile ? <Spinner size={20} /> : undefined}
+        switcher={
+          isMobile ? (
+            <div className="flex items-center gap-2">
+              <ButtonGroup minimal fill className="flex-1">
+                <Button
+                  active={true}
+                  onClick={() => navigate(`/dash/${profileId}/rules`)}
+                  text={t("rules.title")}
+                  large
+                />
+                <Button
+                  active={false}
+                  onClick={() => navigate(`/dash/${profileId}/filter`)}
+                  text={t("filtering.title")}
+                  large
+                />
+              </ButtonGroup>
+              {loading && <Spinner size={16} />}
+            </div>
+          ) : undefined
+        }
+      />
 
       <Callout intent={Intent.PRIMARY} icon="info-sign" className="mb-6">
         <p>

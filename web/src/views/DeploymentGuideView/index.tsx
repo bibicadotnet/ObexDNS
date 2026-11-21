@@ -97,10 +97,10 @@ export const DeploymentGuideView: React.FC = () => {
             <div className="flex-1 overflow-y-auto pr-1.5 min-h-0 space-y-6 scrollbar-thin">
               {/* Content Title */}
               <div>
-                <h2 className="text-lg md:text-xl font-bold text-gray-900 dark:text-zinc-50 mb-1 mt-0">
+                <h2 className="page-title">
                   {isServerfull ? t("deploymentGuide.serverfullTitle") : t("deploymentGuide.title")}
                 </h2>
-                <p className="text-gray-600 dark:text-zinc-400 text-xs md:text-sm leading-relaxed m-0">
+                <p className="page-subtitle">
                   {isServerfull ? t("deploymentGuide.serverfullSubtitle") : t("deploymentGuide.subtitle")}
                 </p>
               </div>

@@ -79,8 +79,8 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
   );
 
   return (
-    <div className="flex justify-between items-center bg-white dark:bg-gray-900 p-2 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
-      <ButtonGroup variant="minimal">
+    <div className="flex flex-wrap justify-between items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
+      <ButtonGroup variant="minimal" className="flex-wrap">
         {visibleRanges.map((r) => (
           <Tooltip key={r} content={t(`analytics.range${r}`)} placement="bottom" hoverOpenDelay={300} compact>
             <Button
@@ -148,7 +148,7 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
         </PopoverNext>
         </Tooltip>
       </ButtonGroup>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0">
         {accessPoints.length > 0 && (
           <HTMLSelect
             value={accessPointIdFilter || ""}

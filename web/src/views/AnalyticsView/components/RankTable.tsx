@@ -66,7 +66,7 @@ const RankTableImpl: React.FC<RankTableProps> = ({ title, data, intent }) => {
 
   return (
     <Card elevation={Elevation.ZERO} className="dark:bg-gray-900 dark:border-gray-800 border border-gray-100 shadow-sm">
-      <H5 className="mb-4 font-bold">{title}</H5>
+      <H5 className="section-title mb-4!">{title}</H5>
       <HTMLTable striped className="w-full">
         <tbody>
           {data.map((d, i) => (

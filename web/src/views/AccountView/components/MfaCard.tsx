@@ -56,7 +56,7 @@ export const MfaCard: React.FC<MfaCardProps> = ({ user, onRefresh }) => {
               size={20}
               className={isMfaEnabled ? "text-green-500" : "text-gray-400"}
             />
-            <H4 style={{ margin: 0 }}>
+            <H4 className="section-title">
               {t("account.mfa.title", "Multi-Factor Authentication (MFA)")}
             </H4>
             <Tag intent={isMfaEnabled ? Intent.SUCCESS : Intent.NONE} minimal round>

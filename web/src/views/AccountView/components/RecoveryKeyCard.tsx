@@ -122,7 +122,7 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <Key size={18} className="text-amber-500" />
-          <H4 style={{ margin: 0 }}>
+          <H4 className="section-title">
             {t("account.recoveryKey.title", "紧急恢复密钥")}
           </H4>
           <Tag intent={hasRecoveryKeys ? Intent.SUCCESS : Intent.NONE} minimal round>

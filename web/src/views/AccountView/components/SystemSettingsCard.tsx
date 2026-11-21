@@ -77,12 +77,12 @@ export const SystemSettingsCard: React.FC<SystemSettingsCardProps> = ({
     <>
       <div className="flex items-center gap-2">
         <Settings size={20} className="text-gray-500" />
-        <H4 style={{ margin: 0 }}>{t("account.systemSettings", "System Settings")}</H4>
+        <H4 className="section-title">{t("account.systemSettings", "System Settings")}</H4>
       </div>
       <Card elevation={Elevation.ONE}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
           <div className="space-y-4">
-            <H4 className="text-sm font-bold opacity-70 text-blue-500">Cloudflare Turnstile</H4>
+            <H4 className="subsection-title opacity-70 text-blue-500">Cloudflare Turnstile</H4>
             <FormGroup label="Site Key">
               <InputGroup
                 value={sysSettings.turnstile_site_key || ""}
@@ -108,7 +108,7 @@ export const SystemSettingsCard: React.FC<SystemSettingsCardProps> = ({
             </FormGroup>
           </div>
           <div className="space-y-4">
-            <H4 className="text-sm font-bold opacity-70 text-green-500">
+            <H4 className="subsection-title opacity-70 text-green-500">
               {t("account.featureToggle", "Feature Toggle")}
             </H4>
             <Switch

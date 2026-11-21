@@ -110,7 +110,7 @@ export const SessionLockCard: React.FC<SessionLockCardProps> = ({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <ShieldCheck size={20} className="text-indigo-600" />
-          <H4 className="m-0!">{t("auth.sessionLockTitle", "Idle Session Lock")}</H4>
+          <H4 className="section-title">{t("auth.sessionLockTitle", "Idle Session Lock")}</H4>
         </div>
         {!isPinEnabled && (
           <Button icon="key" intent={Intent.PRIMARY} onClick={handleOpenSetup} disabled={loading}>

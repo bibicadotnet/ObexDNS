@@ -65,7 +65,7 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({
   return (
     <Card elevation={Elevation.ONE} className="h-full min-w-0 dark:bg-gray-900 dark:border-gray-800">
       <div className="flex items-center justify-between min-h-[30px] mb-4">
-        <H5 className="flex items-center gap-2 m-0 font-bold">
+        <H5 className="section-title flex items-center gap-2 m-0">
           <Clock size={18} className="text-purple-500" /> {t("settings.logRetentionTitle")}
         </H5>
       </div>

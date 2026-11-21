@@ -7,7 +7,11 @@ import type {  LogEntry  } from "../types";
 import { DomainIcon } from "./DomainIcon";
 import { getFlagEmoji } from "../../../utils/getFlagEmoji";
 
+/** Which columns fit: "compact" drops Source and Reason, "medium" drops Reason, "full" shows everything. */
+export type LogsTableDensity = "compact" | "medium" | "full";
+
 export interface LogsTableProps {
+  density?: LogsTableDensity;
   logs: LogEntry[];
   setSelectedLog: (log: LogEntry) => void;
   setIsDrawerOpen: (open: boolean) => void;
@@ -52,6 +56,7 @@ const LogRow = React.memo<LogRowProps>(({ log, columns, idx, isNew, isLast, last
 LogRow.displayName = "LogRow";
 
 export const LogsTable: React.FC<LogsTableProps> = ({
+  density = "full",
   logs,
   setSelectedLog,
   setIsDrawerOpen,
@@ -168,13 +173,34 @@ export const LogsTable: React.FC<LogsTableProps> = ({
     },
   ], [t]);
 
+  // Hidden columns are removed (not just visually hidden) so the table never needs a horizontal scrollbar.
+  const visibleColumns = useMemo(
+    () =>
+      columns
+        .filter((col) => {
+          if (col.key === "source") return density !== "compact";
+          if (col.key === "reason") return density === "full";
+          return true;
+        })
+        // Rounded header corners follow whichever columns are first/last.
+        .map((col, i, arr) => ({
+          ...col,
+          headerClassName: clsx(
+            col.headerClassName?.replace(/rounded-t[lr]-xl/g, "").trim(),
+            i === 0 && "rounded-tl-xl",
+            i === arr.length - 1 && "rounded-tr-xl"
+          ),
+        })),
+    [columns, density]
+  );
+
   return (
-    <div className="min-w-full inline-block align-middle py-0">
+    <div className="w-full min-w-0 align-middle py-0">
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-visible">
         <HTMLTable interactive striped className="w-full table-fixed">
           <thead className="sticky top-0 z-20 backdrop-blur-md">
             <tr>
-              {columns.map((col) => (
+              {visibleColumns.map((col) => (
                 <th
                   key={col.key}
                   className={clsx(
@@ -192,7 +218,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
               <LogRow
                 key={log.id}
                 log={log}
-                columns={columns}
+                columns={visibleColumns}
                 idx={idx}
                 isNew={realtimeRefresh && prevLatestTimestamp !== null && log.timestamp > prevLatestTimestamp}
                 isLast={idx === logs.length - 1}

@@ -17,7 +17,7 @@ export const DnsTestCard: React.FC<DnsTestCardProps> = ({ testInput, setTestInpu
 
   return (
     <Card elevation={Elevation.TWO} className="dark:bg-gray-900 border-t-2 border-blue-500">
-      <H5 className="flex items-center gap-2 mb-6 font-bold">
+      <H5 className="section-title flex items-center gap-2 mb-6!">
         <Zap size={20} className="text-yellow-500 fill-yellow-500" /> {t("settings.testToolTitle")}
       </H5>
 

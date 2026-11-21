@@ -14,7 +14,7 @@ export const DefaultPolicyCard: React.FC<DefaultPolicyCardProps> = ({ settings, 
 
   return (
     <Card elevation={Elevation.ONE} className="dark:bg-gray-900 dark:border-gray-800">
-      <H5 className="flex items-center gap-2 mb-4 font-bold">
+      <H5 className="section-title flex items-center gap-2 mb-4!">
         <Shield size={18} className="text-green-500" /> {t("settings.defaultPolicyTitle")}
       </H5>
       <div className="space-y-4">

@@ -35,7 +35,7 @@ export const TOTPRecoveryKeys: React.FC<TOTPRecoveryKeysProps> = ({
     <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
       <div className="flex items-center gap-2 mb-4">
         <ShieldCheck size={20} className="text-green-500" />
-        <H4 style={{ margin: 0 }}>
+        <H4 className="section-title">
           {t("account.totp.recoveryKeysTitle", "Save Your Recovery Keys")}
         </H4>
       </div>

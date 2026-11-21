@@ -367,6 +367,8 @@
     "wildcardDisclaimer": "Adblock-Syntax wird unterstützt: example.com (exakte Übereinstimmung), ||example.com^ oder *.example.com (Domain und alle Subdomains), *-Platzhalter an beliebiger Stelle (z. B. ||ads*.example.com^) und /regex/ (z. B. /^ad[0-9]+\\.example\\.com$/)."
   },
   "analytics": {
+    "title": "Statistiken",
+    "subtitle": "Sehen Sie, wie Ihre DNS-Anfragen verarbeitet werden: Trends, Top-Domains und Ziele des Datenverkehrs.",
     "customRange": "Benutzerdefinierter Zeitraum",
     "startTime": "Startzeit",
     "endTime": "Endzeit",
