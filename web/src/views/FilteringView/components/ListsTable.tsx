@@ -154,8 +154,11 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
           {groups.map((group) => (
             <React.Fragment key={group.key}>
               {group.title && (
-                <li className="px-1 pt-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-                  {group.title} · {group.items.length}
+                <li className="flex items-center gap-2 px-1 pt-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide opacity-60">{group.title}</span>
+                  <Tag minimal round intent={Intent.PRIMARY} className="text-xs">
+                    {group.items.length}
+                  </Tag>
                 </li>
               )}
               {group.items.map((list) => (
@@ -201,11 +204,13 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
             <React.Fragment key={group.key}>
               {group.title && (
                 <tr>
-                  <td
-                    colSpan={columns.length}
-                    className="pt-4! pb-1.5! text-xs font-semibold uppercase tracking-wide opacity-60 bg-transparent!"
-                  >
-                    {group.title} · {group.items.length}
+                  <td colSpan={columns.length} className="pt-4! pb-1.5! bg-transparent!">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide opacity-60">{group.title}</span>
+                      <Tag minimal round intent={Intent.PRIMARY} className="text-xs">
+                        {group.items.length}
+                      </Tag>
+                    </div>
                   </td>
                 </tr>
               )}
