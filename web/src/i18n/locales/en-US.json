@@ -500,7 +500,24 @@
     "clearLogsSuccess": "Logs cleared successfully",
     "clearLogsError": "Failed to clear logs",
     "e2eeLockedExportWarning": "Some logs are encrypted and currently locked; the exported file may contain encrypted placeholders.",
-    "scrollToTop": "Top"
+    "scrollToTop": "Top",
+    "tableEvent": "Event",
+    "tableTimeHint": "When this event happened, not the last time the domain was queried.",
+    "detailPrevAnswer": "Previous answer",
+    "event": {
+      "new": "New",
+      "changed": "Changed",
+      "refreshed": "Changed (refresh)",
+      "recheck": "Re-check",
+      "error": "Error"
+    },
+    "eventHint": {
+      "new": "First time this domain was seen.",
+      "changed": "The answer is different from the previous one. See \"Previous answer\" below.",
+      "refreshed": "A background refresh found a different answer than the cached one. You may not have been browsing at that moment.",
+      "recheck": "Same answer as before. Logged again after a long time so the domain stays easy to find.",
+      "error": "The upstream did not answer correctly. If a cached answer was available it was still served."
+    }
   },
   "filtering": {
     "title": "External Lists",

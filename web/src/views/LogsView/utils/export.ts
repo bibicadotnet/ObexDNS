@@ -30,7 +30,9 @@ export function generateCSV(logsData: any[]): string {
     "dest_geoip",
     "ecs",
     "upstream",
-    "latency"
+    "latency",
+    "event",
+    "prev_answer"
   ];
 
   const csvRows = [headers.join(",")];

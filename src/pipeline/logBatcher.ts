@@ -3,6 +3,7 @@ import { Env, ExecutionContext, ProfileSettings, ResolutionLog } from "../types"
 import { LogModel, generateLogId } from "../models/log";
 import type { RollupItem } from "../models/log/aggregation";
 import { cacheUtils } from "../utils/cache";
+import { clearDomainStateFor } from "./domainState";
 import { envNumber } from "../utils/envNumber";
 import {
   encryptSensitiveLogData,
@@ -169,6 +170,8 @@ export function discardPendingLogsFor(profileIds: Set<string> | string[]): numbe
   const pSet = profileIds instanceof Set ? profileIds : new Set(profileIds);
   if (pSet.size === 0) return 0;
   let count = 0;
+  // Logs are being deleted: forget what was already logged, so these domains can show up in Query Logs again.
+  clearDomainStateFor(pSet);
   // Cache-hit counters of these profiles must not resurrect rollups after logs/profile deletion.
   for (const [k, item] of hitCounters) {
     if (pSet.has(item.profileId)) {
@@ -411,6 +414,7 @@ export async function flushLogBatch(env: Env, ctx?: ExecutionContext): Promise<v
             ecs: log.ecs,
             upstream: log.upstream,
             reason: log.reason,
+            prev_answer: log.prev_answer,
           };
 
           if ("pqc_pk" in pubKey) {
@@ -443,6 +447,7 @@ export async function flushLogBatch(env: Env, ctx?: ExecutionContext): Promise<v
             log.ecs = undefined;
             log.upstream = undefined;
             log.reason = undefined;
+            log.prev_answer = undefined;
           }
         } catch (encErr) {
           console.error(`[LogBatcher] Encryption failed for profile ${log.profile_id}:`, encErr);
@@ -644,6 +649,12 @@ export interface CacheHitEvent {
   geoCountry: string;
   destCountryCode?: string | null;
   destCountry?: string | null;
+  /**
+   * How many queries this event stands for (default 1). A negative value takes a query back out of the counters:
+   * used when a lazy-cache refresh turns a query that was already counted as a cache hit into a real log row,
+   * so that the row and the hit do not count the same query twice.
+   */
+  count?: number;
 }
 
 /** Pending cache-hit rollup deltas keyed like the hourly_rollups primary key. */
@@ -707,7 +718,7 @@ export function recordCacheHit(event: CacheHitEvent, env: Env, ctx?: ExecutionCo
   const hourTs = Math.floor(event.timestamp / 3600) * 3600;
   const minuteTs = Math.floor(event.timestamp / 60) * 60;
   const apId = event.accessPointId || "";
-  const base = { profileId: event.profileId, hourTimestamp: hourTs, accessPointId: apId, count: 1 };
+  const base = { profileId: event.profileId, hourTimestamp: hourTs, accessPointId: apId, count: event.count ?? 1 };
 
   // Every hit is counted twice: in the regular hourly rollup key (used by ranges of 24h or more,
   // together with logged queries) and in a `hit_*` key bucketed by MINUTE. Short ranges (10M, 1H)
@@ -752,6 +763,8 @@ function takeHitItems(checkedProfiles: Set<string>, e2eeProfiles: Set<string>, l
     if (taken.length >= limit) break;
     if (!checkedProfiles.has(item.profileId)) continue;
     hitCounters.delete(k);
+    // +1 and -1 of the same key cancelled out: nothing to write.
+    if (item.count === 0) continue;
     if (e2eeProfiles.has(item.profileId) && item.metricType !== "action" && item.metricType !== "hit_action") continue;
     taken.push(item);
   }

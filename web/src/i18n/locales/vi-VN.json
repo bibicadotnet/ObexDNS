@@ -500,7 +500,24 @@
     "clearLogsSuccess": "Nhật ký của cấu hình đã được xóa thành công",
     "clearLogsError": "Xóa nhật ký thất bại",
     "e2eeLockedExportWarning": "Một số nhật ký đã được mã hóa và hiện đang bị khóa; tệp đã xuất có thể chứa nội dung giữ chỗ đã mã hóa.",
-    "scrollToTop": "Lên đầu"
+    "scrollToTop": "Lên đầu",
+    "tableEvent": "Sự kiện",
+    "tableTimeHint": "Thời điểm sự kiện này xảy ra, không phải lần truy cập cuối của domain.",
+    "detailPrevAnswer": "Kết quả trước đó",
+    "event": {
+      "new": "Mới",
+      "changed": "Thay đổi",
+      "refreshed": "Thay đổi (làm mới)",
+      "recheck": "Kiểm tra lại",
+      "error": "Lỗi"
+    },
+    "eventHint": {
+      "new": "Lần đầu tiên thấy domain này.",
+      "changed": "Kết quả khác với lần trước. Xem \"Kết quả trước đó\" bên dưới.",
+      "refreshed": "Tiến trình làm mới nền phát hiện kết quả khác với bản đang lưu. Có thể lúc đó bạn không truy cập domain này.",
+      "recheck": "Kết quả giống lần trước. Được ghi lại sau một thời gian dài để domain luôn dễ tìm.",
+      "error": "Upstream không trả lời đúng. Nếu có kết quả đã lưu thì vẫn được trả cho thiết bị."
+    }
   },
   "filtering": {
     "title": "Danh sách bên ngoài",

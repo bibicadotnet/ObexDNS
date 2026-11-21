@@ -497,7 +497,24 @@
     "exportSuccess": "Protokolle erfolgreich exportiert",
     "exportError": "Fehler beim Exportieren der Protokolle",
     "e2eeLockedExportWarning": "Einige Protokolle sind verschlüsselt und derzeit gesperrt; die exportierte Datei enthält möglicherweise verschlüsselte Platzhalter.",
-    "scrollToTop": "Nach oben"
+    "scrollToTop": "Nach oben",
+    "tableEvent": "Ereignis",
+    "tableTimeHint": "Zeitpunkt dieses Ereignisses, nicht der letzten Abfrage der Domain.",
+    "detailPrevAnswer": "Vorherige Antwort",
+    "event": {
+      "new": "Neu",
+      "changed": "Geändert",
+      "refreshed": "Geändert (Aktualisierung)",
+      "recheck": "Erneut geprüft",
+      "error": "Fehler"
+    },
+    "eventHint": {
+      "new": "Diese Domain wurde zum ersten Mal gesehen.",
+      "changed": "Die Antwort unterscheidet sich von der vorherigen. Siehe „Vorherige Antwort“ unten.",
+      "refreshed": "Eine Hintergrundaktualisierung hat eine andere Antwort als die im Cache gefunden. Möglicherweise haben Sie zu diesem Zeitpunkt nichts aufgerufen.",
+      "recheck": "Gleiche Antwort wie zuvor. Nach längerer Zeit erneut protokolliert, damit die Domain leicht auffindbar bleibt.",
+      "error": "Der Upstream hat nicht korrekt geantwortet. Falls eine zwischengespeicherte Antwort vorhanden war, wurde sie trotzdem geliefert."
+    }
   },
   "filtering": {
     "title": "Externe Listen",

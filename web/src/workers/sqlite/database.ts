@@ -132,6 +132,8 @@ export async function initDatabase(): Promise<boolean> {
           kem_key_id TEXT,
           kem_ct TEXT,
           encrypted_payload TEXT,
+          event TEXT,
+          prev_answer TEXT,
           PRIMARY KEY (profile_id, timestamp, id)
         );
 
@@ -173,6 +175,14 @@ export async function initDatabase(): Promise<boolean> {
       } catch {}
       try {
         db.exec('UPDATE local_logs SET encrypt_version = 1 WHERE is_encrypted = 1;');
+      } catch {}
+
+      // Migration: Add event / prev_answer (Query Logs events, server migration 0070)
+      try {
+        db.exec('ALTER TABLE local_logs ADD COLUMN event TEXT;');
+      } catch {}
+      try {
+        db.exec('ALTER TABLE local_logs ADD COLUMN prev_answer TEXT;');
       } catch {}
 
       // Clean up stale logs with empty client_ip from prior bug to trigger a fresh sync

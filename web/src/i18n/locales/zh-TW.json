@@ -497,7 +497,24 @@
     "exportSuccess": "日誌匯出成功",
     "exportError": "日誌匯出失敗",
     "e2eeLockedExportWarning": "部分日誌處於加密狀態且未解鎖，匯出的資料可能包含未解密預留位置內容。",
-    "scrollToTop": "至頂"
+    "scrollToTop": "至頂",
+    "tableEvent": "事件",
+    "tableTimeHint": "此事件發生的時間，而非網域最後一次被查詢的時間。",
+    "detailPrevAnswer": "先前的解析結果",
+    "event": {
+      "new": "新增",
+      "changed": "已變化",
+      "refreshed": "已變化（重新整理）",
+      "recheck": "複查",
+      "error": "錯誤"
+    },
+    "eventHint": {
+      "new": "首次發現此網域。",
+      "changed": "解析結果與上一次不同，請查看下方「先前的解析結果」。",
+      "refreshed": "背景重新整理發現結果與快取不同，當時您不一定在存取此網域。",
+      "recheck": "解析結果與之前相同，間隔較長時間再次記錄，方便尋找此網域。",
+      "error": "上游未能正確回應；若有快取結果，仍已回傳給裝置。"
+    }
   },
   "filtering": {
     "title": "外部清單",

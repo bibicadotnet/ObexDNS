@@ -497,7 +497,24 @@
     "exportSuccess": "Journaux exportés avec succès",
     "exportError": "Échec de l'exportation des journaux",
     "e2eeLockedExportWarning": "Certains journaux sont chiffrés et actuellement verrouillés ; le fichier exporté peut contenir des espaces réservés chiffrés.",
-    "scrollToTop": "Haut de page"
+    "scrollToTop": "Haut de page",
+    "tableEvent": "Événement",
+    "tableTimeHint": "Moment où cet événement s'est produit, pas la dernière requête du domaine.",
+    "detailPrevAnswer": "Réponse précédente",
+    "event": {
+      "new": "Nouveau",
+      "changed": "Modifié",
+      "refreshed": "Modifié (actualisation)",
+      "recheck": "Revérification",
+      "error": "Erreur"
+    },
+    "eventHint": {
+      "new": "Première fois que ce domaine est vu.",
+      "changed": "La réponse diffère de la précédente. Voir « Réponse précédente » ci-dessous.",
+      "refreshed": "Une actualisation en arrière-plan a trouvé une réponse différente de celle en cache. Vous ne naviguiez peut-être pas à ce moment-là.",
+      "recheck": "Même réponse qu’avant, consignée à nouveau après un long moment pour que le domaine reste facile à retrouver.",
+      "error": "Le serveur amont n'a pas répondu correctement. Si une réponse en cache existait, elle a quand même été servie."
+    }
   },
   "filtering": {
     "title": "Listes externes",

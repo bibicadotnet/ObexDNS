@@ -24,6 +24,10 @@ export interface LogEntry {
   kem_key_id?: string | null;
   kem_ct?: string | null;
   encrypted_payload?: string | null;
+  /** Why this row exists: new | changed | refreshed | recheck | error. Absent on rows written before migration 0070. */
+  event?: "new" | "changed" | "refreshed" | "recheck" | "error" | string | null;
+  /** Previous answer of a changed / refreshed event. */
+  prev_answer?: string | null;
 }
 
 export interface LogsViewProps {

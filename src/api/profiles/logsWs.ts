@@ -131,7 +131,7 @@ export async function handleProfileLogsWs(
         SELECT l.id, l.timestamp, l.client_ip, l.domain, l.action, l.record_type, 
                l.latency, l.answer, l.geo_country, l.reason, l.access_point_id, 
                l.dest_country_code, l.dest_country, l.dest_isp, l.encrypt_version, 
-               l.kem_key_id, l.encrypted_payload, k.kem_ct, ap.name as access_point_name 
+               l.kem_key_id, l.encrypted_payload, l.event, l.prev_answer, k.kem_ct, ap.name as access_point_name 
         FROM logs l 
         LEFT JOIN access_points ap ON l.access_point_id = ap.id 
         LEFT JOIN kem_keys k ON l.kem_key_id = k.id
@@ -194,7 +194,7 @@ export async function handleProfileLogsWs(
             SELECT l.id, l.timestamp, l.client_ip, l.domain, l.action, l.record_type, 
                    l.latency, l.answer, l.geo_country, l.reason, l.access_point_id, 
                    l.dest_country_code, l.dest_country, l.dest_isp, l.encrypt_version, 
-                   l.kem_key_id, l.encrypted_payload, k.kem_ct, ap.name as access_point_name 
+                   l.kem_key_id, l.encrypted_payload, l.event, l.prev_answer, k.kem_ct, ap.name as access_point_name 
             FROM logs l 
             LEFT JOIN access_points ap ON l.access_point_id = ap.id 
             LEFT JOIN kem_keys k ON l.kem_key_id = k.id

@@ -40,4 +40,5 @@ export interface SensitiveLogData {
   ecs?: string | null;
   upstream?: string | null;
   reason?: string | null;
+  prev_answer?: string | null;
 }

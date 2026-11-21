@@ -94,6 +94,7 @@ export class DecryptEngine {
           ecs: data.ecs ?? log.ecs,
           upstream: data.upstream ?? log.upstream,
           reason: data.reason ?? log.reason,
+          prev_answer: data.prev_answer ?? log.prev_answer,
           encrypt_version: 0,
         };
       }
@@ -173,6 +174,7 @@ export class DecryptEngine {
           ecs: data.ecs ?? log.ecs,
           upstream: data.upstream ?? log.upstream,
           reason: data.reason ?? log.reason,
+          prev_answer: data.prev_answer ?? log.prev_answer,
           encrypt_version: 0,
         };
       }

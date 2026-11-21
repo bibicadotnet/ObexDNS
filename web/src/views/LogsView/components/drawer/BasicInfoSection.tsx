@@ -7,6 +7,8 @@ import { formatDateTime } from "../../../../utils/date";
 import type { LogEntry } from "../../types";
 import { DetailItem } from "./DetailItem";
 import { DomainIcon } from "../DomainIcon";
+import { EventBadge } from "../EventBadge";
+import { getLogEvent } from "../../utils/logEvent";
 
 export interface BasicInfoSectionProps {
   selectedLog: LogEntry;
@@ -31,11 +33,22 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
     effectiveEncryptVersion === 2 ||
     Boolean(selectedLog.kem_key_id || detailedLog?.kem_key_id);
   const isEncryptedLocked = isEncrypted && (!selectedLog.domain || selectedLog.domain === "[Encrypted]");
+  const event = getLogEvent({ event: detailedLog?.event ?? selectedLog.event });
+  const prevAnswer = detailedLog?.prev_answer ?? selectedLog.prev_answer;
 
   return (
     <Section title={t("logs.basicInfo")} icon={<Activity size={16} />} className="shadow-none! rounded-lg!">
       <SectionCard>
         <div className="space-y-3">
+          {event && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <EventBadge log={{ event }} className="text-xs" />
+                <span className="text-xs font-bold">{selectedLog.action}</span>
+              </div>
+              <p className="text-xs opacity-70 leading-relaxed">{t(`logs.eventHint.${event}`)}</p>
+            </div>
+          )}
           <DetailItem
             label={t("logs.detailDomain")}
             value={
@@ -116,6 +129,9 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             label={t("logs.detailUpstream")}
             value={detailedLog?.upstream || selectedLog.upstream || (loading ? <Spinner size={12} /> : "-")}
           />
+          {prevAnswer && (
+            <DetailItem label={t("logs.detailPrevAnswer")} value={<span className="font-mono text-xs break-all">{prevAnswer}</span>} />
+          )}
           <DetailItem
             label={t("logs.detailReason")}
             value={selectedLog.reason || t("logs.detailNoReason")}

@@ -38,8 +38,8 @@ export function handleSyncBatch(payload: SyncBatchPayload): { inserted: number }
         profile_id, timestamp, id, domain, record_type, action, reason,
         client_ip, geo_country, answer, dest_geoip, ecs, upstream, latency,
         access_point_id, access_point_name, dest_country_code, dest_country, dest_isp,
-        encrypt_version, kem_key_id, kem_ct, encrypted_payload
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        encrypt_version, kem_key_id, kem_ct, encrypted_payload, event, prev_answer
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `);
 
     try {
@@ -70,7 +70,9 @@ export function handleSyncBatch(payload: SyncBatchPayload): { inserted: number }
           log.encrypt_version ?? 0,
           log.kem_key_id || null,
           log.kem_ct || null,
-          log.encrypted_payload || null
+          log.encrypted_payload || null,
+          log.event || null,
+          log.prev_answer || null
         ]);
         insertStmt.step();
         insertStmt.reset();
@@ -182,7 +184,7 @@ export function handleUpdateLogsBatch(payload: UpdateLogsBatchPayload): { update
       UPDATE local_logs SET
         domain = ?, client_ip = ?, geo_country = ?, answer = ?,
         dest_geoip = ?, dest_country_code = ?, dest_country = ?, dest_isp = ?,
-        ecs = ?, upstream = ?, reason = ?, encrypt_version = 0, encrypted_payload = NULL
+        ecs = ?, upstream = ?, reason = ?, prev_answer = ?, encrypt_version = 0, encrypted_payload = NULL
       WHERE profile_id = ? AND timestamp = ? AND id = ?;
     `);
 
@@ -200,6 +202,7 @@ export function handleUpdateLogsBatch(payload: UpdateLogsBatchPayload): { update
           log.ecs || null,
           log.upstream || null,
           log.reason || null,
+          log.prev_answer || null,
           profileId,
           log.timestamp,
           log.id

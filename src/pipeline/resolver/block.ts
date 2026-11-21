@@ -7,7 +7,8 @@ import {
   DNSRecord
 } from "../../utils/dns";
 import { resolveClientGeoCountry } from "../../utils/geoip";
-import { enqueueLog, shouldLogQuery, isLogPolicyEnabled } from "../logBatcher";
+import { enqueueLog, shouldLogQuery, isLogPolicyEnabled, recordCacheHit } from "../logBatcher";
+import { domainStateKey, observeAnswer, snapshotFromSynthetic } from "../domainState";
 import { dnsCache, getProfileGeneration } from "../cache";
 import { envBool, envNumber } from "../../utils/envNumber";
 import { staleWindowMs } from "../lazyRefresh";
@@ -221,15 +222,40 @@ export async function handleBlockOrRedirect(
   const latency = nowMs - context.startTime;
 
   // Skip GeoIP entirely when the log would be discarded (retention 0, circuit breaker, ...)
-  if (!context.noLog && shouldLogQuery(settings, action)) context.ctx.waitUntil(
-    (async () => {
+  if (!context.noLog && shouldLogQuery(settings, action)) {
+    // A repeated BLOCK / REDIRECT with the same answer (e.g. the cache was cleared by a list update, or the
+    // redirect target is resolved live and never cached) is not worth another row: it is counted like a cache hit.
+    // A first sighting, an action change (PASS -> BLOCK after a list update) or an answer change gets a row.
+    const decision = observeAnswer(
+      domainStateKey(context.profileId, query.name, query.type),
+      snapshotFromSynthetic(action, displayAnswer),
+      { background: false, env: context.env as any, settings, now: nowMs }
+    );
+    const task = (async () => {
       try {
         const clientCountry = await resolveClientGeoCountry(request, clientIp).catch(() => "UNKNOWN");
+        const timestamp = Math.floor(nowMs / 1000);
+        if (!decision.event) {
+          recordCacheHit(
+            {
+              profileId: context.profileId,
+              accessPointId: context.accessPointId,
+              timestamp,
+              action,
+              domain: query.name,
+              clientIp,
+              geoCountry: clientCountry
+            },
+            context.env,
+            context.ctx
+          );
+          return;
+        }
         enqueueLog(
           {
             profile_id: context.profileId,
             access_point_id: context.accessPointId,
-            timestamp: Math.floor(nowMs / 1000),
+            timestamp,
             client_ip: clientIp,
             geo_country: clientCountry,
             domain: query.name,
@@ -237,7 +263,9 @@ export async function handleBlockOrRedirect(
             action,
             reason,
             answer: displayAnswer,
-            latency
+            latency,
+            event: decision.event,
+            prev_answer: decision.prevAnswer || null
           },
           settings,
           context.env,
@@ -246,8 +274,9 @@ export async function handleBlockOrRedirect(
       } catch {
         // Ignore non-critical background logging errors
       }
-    })()
-  );
+    })();
+    context.ctx?.waitUntil?.(task);
+  }
 
   return { answer, ttl: 3600, action, reason, latency };
 }

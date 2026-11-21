@@ -266,6 +266,13 @@ export interface ResolutionLog {
   kem_key_id?: string | null;
   kem_ct?: string | null;
   encrypted_payload?: string | null;
+  /**
+   * Why this row exists: 'new' | 'changed' | 'refreshed' | 'recheck' | 'error'.
+   * Null/undefined on rows written before migration 0070.
+   */
+  event?: string | null;
+  /** Previous answer of a 'changed' / 'refreshed' event (part of the encrypted payload for E2EE profiles). */
+  prev_answer?: string | null;
 }
 
 export interface KemKeyRecord {

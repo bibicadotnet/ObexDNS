@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 import { Lock } from "lucide-react";
 import type {  LogEntry  } from "../types";
 import { DomainIcon } from "./DomainIcon";
+import { EventBadge } from "./EventBadge";
+import { getLogEvent } from "../utils/logEvent";
 
 export interface LogsListProps {
   logs: LogEntry[];
@@ -86,6 +88,7 @@ export const LogsList: React.FC<LogsListProps> = ({
               <span className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded opacity-60">
                 {log.record_type}
               </span>
+              {getLogEvent(log) && <EventBadge log={log} className="text-[9px]" />}
               {log.access_point_name && (
                 <span className="text-[10px] opacity-50 truncate max-w-25">
                   {log.access_point_name}

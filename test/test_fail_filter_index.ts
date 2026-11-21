@@ -12,6 +12,7 @@ db.exec(`CREATE TABLE logs (profile_id TEXT NOT NULL, timestamp INTEGER NOT NULL
   geo_country TEXT, domain TEXT NOT NULL, record_type TEXT NOT NULL, action TEXT NOT NULL, reason TEXT, answer TEXT,
   dest_geoip TEXT, ecs TEXT, upstream TEXT, latency INTEGER, access_point_id TEXT, dest_country_code TEXT,
   dest_country TEXT, dest_isp TEXT, encrypt_version INTEGER, kem_key_id TEXT, encrypted_payload TEXT,
+  event TEXT, prev_answer TEXT,
   PRIMARY KEY (profile_id, timestamp, id)) WITHOUT ROWID;
   CREATE TABLE access_points (id TEXT, name TEXT); CREATE TABLE kem_keys (id TEXT, kem_ct TEXT);`);
 

@@ -497,7 +497,24 @@
     "exportSuccess": "Registros exportados con éxito",
     "exportError": "Error al exportar los registros",
     "e2eeLockedExportWarning": "Algunos registros están cifrados y actualmente bloqueados; el archivo exportado puede contener marcadores de posición cifrados.",
-    "scrollToTop": "Ir arriba"
+    "scrollToTop": "Ir arriba",
+    "tableEvent": "Evento",
+    "tableTimeHint": "Momento en que ocurrió este evento, no la última consulta del dominio.",
+    "detailPrevAnswer": "Respuesta anterior",
+    "event": {
+      "new": "Nuevo",
+      "changed": "Cambiado",
+      "refreshed": "Cambiado (actualización)",
+      "recheck": "Reverificación",
+      "error": "Error"
+    },
+    "eventHint": {
+      "new": "Primera vez que se ve este dominio.",
+      "changed": "La respuesta es distinta de la anterior. Consulta «Respuesta anterior» más abajo.",
+      "refreshed": "Una actualización en segundo plano encontró una respuesta distinta de la almacenada. Puede que no estuvieras navegando en ese momento.",
+      "recheck": "Misma respuesta que antes, registrada de nuevo tras mucho tiempo para que el dominio siga siendo fácil de encontrar.",
+      "error": "El upstream no respondió correctamente. Si había una respuesta en caché, se siguió sirviendo."
+    }
   },
   "filtering": {
     "title": "Listas externas",

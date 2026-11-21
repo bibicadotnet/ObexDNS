@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 import { Lock } from "lucide-react";
 import type {  LogEntry  } from "../types";
 import { DomainIcon } from "./DomainIcon";
+import { EventBadge } from "./EventBadge";
+import { answerWithChange } from "../utils/logEvent";
 import { getFlagEmoji } from "../../../utils/getFlagEmoji";
 
 export interface LogsTableProps {
@@ -73,7 +75,11 @@ export const LogsTable: React.FC<LogsTableProps> = ({
   const columns: ColumnConfig[] = useMemo(() => [
     {
       key: "time",
-      header: t("logs.tableTime"),
+      header: (
+        <span title={t("logs.tableTimeHint")} className="cursor-help">
+          {t("logs.tableTime")}
+        </span>
+      ),
       headerClassName: "w-24 rounded-tl-xl",
       cellClassName: "font-mono text-[11px] opacity-60",
       render: (log: LogEntry): React.ReactNode =>
@@ -112,11 +118,21 @@ export const LogsTable: React.FC<LogsTableProps> = ({
       },
     },
     {
+      key: "event",
+      header: t("logs.tableEvent"),
+      headerClassName: "w-28",
+      cellClassName: "text-center",
+      render: (log: LogEntry): React.ReactNode => <EventBadge log={log} />,
+    },
+    {
       key: "answer",
       header: t("logs.tableAnswer"),
       headerClassName: "w-1/4",
       cellClassName: "truncate font-mono text-[11px] opacity-70",
-      render: (log: LogEntry): React.ReactNode => log.answer || "-",
+      render: (log: LogEntry): React.ReactNode => {
+        const text = answerWithChange(log);
+        return <span title={log.prev_answer ? `${log.prev_answer} → ${log.answer || ""}` : log.answer || undefined}>{text}</span>;
+      },
     },
     {
       key: "source",

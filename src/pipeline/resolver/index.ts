@@ -144,7 +144,8 @@ export const pipelineResolver = {
         e,
         ecs,
         endpoint?.diagTarget,
-        endpoint?.diagMethod
+        endpoint?.diagMethod,
+        ecsScope
       );
     }
   },

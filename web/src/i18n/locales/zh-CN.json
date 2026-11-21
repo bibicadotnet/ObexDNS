@@ -501,7 +501,24 @@
     "clearLogsSuccess": "配置日志已成功清空",
     "clearLogsError": "清空日志失败",
     "e2eeLockedExportWarning": "部分日志处于加密状态且未解锁，导出的数据可能包含未解密占位内容。",
-    "scrollToTop": "至顶"
+    "scrollToTop": "至顶",
+    "tableEvent": "事件",
+    "tableTimeHint": "该事件发生的时间，而非域名最后一次被查询的时间。",
+    "detailPrevAnswer": "先前的解析结果",
+    "event": {
+      "new": "新增",
+      "changed": "已变化",
+      "refreshed": "已变化（刷新）",
+      "recheck": "复查",
+      "error": "错误"
+    },
+    "eventHint": {
+      "new": "首次发现该域名。",
+      "changed": "解析结果与上一次不同，请查看下方“先前的解析结果”。",
+      "refreshed": "后台刷新发现结果与缓存不同，当时您不一定在访问该域名。",
+      "recheck": "解析结果与之前相同，间隔较长时间再次记录，方便查找该域名。",
+      "error": "上游未能正确应答；若有缓存结果，仍已返回给设备。"
+    }
   },
   "filtering": {
     "title": "外部列表",
