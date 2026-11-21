@@ -162,7 +162,7 @@
  * look identical from Setup to Analytics.
  *   .page-title     24px (20px on phones) - one per page
  *   .page-subtitle  14px muted            - line under the page title
- *   .section-title  16px                  - title of a card / section
+ *   .section-title  18px                  - title of a card / section
  *   .subsection-title 14px                - group title inside a card
  * Declared unlayered (like Blueprint) so they beat its h1-h6 defaults.
  * ------------------------------------------------------------------ */
@@ -188,8 +188,8 @@
 .section-title {
   margin: 0;
   padding: 0;
-  font-size: 1rem;
-  line-height: 1.5rem;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
   font-weight: 600;
 }
 .subsection-title {
@@ -209,8 +209,8 @@
 /* Blueprint <Section> headers (Setup, log drawer, Analytics) follow the same card-title size. */
 .bp6-section-header-title,
 .bp6-section .bp6-section-header h6 {
-  font-size: 1rem;
-  line-height: 1.5rem;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
   font-weight: 600;
   margin: 0;
 }

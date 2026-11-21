@@ -63,9 +63,9 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
         }
         panel={
           <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title">{t("setup.browserTitle")}</H5>
+            <H5 className="section-title mb-3!">{t("setup.browserTitle")}</H5>
             <p className="text-sm">{t("setup.browserSteps")}</p>
-            <p className="text-[10px] opacity-50 cursor-pointer" onClick={() => copyToClipboard("chrome://settings/security")}>
+            <p className="text-xs opacity-50 cursor-pointer" onClick={() => copyToClipboard("chrome://settings/security")}>
               {t("setup.browserTips", "or copy this URL to the address bar: ") + "chrome://settings/security"}
             </p>
           </div>
@@ -82,9 +82,9 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
         }
         panel={
           <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title">{t("setup.appleTitle")}</H5>
+            <H5 className="section-title mb-3!">{t("setup.appleTitle")}</H5>
             <p className="text-sm">{t("setup.appleDesc")}</p>
-            <p className="text-[10px] opacity-50 text-center">{t("setup.appleWarning")}</p>
+            <p className="text-xs opacity-50 text-center">{t("setup.appleWarning")}</p>
             <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center">
               <Icon icon="document" size={40} className="opacity-20 mb-4" />
               <Button
@@ -120,7 +120,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
                 }}
               />
             </div>
-            <p className="text-[10px] opacity-50 mt-4! text-center">{t("setup.appleInstallHint")}</p>
+            <p className="text-xs opacity-50 mt-4! text-center">{t("setup.appleInstallHint")}</p>
           </div>
         }
       />
@@ -134,7 +134,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
         }
         panel={
           <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title">
+            <H5 className="section-title mb-3!">
               {t("setup.windowsTitle")}
             </H5>
             <p className="text-sm">{t("setup.windowsDesc")}</p>
@@ -175,7 +175,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
         }
         panel={
           <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title">{t("setup.linuxTitle")}</H5>
+            <H5 className="section-title mb-3!">{t("setup.linuxTitle")}</H5>
             <p className="text-sm">{t("setup.linuxDesc")}</p>
 
             <div className="mt-4">
@@ -213,7 +213,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
         }
         panel={
           <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title">{t("setup.routerosTitle")}</H5>
+            <H5 className="section-title mb-3!">{t("setup.routerosTitle")}</H5>
             <p className="text-sm">{t("setup.routerosDesc")}</p>
 
             <div className="mt-4">
@@ -258,7 +258,7 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
         }
         panel={
           <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
-            <H5 className="section-title">{t("setup.androidTitle")}</H5>
+            <H5 className="section-title mb-3!">{t("setup.androidTitle")}</H5>
             <p className="text-sm">{t("setup.androidDesc")}</p>
 
             {isCloudflare ? (
