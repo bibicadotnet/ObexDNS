@@ -97,6 +97,24 @@ async function refreshStaleEntry(
   await pipelineResolver.resolve(request, query, refreshContext, config.settings, "PASS", reason);
 }
 
+/**
+ * Lazy-cache refresh of a REDIRECT entry: runs the same redirect again (re-resolving a CNAME target) instead of
+ * asking the upstream for the name itself, which would replace the redirect with the real answer.
+ * No log row is written; a failed lookup leaves the old entry in place (see `handleBlockOrRedirect`).
+ */
+async function refreshStaleRedirect(
+  request: Request,
+  query: DNSQuery,
+  context: Context,
+  reason: string,
+  redirect: { value: string; type?: string }
+): Promise<void> {
+  const refreshContext: Context = { ...context, isBackgroundRefresh: true, startTime: Date.now() };
+  const config = await pipelineConfig.load(refreshContext, () => {});
+  if (!config || config.isFallback) return;
+  await pipelineResolver.block(request, query, refreshContext, config.settings, "REDIRECT", reason, redirect.value, redirect.type);
+}
+
 export const pipeline = {
   clearCache: pipelineCache.clear,
   clearCacheMany: pipelineCache.clearMany,
@@ -131,7 +149,9 @@ export const pipeline = {
         scheduleStaleRefresh(
           hit.key,
           cached,
-          () => refreshStaleEntry(request, refreshQuery, context, cached.reason),
+          cached.action === "REDIRECT" && cached.redirect
+            ? () => refreshStaleRedirect(request, refreshQuery, context, cached.reason, cached.redirect)
+            : () => refreshStaleEntry(request, refreshQuery, context, cached.reason),
           context.env,
           context.ctx
         );

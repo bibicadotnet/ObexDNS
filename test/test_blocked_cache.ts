@@ -100,6 +100,44 @@ async function main(): Promise<void> {
   assert.strictEqual(doh.headers.get('Cache-Control'), `max-age=${packetTtl}`, 'max-age follows the TTL inside the DNS message, not the server-side cache life');
   console.log('   ✓');
 
+  console.log('8. REDIRECT uses the lazy cache: served after its TTL, refreshed in the background without a log row');
+  dnsCache.clear();
+  const logSettings: any = { log_retention_days: 7, block_mode: 'NULL_IP', upstream: ['https://u/dns-query'] };
+  let waitUntilCalls = 0;
+  const logCtx = (extra: any = {}): any => ({ profileId: 'prof_b', startTime: Date.now(), noLog: false, env: {}, ctx: { waitUntil() { waitUntilCalls++; } }, ...extra });
+  await handleBlockOrRedirect(req, mkQuery('l.example'), logCtx(), logSettings, 'REDIRECT', 'DNS Rewrite', 'target.test', 'CNAME', okResolver);
+  assert.strictEqual(waitUntilCalls, 1, 'the first (miss) query is logged');
+  const re = dnsCache.get(key('l.example'));
+  assert.deepStrictEqual(re.redirect, { value: 'target.test', type: 'CNAME' }, 'entry remembers how to refresh itself');
+  assert.ok(re.staleUntil > re.expiresAt, 'REDIRECT has a stale window');
+  assert.strictEqual(re.staleUntil - re.expiresAt, 3600_000, 'default DNS_STALE_WINDOW_SEC');
+  await handleBlockOrRedirect(req, mkQuery('m.example'), ctxOf({ DNS_STALE_WINDOW_SEC: '0' }), settings, 'REDIRECT', 'r', '1.2.3.4', 'A');
+  assert.strictEqual(dnsCache.get(key('m.example')).staleUntil, dnsCache.get(key('m.example')).expiresAt, 'DNS_STALE_WINDOW_SEC=0 turns the stale window off');
+
+  // expired but inside the stale window: still answered as REDIRECT
+  re.expiresAt = Date.now() - 1000;
+  const staleHit = await pipeline.process(req, mkQuery('l.example'), ctxOf({ FAIL_OPEN_UPSTREAM: 'https://127.0.0.1/x' }));
+  assert.strictEqual(staleHit.action, 'REDIRECT', 'stale entry answered as REDIRECT, not resolved upstream');
+  assert.strictEqual(staleHit.reason, 'DNS Rewrite');
+  assert.ok(dnsCache.has(key('l.example')), 'entry kept for the refresh');
+
+  // background refresh: same redirect again, no log row, entry renewed and still a REDIRECT
+  waitUntilCalls = 0;
+  const before = dnsCache.get(key('l.example')).expiresAt;
+  await handleBlockOrRedirect(req, mkQuery('l.example'), logCtx({ isBackgroundRefresh: true }), logSettings, 'REDIRECT', 'DNS Rewrite', 'target.test', 'CNAME', okResolver);
+  assert.strictEqual(waitUntilCalls, 0, 'background refresh writes no log row');
+  const renewed = dnsCache.get(key('l.example'));
+  assert.ok(renewed.expiresAt > before && renewed.expiresAt > Date.now(), 'entry renewed');
+  assert.strictEqual(renewed.action, 'REDIRECT');
+
+  // a refresh whose target lookup fails or has no address keeps the good entry
+  const servfail = async () => ({ answer: new Uint8Array([0x12, 0x34, 0x81, 0x82, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0x74, 0, 0, 1, 0, 1]), ttl: 0, action: 'PASS', latency: 1 }) as any;
+  const good = dnsCache.get(key('l.example'));
+  await handleBlockOrRedirect(req, mkQuery('l.example'), logCtx({ isBackgroundRefresh: true }), logSettings, 'REDIRECT', 'DNS Rewrite', 'target.test', 'CNAME', servfail);
+  await handleBlockOrRedirect(req, mkQuery('l.example'), logCtx({ isBackgroundRefresh: true }), logSettings, 'REDIRECT', 'DNS Rewrite', 'target.test', 'CNAME', failResolver as any);
+  assert.strictEqual(dnsCache.get(key('l.example')), good, 'failed refresh leaves the old entry in place');
+  console.log('   ✓');
+
   console.log('\n  BLOCKED CACHE TESTS PASSED\n');
   process.exit(0);
 }

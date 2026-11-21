@@ -10,6 +10,7 @@ import { resolveClientGeoCountry } from "../../utils/geoip";
 import { enqueueLog, shouldLogQuery, isLogPolicyEnabled } from "../logBatcher";
 import { dnsCache, getProfileGeneration } from "../cache";
 import { envBool, envNumber } from "../../utils/envNumber";
+import { staleWindowMs } from "../lazyRefresh";
 
 /** 1 day: BLOCK entries are never served stale and every rule/list/settings change clears them. */
 export const DEFAULT_BLOCKED_CACHE_TTL_SEC = 86400;
@@ -19,8 +20,10 @@ export const DEFAULT_BLOCKED_CACHE_TTL_SEC = 86400;
  * are counted in the rollups instead of being logged (same as cached PASS answers).
  *
  * - Off when `DNS_CACHE_BLOCKED` (BLOCK) or `DNS_CACHE_REDIRECT` (REDIRECT) is false.
- * - Never served stale (`staleUntil === expiresAt`): a background refresh would resolve the name upstream
- *   and replace the block with a PASS answer.
+ * - BLOCK is never served stale (`staleUntil === expiresAt`): a background refresh would resolve the name
+ *   upstream and replace the block with a PASS answer.
+ * - REDIRECT follows the normal lazy cache (`DNS_STALE_WINDOW_SEC`): after its TTL it is still served, and the
+ *   background refresh re-runs this same redirect (`redirect` keeps its value/type), so hits never reach the log.
  * - Dropped when the profile changed while this query was being matched (profile generation moved on).
  * - Rule / list / settings changes remove it through `pipelineCache.clear*` like any other entry.
  */
@@ -30,7 +33,8 @@ function cacheBlockedAnswer(
   settings: ProfileSettings,
   action: "BLOCK" | "REDIRECT",
   reason: string,
-  answer: Uint8Array
+  answer: Uint8Array,
+  redirect?: { value: string; type?: string }
 ): void {
   const env = context.env;
   const isRedirect = action === "REDIRECT";
@@ -56,7 +60,8 @@ function cacheBlockedAnswer(
     action,
     reason,
     expiresAt,
-    staleUntil: expiresAt,
+    staleUntil: isRedirect && redirect ? expiresAt + staleWindowMs(env) : expiresAt,
+    ...(isRedirect && redirect ? { redirect } : {}),
     countHits: !context.noLog && isLogPolicyEnabled(settings, action),
     destCountryCode: null,
     destCountry: null
@@ -155,7 +160,8 @@ export async function handleBlockOrRedirect(
             }
           }
           answer = buildResponseMulti(query.raw, records, 0);
-          cacheable = true;
+          // A refresh whose target lookup gave no address (SERVFAIL, empty answer) keeps the old entry.
+          cacheable = !context.isBackgroundRefresh || parsedTargetAnswers.some((a) => a.type === query.type);
         } else {
           answer = buildResponse(query.raw, responseType, customAnswer);
         }
@@ -195,7 +201,20 @@ export async function handleBlockOrRedirect(
   }
 
   if (cacheable) {
-    cacheBlockedAnswer(query, context, settings, action, reason, answer);
+    cacheBlockedAnswer(
+      query,
+      context,
+      settings,
+      action,
+      reason,
+      answer,
+      action === "REDIRECT" && customAnswer ? { value: customAnswer, type: responseType } : undefined
+    );
+  }
+
+  // Lazy-cache refresh of a REDIRECT: the client was already served (and counted) from the stale entry.
+  if (context.isBackgroundRefresh) {
+    return { answer, ttl: 3600, action, reason, latency: Date.now() - context.startTime };
   }
 
   const nowMs = Date.now();

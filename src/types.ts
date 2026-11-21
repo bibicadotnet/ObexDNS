@@ -52,7 +52,7 @@ export interface Env {
   DNS_CACHE_BLOCKED?: string | number | boolean;
   /** Max lifetime (seconds) of a cached BLOCK answer (default 86400). Never served stale. */
   DNS_CACHE_BLOCKED_TTL_SEC?: string | number;
-  /** Cache REDIRECT answers in RAM for the shortest TTL of the answer (true/false, default true). Hits are counted in rollups, not logged. */
+  /** Cache REDIRECT answers in RAM (shortest TTL of the answer, then lazy cache; true/false, default true). Hits are counted in rollups, not logged. */
   DNS_CACHE_REDIRECT?: string | number | boolean;
   LOGIN_MAX_ATTEMPTS?: string | number;
   LOGIN_LOCK_WINDOW_SEC?: string | number;
