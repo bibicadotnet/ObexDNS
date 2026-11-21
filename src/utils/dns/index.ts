@@ -13,7 +13,7 @@ export {
   createServFail
 } from "./encoder";
 export { encodeRData } from "./rdata";
-export { capResponseTtl } from "./ttl";
+export { capResponseTtl, minResponseTtl } from "./ttl";
 export {
   injectEcsIntoQuery,
   stripEcsFromQuery,

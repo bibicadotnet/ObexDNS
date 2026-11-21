@@ -262,9 +262,28 @@ export function buildResponse(
     header[11] = 0; // ARCOUNT
 
     if (!value) {
-      const res = new Uint8Array(12 + questionSection.length);
+      // Negative answer (NXDOMAIN / NODATA): RFC 2308 wants a SOA in the authority section. It also carries the
+      // TTL, so proxies and DoH max-age follow the packet instead of guessing.
+      const soaRdata = new Uint8Array([
+        0, 0, // MNAME "." and RNAME "." (root labels)
+        0, 0, 0, 1, // SERIAL
+        0, 0, 0x0e, 0x10, // REFRESH 3600
+        0, 0, 0x02, 0x58, // RETRY 600
+        0, 1, 0x51, 0x80, // EXPIRE 86400
+        (ttl >>> 24) & 0xff, (ttl >>> 16) & 0xff, (ttl >>> 8) & 0xff, ttl & 0xff, // MINIMUM
+      ]);
+      const soa = new Uint8Array(12 + soaRdata.length);
+      soa[0] = 0xc0; soa[1] = 0x0c; // owner: query name
+      soa[2] = 0; soa[3] = 6; // TYPE SOA
+      soa[4] = 0; soa[5] = 1; // CLASS IN
+      soa[6] = (ttl >>> 24) & 0xff; soa[7] = (ttl >>> 16) & 0xff; soa[8] = (ttl >>> 8) & 0xff; soa[9] = ttl & 0xff;
+      soa[10] = (soaRdata.length >> 8) & 0xff; soa[11] = soaRdata.length & 0xff;
+      soa.set(soaRdata, 12);
+      header[9] = 1; // NSCOUNT
+      const res = new Uint8Array(12 + questionSection.length + soa.length);
       res.set(header);
       res.set(questionSection, 12);
+      res.set(soa, 12 + questionSection.length);
       return res;
     }
 

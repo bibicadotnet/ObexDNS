@@ -23,6 +23,34 @@ function skipName(buf: Uint8Array, offset: number): number {
 }
 
 /**
+ * Smallest TTL among the answer / authority / additional records of a response (EDNS OPT excluded),
+ * or null when there is no record or the packet cannot be parsed.
+ */
+export function minResponseTtl(raw: Uint8Array): number | null {
+  if (raw.length < 12) return null;
+  const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  let pos = 12;
+  for (let i = 0, qd = view.getUint16(4); i < qd; i++) {
+    pos = skipName(raw, pos);
+    if (pos < 0 || pos + 4 > raw.length) return null;
+    pos += 4;
+  }
+  let min: number | null = null;
+  const records = view.getUint16(6) + view.getUint16(8) + view.getUint16(10);
+  for (let i = 0; i < records; i++) {
+    pos = skipName(raw, pos);
+    if (pos < 0 || pos + 10 > raw.length) return null;
+    if (view.getUint16(pos) !== OPT_TYPE) {
+      const ttl = view.getUint32(pos + 4);
+      if (min === null || ttl < min) min = ttl;
+    }
+    pos += 10 + view.getUint16(pos + 8);
+    if (pos > raw.length) return null;
+  }
+  return min;
+}
+
+/**
  * Returns a copy of `raw` in which no answer / authority / additional record has a TTL above `maxTtl`.
  * TTLs that are already lower are kept; the EDNS OPT pseudo record (its "TTL" holds flags) is left alone.
  * A packet that cannot be parsed is returned unchanged (as a copy).

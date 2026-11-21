@@ -7,7 +7,61 @@ import {
   DNSRecord
 } from "../../utils/dns";
 import { resolveClientGeoCountry } from "../../utils/geoip";
-import { enqueueLog, shouldLogQuery } from "../logBatcher";
+import { enqueueLog, shouldLogQuery, isLogPolicyEnabled } from "../logBatcher";
+import { dnsCache, getProfileGeneration } from "../cache";
+import { envBool, envNumber } from "../../utils/envNumber";
+
+/** 1 day: BLOCK entries are never served stale and every rule/list/settings change clears them. */
+export const DEFAULT_BLOCKED_CACHE_TTL_SEC = 86400;
+
+/**
+ * Stores a BLOCK / REDIRECT answer in the in-memory DNS cache so repeated queries skip rule matching and
+ * are counted in the rollups instead of being logged (same as cached PASS answers).
+ *
+ * - Off when `DNS_CACHE_BLOCKED` (BLOCK) or `DNS_CACHE_REDIRECT` (REDIRECT) is false.
+ * - Never served stale (`staleUntil === expiresAt`): a background refresh would resolve the name upstream
+ *   and replace the block with a PASS answer.
+ * - Dropped when the profile changed while this query was being matched (profile generation moved on).
+ * - Rule / list / settings changes remove it through `pipelineCache.clear*` like any other entry.
+ */
+function cacheBlockedAnswer(
+  query: DNSQuery,
+  context: Context,
+  settings: ProfileSettings,
+  action: "BLOCK" | "REDIRECT",
+  reason: string,
+  answer: Uint8Array
+): void {
+  const env = context.env;
+  const isRedirect = action === "REDIRECT";
+  if (!envBool(isRedirect ? env?.DNS_CACHE_REDIRECT : env?.DNS_CACHE_BLOCKED, true)) return;
+  if (answer.length === 0) return;
+  if (context.profileGeneration !== undefined && context.profileGeneration !== getProfileGeneration(context.profileId)) {
+    return;
+  }
+
+  let ttlSec: number;
+  if (isRedirect) {
+    // A redirect behaves like a normal domain: lives for the shortest TTL of its answer (same formula as PASS).
+    const records = parseDNSAnswer(answer);
+    ttlSec = records.length > 0 ? Math.max(10, Math.min(...records.map((r) => r.ttl))) : 60;
+  } else {
+    // A block answer is synthetic and only changes with the profile, so it can live long.
+    ttlSec = envNumber(env?.DNS_CACHE_BLOCKED_TTL_SEC, DEFAULT_BLOCKED_CACHE_TTL_SEC, { min: 1 });
+  }
+  const expiresAt = Date.now() + ttlSec * 1000;
+  dnsCache.set(`${context.profileId}:${query.name}:${query.type}`, {
+    answer,
+    ttl: ttlSec,
+    action,
+    reason,
+    expiresAt,
+    staleUntil: expiresAt,
+    countHits: !context.noLog && isLogPolicyEnabled(settings, action),
+    destCountryCode: null,
+    destCountry: null
+  });
+}
 
 /**
  * Resolver function type used for resolving CNAME targets during redirection.
@@ -58,6 +112,8 @@ export async function handleBlockOrRedirect(
   const clientIp = request.headers.get("CF-Connecting-IP") || "127.0.0.1";
   let answer: Uint8Array;
   let displayAnswer = customAnswer || "";
+  // A redirect that depends on a live upstream lookup is cached only when that lookup succeeded.
+  let cacheable = true;
 
   if (action === "REDIRECT" && customAnswer) {
     if (
@@ -65,6 +121,7 @@ export async function handleBlockOrRedirect(
       (query.type === "A" || query.type === "AAAA") &&
       recursiveResolver
     ) {
+      cacheable = false;
       try {
         // If client requested A/AAAA but rule returns CNAME, resolve the target domain's A/AAAA
         const targetQueryRaw = buildDNSQuery(customAnswer, query.type);
@@ -98,6 +155,7 @@ export async function handleBlockOrRedirect(
             }
           }
           answer = buildResponseMulti(query.raw, records, 0);
+          cacheable = true;
         } else {
           answer = buildResponse(query.raw, responseType, customAnswer);
         }
@@ -134,6 +192,10 @@ export async function handleBlockOrRedirect(
       answer = buildResponse(query.raw, query.type, nullIp);
       displayAnswer = nullIp;
     }
+  }
+
+  if (cacheable) {
+    cacheBlockedAnswer(query, context, settings, action, reason, answer);
   }
 
   const nowMs = Date.now();

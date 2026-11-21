@@ -1,5 +1,5 @@
 import { Context, Env, ExecutionContext } from '../types';
-import { parseDNSQuery, createServFail } from '../utils/dns';
+import { parseDNSQuery, createServFail, minResponseTtl } from '../utils/dns';
 import { pipeline } from '../pipeline';
 import { ProfileModel, ProfileWithFilter } from '../models/profile';
 import { cacheUtils } from '../utils/cache';
@@ -17,8 +17,12 @@ import { isServerfullEnv } from '../utils/serverfullEnv';
  * Compiles a compliant RFC 8484 DNS over HTTPS Response.
  * Ensures that if the answer wire payload is empty or invalid (< 12 bytes),
  * a standard SERVFAIL (RCODE 2) packet is returned with max-age=0 to prevent client crash.
+ *
+ * `max-age` never exceeds the smallest TTL inside the DNS message (RFC 8484 §5.1). `ttl` is how long the server
+ * itself may keep the answer (a cached BLOCK lives for a day); without this bound a Cloudflare / Caddy / nginx
+ * cache in front of the server would hold that long too, and a rule change could not take effect for clients.
  */
-function formatDohResponse(
+export function formatDohResponse(
   answer: Uint8Array | null | undefined,
   queryRaw: Uint8Array | null | undefined,
   ttl: number = 60
@@ -26,10 +30,15 @@ function formatDohResponse(
   const isSuccess = Boolean(answer && answer.length >= 12);
   const effectiveAnswer = isSuccess ? answer! : createServFail(queryRaw || undefined);
 
+  const packetTtl = isSuccess ? minResponseTtl(effectiveAnswer) : null;
+  // Follow the TTL carried by the packet (answer, or SOA for NXDOMAIN/NODATA); fall back to the server-side ttl
+  // only for a packet with no record at all.
+  const maxAge = packetTtl === null ? ttl : Math.min(ttl, packetTtl);
+
   return new Response(effectiveAnswer as any, {
     headers: {
       "Content-Type": "application/dns-message",
-      "Cache-Control": isSuccess && ttl > 0 ? `max-age=${ttl}` : "max-age=0, no-cache, no-store"
+      "Cache-Control": isSuccess && maxAge > 0 ? `max-age=${maxAge}` : "max-age=0, no-cache, no-store"
     }
   });
 }

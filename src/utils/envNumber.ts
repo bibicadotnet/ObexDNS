@@ -30,3 +30,16 @@ export function envNumber(value: unknown, fallback: number, options: EnvNumberOp
   if (options.max !== undefined && n > options.max) return options.max;
   return n;
 }
+
+/**
+ * Reads a boolean env value ("true"/"1"/"yes"/"on" and "false"/"0"/"no"/"off", case-insensitive).
+ * Returns `fallback` when it is unset, empty or not recognised.
+ */
+export function envBool(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (value === undefined || value === null) return fallback;
+  const s = String(value).trim().toLowerCase();
+  if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
+  if (s === "false" || s === "0" || s === "no" || s === "off") return false;
+  return fallback;
+}

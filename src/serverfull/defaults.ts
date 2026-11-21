@@ -234,6 +234,28 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # Đáp án mới sau khi làm mới giữ nguyên TTL do upstream trả về. Càng thấp thì IP cũ (nếu sai) càng sớm được sửa.
 # DNS_STALE_ANSWER_TTL_SEC=30
 
+# Cache BLOCK answers (block rules, blocklists, default policy) in RAM (default: true).
+# A repeated query for a blocked domain then skips rule matching and writes no log row; it is still counted in the hourly rollups (Analytics stays correct).
+# Changing rules, lists, settings or access points of a profile clears its cached entries. Set to false to match and log every blocked query.
+# Cache cho kết quả BLOCK (rule chặn, blocklist, chính sách mặc định) trong RAM (mặc định: true).
+# Truy vấn lặp lại tới domain bị chặn sẽ bỏ qua bước so khớp rule và không ghi dòng log nào, nhưng vẫn được đếm vào rollup theo giờ (Analytics vẫn đúng).
+# Sửa rule, list, cài đặt hoặc access point của profile sẽ xoá cache của profile đó. Đặt false để so khớp và ghi log mọi truy vấn bị chặn.
+# DNS_CACHE_BLOCKED=true
+
+# Maximum lifetime (seconds) of a cached BLOCK answer (default: 86400 = 1 day, minimum 1). These entries are never served stale.
+# Safe to keep long: any change to rules, lists, settings or access points clears the profile's cache.
+# Thời gian sống tối đa (giây) của một kết quả BLOCK trong cache (mặc định: 86400 = 1 ngày, tối thiểu 1). Loại này không bao giờ được dùng khi đã hết hạn.
+# Để dài cũng an toàn: mọi thay đổi rule, list, cài đặt hay access point đều xoá cache của profile.
+# DNS_CACHE_BLOCKED_TTL_SEC=86400
+
+# Cache REDIRECT answers (custom redirect rules) in RAM (default: true).
+# Works like a normal domain: cached for the shortest TTL of its answer, no log row per cache hit, still counted in rollups.
+# A redirect to a CNAME target is cached only when its upstream lookup succeeded. Never served stale.
+# Cache cho kết quả REDIRECT (rule chuyển hướng tuỳ chỉnh) trong RAM (mặc định: true).
+# Hoạt động như domain thường: cache theo TTL nhỏ nhất của đáp án, cache hit không ghi log, vẫn được đếm vào rollup.
+# Redirect tới CNAME chỉ được cache khi truy vấn upstream của nó thành công. Không bao giờ được dùng khi đã hết hạn.
+# DNS_CACHE_REDIRECT=true
+
 # Maximum number of Profile Key mappings cached in RAM (default: 10000).
 # Số lượng khoá Profile Key tối đa được ánh xạ trong RAM L1 (mặc định: 10000).
 # PROFILE_KEY_CACHE_LIMIT=10000
