@@ -224,7 +224,9 @@ export async function handleProfileListsRequest(
       ...l,
       title: systemListsManager.getNameByUrl(l.url) || l.title || null,
       description: systemListsManager.getDescriptionByUrl(l.url) || l.description || null,
-      is_default: defaultUrls.has(l.url.trim().toLowerCase())
+      is_default: defaultUrls.has(l.url.trim().toLowerCase()),
+      // Provided by the admin (SYSTEM_FILTER_URLS / DEFAULT_PROFILE_FILTER_URLS), as opposed to a URL the user added.
+      is_system: systemListsManager.isSystemUrl(l.url)
     }));
     return new Response(JSON.stringify(named), { headers: { 'Content-Type': 'application/json' } });
   }

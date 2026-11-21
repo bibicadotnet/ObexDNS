@@ -35,6 +35,18 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
   // 0 = not measured yet (first paint): assume the wide layout, the real width arrives before the browser paints.
   const showCards = containerWidth > 0 && containerWidth < TABLE_MIN_WIDTH;
 
+  // Built-in (admin-provided) lists first, recommended ones leading; user-added lists below.
+  // Group headings only appear when both kinds exist: a single kind reads fine as a plain list.
+  const builtIn = lists.filter((l) => l.is_system).sort((a, b) => Number(!!b.is_default) - Number(!!a.is_default));
+  const custom = lists.filter((l) => !l.is_system);
+  const groups: { key: string; title?: string; items: FilterList[] }[] =
+    builtIn.length > 0 && custom.length > 0
+      ? [
+          { key: "builtin", title: t("filtering.groupBuiltIn", "Built-in lists"), items: builtIn },
+          { key: "custom", title: t("filtering.groupCustom", "Custom lists"), items: custom },
+        ]
+      : [{ key: "all", items: [...builtIn, ...custom] }];
+
   const columns: ColumnConfig[] = [
     {
       key: "name",
@@ -56,7 +68,7 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
                   )}
                   placement="top"
                 >
-                  <Tag intent={Intent.PRIMARY} icon="star" minimal className="shrink-0">
+                  <Tag intent={Intent.PRIMARY} minimal className="shrink-0">
                     {t("filtering.defaultBadge", "Recommended")}
                   </Tag>
                 </Tooltip>
@@ -139,13 +151,18 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
     return (
       <div ref={containerRef} className="w-full min-w-0 pb-4">
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {lists.map((list) => (
+          {groups.map((group) => (
+            <React.Fragment key={group.key}>
+              {group.title && (
+                <li className="px-1 pt-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+                  {group.title} · {group.items.length}
+                </li>
+              )}
+              {group.items.map((list) => (
             <li
               key={list.id}
               onClick={() => onSelect(list)}
               className="cursor-pointer rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800/60"
-              // Accent bar on the left edge of recommended lists, same as the table
-              style={list.is_default ? { boxShadow: "inset 3px 0 0 var(--bp6-intent-primary-color, #2d72d2)" } : undefined}
             >
               {nameCol.render(list)}
               <div
@@ -159,6 +176,8 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
                 </span>
               </div>
             </li>
+              ))}
+            </React.Fragment>
           ))}
         </ul>
       </div>
@@ -178,14 +197,24 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
           </tr>
         </thead>
         <tbody>
-          {lists.map((list) => (
+          {groups.map((group) => (
+            <React.Fragment key={group.key}>
+              {group.title && (
+                <tr>
+                  <td
+                    colSpan={columns.length}
+                    className="pt-4! pb-1.5! text-xs font-semibold uppercase tracking-wide opacity-60 bg-transparent!"
+                  >
+                    {group.title} · {group.items.length}
+                  </td>
+                </tr>
+              )}
+              {group.items.map((list) => (
             <tr key={list.id} onClick={() => onSelect(list)} className="cursor-pointer">
               {columns.map((col) => (
                 <td
                   key={col.key}
                   className={col.cellClassName}
-                  // Accent bar on the left edge of recommended lists so they stand out while scanning the table
-                  style={col.key === "name" && list.is_default ? { boxShadow: "inset 3px 0 0 var(--bp6-intent-primary-color, #2d72d2)" } : undefined}
                   // Stop at the <td> (not an inner div) so the cell padding and the empty
                   // space around the switch don't open the details dialog either.
                   onClick={col.stopRowClick ? (e) => e.stopPropagation() : undefined}
@@ -194,6 +223,8 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, onSelect, onToggl
                 </td>
               ))}
             </tr>
+              ))}
+            </React.Fragment>
           ))}
         </tbody>
       </HTMLTable>

@@ -18,4 +18,6 @@ export interface FilterList {
   description?: string | null;
   /** True for lists the admin configured as recommended defaults (DEFAULT_PROFILE_FILTER_URLS). */
   is_default?: boolean;
+  /** True for lists provided by the admin (SYSTEM_FILTER_URLS / DEFAULT_PROFILE_FILTER_URLS); false for user-added URLs. */
+  is_system?: boolean;
 }
