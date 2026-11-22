@@ -1,0 +1,245 @@
+/**
+ * @file systemList.ts
+ * @description Data access model for system-wide shared filter lists, blooms, and AdGuard rules.
+ */
+
+import { D1Database } from "@cloudflare/workers-types";
+import { SystemList } from "../types";
+import { FILTER_CHUNK_SIZE, FPRT_HEADER_SIZE } from "../utils/fingerprintSet";
+import { AdGuardPayload } from "../lib/adguard/types";
+
+export class SystemListModel {
+  constructor(private db: D1Database) {}
+
+  async getSystemLists(): Promise<SystemList[]> {
+    const { results } = await this.db.prepare("SELECT * FROM system_lists ORDER BY id ASC").all<SystemList>();
+    return results || [];
+  }
+
+  async getSystemListById(id: number): Promise<SystemList | null> {
+    return await this.db
+      .prepare("SELECT * FROM system_lists WHERE id = ?")
+      .bind(id)
+      .first<SystemList | null>();
+  }
+
+  async getSystemListByUrl(url: string): Promise<SystemList | null> {
+    return await this.db
+      .prepare("SELECT * FROM system_lists WHERE url = ?")
+      .bind(url.trim())
+      .first<SystemList | null>();
+  }
+
+  async isSystemUrl(url: string): Promise<boolean> {
+    const row = await this.getSystemListByUrl(url);
+    return row !== null;
+  }
+
+  async addSystemList(url: string, name?: string): Promise<{ success: boolean; id?: number }> {
+    const trimmed = url.trim();
+    const result = await this.db
+      .prepare("INSERT INTO system_lists (url, name) VALUES (?, ?) ON CONFLICT(url) DO UPDATE SET name = COALESCE(excluded.name, system_lists.name)")
+      .bind(trimmed, name || null)
+      .run();
+    const lastRowId = result.meta?.last_row_id;
+    if (lastRowId && typeof lastRowId === "number" && lastRowId > 0) {
+      return { success: result.success, id: lastRowId };
+    }
+    const inserted = await this.getSystemListByUrl(trimmed);
+    return { success: result.success, id: inserted?.id };
+  }
+
+  /** Sets the display name only when none is stored, so an admin-configured label always wins. */
+  async setNameIfEmpty(id: number, name: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE system_lists SET name = ? WHERE id = ? AND (name IS NULL OR name = '')")
+      .bind(name, id)
+      .run();
+  }
+
+  async updateMetadata(
+    id: number,
+    fields: {
+      etag?: string | null;
+      last_modified?: string | null;
+      last_synced_at?: number | null;
+      sync_error?: string | null;
+      rule_count?: number;
+      description?: string | null;
+    }
+  ): Promise<boolean> {
+    const sets: string[] = [];
+    const values: any[] = [];
+
+    if (fields.etag !== undefined) {
+      sets.push("etag = ?");
+      values.push(fields.etag);
+    }
+    if (fields.last_modified !== undefined) {
+      sets.push("last_modified = ?");
+      values.push(fields.last_modified);
+    }
+    if (fields.last_synced_at !== undefined) {
+      sets.push("last_synced_at = ?");
+      values.push(fields.last_synced_at);
+    }
+    if (fields.sync_error !== undefined) {
+      sets.push("sync_error = ?");
+      values.push(fields.sync_error);
+    }
+    if (fields.rule_count !== undefined) {
+      sets.push("rule_count = ?");
+      values.push(fields.rule_count);
+    }
+
+    if (fields.description !== undefined) {
+      sets.push("description = ?");
+      values.push(fields.description);
+    }
+
+    if (sets.length === 0) return true;
+
+    values.push(id);
+    const sql = `UPDATE system_lists SET ${sets.join(", ")} WHERE id = ?`;
+    const result = await this.db.prepare(sql).bind(...values).run();
+    return result.success;
+  }
+
+  // ─── System List Fingerprint Filter Storage ──────────────────────────────────────
+
+  async clearSystemListFilter(systemListId: number): Promise<boolean> {
+    const result = await this.db
+      .prepare("DELETE FROM system_list_blooms WHERE system_list_id = ?")
+      .bind(systemListId)
+      .run();
+    return result.success;
+  }
+
+  async upsertSystemListFilter(systemListId: number, FingerprintFilter: ArrayBuffer, now: number): Promise<boolean> {
+    const uint8Array = new Uint8Array(FingerprintFilter);
+    const statements = [];
+
+    statements.push(
+      this.db.prepare("DELETE FROM system_list_blooms WHERE system_list_id = ?").bind(systemListId)
+    );
+
+    let chunkIndex = 0;
+    for (let offset = 0; offset < uint8Array.length; offset += FILTER_CHUNK_SIZE) {
+      const chunkEnd = Math.min(offset + FILTER_CHUNK_SIZE, uint8Array.length);
+      const chunkData = uint8Array.subarray(offset, chunkEnd);
+      statements.push(
+        this.db.prepare(
+          "INSERT INTO system_list_blooms (system_list_id, chunk_index, bloom_filter_chunk, updated_at) VALUES (?, ?, ?, ?)"
+        ).bind(systemListId, chunkIndex, chunkData, now)
+      );
+      chunkIndex++;
+    }
+
+    const results = await this.db.batch(statements);
+    return results.every(r => r.success);
+  }
+
+  async getSystemListFilter(systemListId: number): Promise<ArrayBuffer | null> {
+    const { results } = await this.db.prepare(
+      "SELECT bloom_filter_chunk FROM system_list_blooms WHERE system_list_id = ? ORDER BY chunk_index ASC"
+    ).bind(systemListId).all<{ bloom_filter_chunk: ArrayBuffer }>();
+
+    if (!results || results.length === 0) return null;
+
+    if (results.length === 1) {
+      const chunk = results[0].bloom_filter_chunk;
+      if (chunk instanceof ArrayBuffer) return chunk;
+      // D1 may return a Uint8Array (possibly a sub-view); normalize to a standalone
+      // ArrayBuffer that respects byteOffset/length instead of the full backing buffer.
+      return new Uint8Array(chunk).buffer;
+    }
+
+    const totalLength = results.reduce((acc, row) => {
+      const len = row.bloom_filter_chunk.byteLength ?? (row.bloom_filter_chunk as any).length;
+      return acc + len;
+    }, 0);
+    const combined = new Uint8Array(totalLength);
+
+    let offset = 0;
+    for (const row of results) {
+      const chunk = new Uint8Array(row.bloom_filter_chunk);
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return combined.buffer as ArrayBuffer;
+  }
+
+  /**
+   * Reads only the first FPRT_HEADER_SIZE bytes of the stored filter instead of
+   * concatenating every ~1.5MB chunk. Enough for FingerprintSet.isCurrentVersion().
+   */
+  async getSystemListFilterHeader(systemListId: number): Promise<Uint8Array | null> {
+    const row = await this.db.prepare(
+      `SELECT substr(bloom_filter_chunk, 1, ${FPRT_HEADER_SIZE}) AS head FROM system_list_blooms WHERE system_list_id = ? AND chunk_index = 0`
+    ).bind(systemListId).first<{ head: ArrayBuffer | Uint8Array | null }>();
+    if (!row || !row.head) return null;
+    return row.head instanceof Uint8Array ? row.head : new Uint8Array(row.head);
+  }
+
+  /** True when the stored AdGuard payload holds any rule (no JSON.parse of the payload). */
+  async hasSystemListAdguardRules(systemListId: number): Promise<boolean> {
+    const emptyLen = JSON.stringify({ exceptions: [], rewrites: {}, patterns: [] }).length;
+    const row = await this.db.prepare(
+      "SELECT 1 AS present FROM system_list_adguard_rules WHERE system_list_id = ? AND length(payload) > ? LIMIT 1"
+    ).bind(systemListId, emptyLen).first<{ present: number }>();
+    return !!row;
+  }
+
+  /**
+   * Content version of a system list = last time its Bloom / rules were actually rewritten.
+   * Unlike system_lists.last_synced_at, this does NOT move on a 304 Not Modified, so it is the
+   * right key for deciding whether the in-memory copy is stale.
+   */
+  async getContentStamp(systemListId: number): Promise<number> {
+    const row = await this.db.prepare(
+      `SELECT MAX(u) AS stamp FROM (
+         SELECT MAX(updated_at) AS u FROM system_list_blooms WHERE system_list_id = ?
+         UNION ALL
+         SELECT MAX(updated_at) AS u FROM system_list_adguard_rules WHERE system_list_id = ?
+       )`
+    ).bind(systemListId, systemListId).first<{ stamp: number | null }>();
+    return Number(row?.stamp) || 0;
+  }
+
+  // ─── System List AdGuard Extended Rules Storage ───────────────────────────
+
+  async getSystemListAdguard(systemListId: number): Promise<AdGuardPayload | null> {
+    const row = await this.db.prepare(
+      "SELECT payload FROM system_list_adguard_rules WHERE system_list_id = ?"
+    ).bind(systemListId).first<{ payload: string }>();
+
+    if (!row || !row.payload) return null;
+    try {
+      return JSON.parse(row.payload) as AdGuardPayload;
+    } catch {
+      return null;
+    }
+  }
+
+  async upsertSystemListAdguard(systemListId: number, payload: AdGuardPayload, now: number): Promise<boolean> {
+    const jsonStr = JSON.stringify(payload);
+    const result = await this.db.prepare(
+      `INSERT INTO system_list_adguard_rules (system_list_id, payload, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(system_list_id) DO UPDATE SET
+         payload = excluded.payload,
+         updated_at = excluded.updated_at`
+    ).bind(systemListId, jsonStr, now).run();
+
+    return result.success;
+  }
+
+  async clearSystemListAdguard(systemListId: number): Promise<boolean> {
+    const result = await this.db
+      .prepare("DELETE FROM system_list_adguard_rules WHERE system_list_id = ?")
+      .bind(systemListId)
+      .run();
+    return result.success;
+  }
+}
+

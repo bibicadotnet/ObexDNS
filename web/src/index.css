@@ -1,0 +1,530 @@
+/* BlueprintJS Core CSS */
+@import "@blueprintjs/core/lib/css/blueprint.css";
+/* Self-hosted variable font. Includes the Vietnamese subset (loaded only when needed). */
+@import "@fontsource-variable/plus-jakarta-sans/wght.css";
+
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+ * Light theme only. The `dark:` variant is switched off on purpose:
+ * it can never match, so no stray dark styles can leak into the UI.
+ * ------------------------------------------------------------------ */
+@custom-variant dark (&:where([data-never-dark], [data-never-dark] *));
+
+/* ------------------------------------------------------------------
+ * Design tokens
+ *   Brand blue + peach come from the Obex logo.
+ *   Tailwind's blue / gray scales are remapped here so every existing
+ *   utility class (text-blue-600, bg-gray-50, ...) follows the new look.
+ *   Decorative hues (purple, cyan, indigo, ...) fall back to the brand
+ *   blue so icons stay calm. Red / green / amber keep their meaning.
+ * ------------------------------------------------------------------ */
+@theme {
+  --font-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  --color-blue-50: #eef5fa;
+  --color-blue-100: #d9e8f3;
+  --color-blue-200: #b4d1e6;
+  --color-blue-300: #86b2d1;
+  --color-blue-400: #4f8ab5;
+  --color-blue-500: #276c9c;
+  --color-blue-600: #14527f;
+  --color-blue-700: #104368;
+  --color-blue-800: #0d3552;
+  --color-blue-900: #0a283e;
+  --color-blue-950: #061a29;
+
+  --color-gray-50: #f7f8fa;
+  --color-gray-100: #eff2f5;
+  --color-gray-200: #e3e8ed;
+  --color-gray-300: #cfd6de;
+  --color-gray-400: #9aa6b3;
+  --color-gray-500: #6b7885;
+  --color-gray-600: #4f5b68;
+  --color-gray-700: #3a4550;
+  --color-gray-800: #263039;
+  --color-gray-900: #17202a;
+  --color-gray-950: #0e151c;
+
+  --color-purple-50: #eef5fa;
+  --color-purple-100: #d9e8f3;
+  --color-purple-400: #4f8ab5;
+  --color-purple-500: #276c9c;
+  --color-purple-600: #14527f;
+  --color-cyan-50: #eef5fa;
+  --color-cyan-100: #d9e8f3;
+  --color-cyan-400: #4f8ab5;
+  --color-cyan-500: #276c9c;
+  --color-cyan-600: #14527f;
+  --color-indigo-50: #eef5fa;
+  --color-indigo-100: #d9e8f3;
+  --color-indigo-500: #276c9c;
+  --color-indigo-600: #14527f;
+  --color-sky-50: #eef5fa;
+  --color-sky-100: #d9e8f3;
+  --color-sky-500: #276c9c;
+  --color-sky-600: #14527f;
+
+  --color-peach-50: #fff4f0;
+  --color-peach-100: #ffe6de;
+  --color-peach-200: #ffd0c4;
+  --color-peach-300: #f9b5a5;
+  --color-peach-400: #f2967f;
+  --color-peach-500: #e8765c;
+
+  --color-green-600: #1f8a5b;
+  --color-green-700: #17704a;
+  --color-red-600: #c23b3b;
+  --color-red-700: #a32f2f;
+}
+
+:root {
+  color-scheme: light;
+
+  --canvas: #f5f7fa;        /* page background */
+  --surface: #ffffff;       /* cards, sidebar, sheets */
+  --ink: #17202a;           /* main text */
+  --ink-muted: #5b6876;     /* secondary text */
+  --ink-faint: #8794a2;     /* hints, placeholders */
+  --line: #e3e8ed;          /* hairlines */
+  --line-strong: #cfd6de;
+  --brand: #14527f;
+  --brand-hover: #104368;
+  --brand-active: #0d3552;
+  --brand-tint: #eef5fa;
+  --peach: #f9b5a5;
+  --peach-tint: #fff4f0;
+  --ok: #1f8a5b;
+  --warn: #b7791f;
+  --bad: #c23b3b;
+
+  --radius-control: 10px;
+  --radius-card: 16px;
+  --radius-sheet: 20px;
+  --shadow-card: 0 1px 2px rgba(23, 32, 42, 0.04), 0 1px 1px rgba(23, 32, 42, 0.03);
+  --shadow-pop: 0 12px 32px -8px rgba(23, 32, 42, 0.18), 0 2px 6px rgba(23, 32, 42, 0.06);
+
+  --sidebar-w: 256px;
+  --sidebar-w-rail: 72px;
+  --topbar-h: 56px;
+  --bottomnav-h: 64px;
+
+  /* Legacy names used by the map and a few views */
+  --bg-color: var(--canvas);
+  --text-color: var(--ink);
+  --map-bg: #e3e8ed;
+  --map-hover: #14527f;
+  --map-color-0: #e3e8ed;
+  --map-color-1: #eef5fa;
+  --map-color-2: #d9e8f3;
+  --map-color-3: #b4d1e6;
+  --map-color-4: #86b2d1;
+  --map-color-5: #4f8ab5;
+  --map-color-6: #276c9c;
+  --map-color-7: #14527f;
+  --map-color-8: #104368;
+  --map-color-9: #0d3552;
+  --map-color-10: #0a283e;
+  --map-stroke: #ffffff;
+
+  /* ---- Blueprint design tokens ---- */
+  --bp-typography-family-default: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, blueprint-icons-16, sans-serif;
+  --bp-typography-family-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --bp-typography-size-body-x-small: 11px;
+  --bp-typography-size-body-small: 13px;
+  --bp-typography-size-body-medium: 15px;
+  --bp-typography-size-body-large: 17px;
+  --bp-typography-line-height-default: 1.5;
+  --bp-typography-line-height-large: 1.55;
+  --bp-typography-color-default-rest: var(--ink);
+  --bp-typography-color-default-hover: #0e151c;
+  --bp-typography-color-muted: var(--ink-muted);
+
+  --bp-surface-border-radius: var(--radius-control);
+  --bp-surface-border-color-default: var(--line);
+  --bp-surface-border-color-strong: var(--line-strong);
+
+  --bp-intent-primary-rest: #14527f;
+  --bp-intent-primary-hover: #104368;
+  --bp-intent-primary-active: #0d3552;
+  --bp-intent-success-rest: #1f8a5b;
+  --bp-intent-success-hover: #17704a;
+  --bp-intent-success-active: #115a3b;
+  --bp-intent-danger-rest: #c23b3b;
+  --bp-intent-danger-hover: #a32f2f;
+  --bp-intent-danger-active: #8a2626;
+  --bp-intent-warning-rest: #b7791f;
+  --bp-intent-warning-hover: #96620f;
+  --bp-intent-warning-active: #7a500a;
+  --bp-typography-color-primary-rest: #14527f;
+  --bp-typography-color-primary-hover: #104368;
+  --bp-typography-color-primary-active: #0d3552;
+  --bp-emphasis-focus-color: #276c9c;
+  --bp-emphasis-ease-default: cubic-bezier(0.2, 0, 0, 1);
+  --bp-emphasis-transition-duration: 140ms;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior-y: none;
+  }
+
+  /* Numbers line up in tables and counters */
+  table, .tabular { font-variant-numeric: tabular-nums; }
+
+  code, kbd, pre, samp { font-family: var(--font-mono); }
+
+  :focus-visible {
+    outline: 2px solid var(--bp-emphasis-focus-color);
+    outline-offset: 2px;
+  }
+
+  ::selection { background: #d9e8f3; color: #0a283e; }
+
+  /* Calm, thin scrollbars */
+  * { scrollbar-width: thin; scrollbar-color: #cfd6de transparent; }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb {
+    background: #cfd6de;
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background: #9aa6b3; background-clip: content-box; border: 3px solid transparent; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------
+ * Layout primitives
+ * ------------------------------------------------------------------ */
+.h-app { height: 100vh; height: 100dvh; }
+.min-h-app { min-height: 100vh; min-height: 100dvh; }
+
+/* Content column: one width for reading pages, one for data pages. */
+.page { width: 100%; min-width: 0; max-width: 60rem; margin-inline: auto; }
+.page-wide { width: 100%; min-width: 0; max-width: 78rem; margin-inline: auto; }
+
+/* Space around page content (shell adds the bottom-nav allowance on phones). */
+.page-pad { padding: 16px 16px 32px; }
+@media (min-width: 768px) { .page-pad { padding: 28px 32px 48px; } }
+@media (min-width: 1280px) { .page-pad { padding: 32px 40px 56px; } }
+
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+
+/* ------------------------------------------------------------------
+ * Type scale. Every page uses the same levels.
+ *   .page-title       22px (26px on tablets and up) - one per page
+ *   .page-subtitle    15px muted                    - line under the page title
+ *   .section-title    17px                          - title of a card / section
+ *   .subsection-title 15px                          - group title inside a card
+ * Unlayered (like Blueprint) so they beat its h1-h6 defaults.
+ * ------------------------------------------------------------------ */
+.page-title {
+  margin: 0;
+  padding: 0;
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.page-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.5rem;
+  color: var(--ink-muted);
+  max-width: 62ch;
+}
+.section-title {
+  margin: 0;
+  padding: 0;
+  font-size: 1.0625rem;
+  line-height: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+}
+.subsection-title {
+  margin: 0;
+  padding: 0;
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
+  font-weight: 650;
+}
+@media (min-width: 768px) {
+  .page-title { font-size: 1.625rem; line-height: 2.125rem; }
+}
+
+/* Fine print */
+.hint { font-size: 0.8125rem; line-height: 1.25rem; color: var(--ink-muted); }
+
+/* ------------------------------------------------------------------
+ * Blueprint, re-skinned
+ * ------------------------------------------------------------------ */
+/* Controls: comfortable on phones (>=44px target, 16px text so iOS never zooms). */
+.bp6-button { font-weight: 600; letter-spacing: 0; }
+.bp6-button.bp6-minimal { font-weight: 550; }
+.bp6-button:not(.bp6-minimal):not(.bp6-outlined)[class*="bp6-intent-"] { box-shadow: none; }
+
+@media (pointer: coarse), (max-width: 767px) {
+  .bp6-button:not(.bp6-small) { min-height: 44px; min-width: 44px; }
+  .bp6-button.bp6-small { min-height: 36px; min-width: 36px; }
+  .bp6-input-group:not(.bp6-small) .bp6-input,
+  .bp6-html-select:not(.bp6-small) select,
+  .bp6-numeric-input .bp6-input {
+    height: 44px;
+    line-height: 44px;
+    font-size: 16px;
+  }
+  textarea.bp6-input, .bp6-input { font-size: 16px; }
+  .bp6-menu-item { min-height: 44px; align-items: center; padding-block: 8px; }
+  .bp6-control { padding-block: 4px; }
+}
+
+.bp6-input { box-shadow: inset 0 0 0 1px var(--line-strong); background: #fff; }
+.bp6-input:focus, .bp6-input.bp6-active {
+  box-shadow: inset 0 0 0 1px var(--brand), 0 0 0 3px rgba(39, 108, 156, 0.18);
+}
+.bp6-input::placeholder { color: var(--ink-faint); }
+
+/* Cards and sections */
+.bp6-card {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
+}
+.bp6-card.bp6-interactive:hover { box-shadow: 0 4px 14px -4px rgba(23, 32, 42, 0.12); border-color: var(--line-strong); }
+.bp6-section {
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.bp6-section-header { border-bottom: 1px solid var(--line); padding-block: 14px; min-height: 0; }
+.bp6-section-card { padding: 20px; }
+@media (max-width: 639px) { .bp6-section-card { padding: 16px; } }
+
+.bp6-callout { border-radius: 12px; padding: 14px 16px; }
+.bp6-tag { font-weight: 600; }
+.bp6-tag.bp6-round { border-radius: 999px; }
+
+/* Tabs: underline style, scrollable on narrow screens */
+.bp6-tab-list { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
+.bp6-tab-list::-webkit-scrollbar { display: none; }
+.bp6-tab { white-space: nowrap; font-weight: 600; }
+@media (max-width: 767px) { .bp6-tab { min-height: 44px; display: inline-flex; align-items: center; } }
+
+/* Menus and popovers */
+.bp6-popover-content { border-radius: 14px; box-shadow: var(--shadow-pop); border: 1px solid var(--line); max-width: calc(100vw - 24px); }
+.bp6-menu { padding: 6px; }
+.bp6-menu-item { border-radius: 8px; }
+.bp6-menu-item.bp6-active, .bp6-menu-item.bp6-active:hover { background: var(--brand-tint); color: var(--brand); }
+
+/* Dialogs: centred card on large screens, bottom sheet on phones */
+.bp6-dialog { background: var(--surface); border-radius: var(--radius-sheet); }
+.bp6-dialog-header { border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; box-shadow: none; border-bottom: 1px solid var(--line); min-height: 56px; }
+.bp6-dialog-header .bp6-heading { font-size: 1.0625rem; font-weight: 650; }
+.bp6-dialog-body { margin: 20px; }
+.bp6-dialog-footer { margin: 0 20px 20px; }
+.bp6-overlay-backdrop { background-color: rgba(14, 21, 28, 0.45); }
+.bp6-alert { border-radius: var(--radius-card); max-width: min(480px, calc(100vw - 32px)); }
+
+@media (max-width: 639px) {
+  .bp6-dialog-container { align-items: flex-end !important; }
+  .bp6-dialog {
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .bp6-dialog-body-scroll-container, .bp6-dialog-body { overflow-y: auto; }
+  .bp6-dialog-container.bp6-overlay-enter > .bp6-dialog,
+  .bp6-dialog-container.bp6-overlay-appear > .bp6-dialog { transform: translateY(40px); opacity: 0; }
+  .bp6-dialog-container.bp6-overlay-exit-active > .bp6-dialog { transform: translateY(40px); opacity: 0; }
+}
+
+/* Drawers fill the phone width */
+@media (max-width: 639px) { .bp6-drawer { width: 100% !important; max-width: 100% !important; } }
+
+/* Toasts clear the bottom navigation on phones */
+.bp6-toast-container .bp6-toast { border-radius: 12px; }
+@media (max-width: 767px) {
+  .bp6-toast-container.bp6-toast-container-bottom {
+    bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom, 0px) + 8px);
+  }
+}
+
+/* Blueprint portals appear above modals, overlays and the lock screen */
+.bp6-portal { z-index: 20000 !important; }
+
+/* Tooltips: white card with dark text */
+.bp6-tooltip:not([class*="bp6-intent-"]),
+.analytics-sync-tooltip {
+  box-shadow: var(--shadow-pop) !important;
+}
+.bp6-tooltip:not([class*="bp6-intent-"]) .bp6-popover-content,
+.analytics-sync-tooltip .bp6-popover-content {
+  background: #ffffff !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.bp6-tooltip:not([class*="bp6-intent-"]) .bp6-popover-content .bp6-heading,
+.analytics-sync-tooltip .bp6-popover-content .bp6-heading { color: var(--ink) !important; }
+.bp6-tooltip:not([class*="bp6-intent-"]) .bp6-popover-arrow-fill,
+.analytics-sync-tooltip .bp6-popover-arrow-fill { fill: #ffffff !important; }
+.bp6-tooltip:not([class*="bp6-intent-"]) .bp6-popover-arrow-border,
+.analytics-sync-tooltip .bp6-popover-arrow-border { fill: var(--line) !important; fill-opacity: 1 !important; }
+
+/* Blueprint <Section> headers (Setup, log drawer, Analytics) follow the card-title size. */
+.bp6-section-header-title,
+.bp6-section .bp6-section-header h6 {
+  font-size: 1.0625rem;
+  line-height: 1.5rem;
+  font-weight: 650;
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------
+ * App components
+ * ------------------------------------------------------------------ */
+@keyframes rowGlow {
+  0% { background-color: rgba(39, 108, 156, 0.18); }
+  100% { background-color: transparent; }
+}
+.animate-row-glow { animation: rowGlow 2.5s ease-out; }
+
+/* RefreshButton cooldown: the ring empties over the pause length (set inline via animation-duration). */
+@keyframes refresh-ring-drain {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: var(--ring-c); }
+}
+
+/* Surface used by hand-built cards */
+.surface {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* Segmented control (language, Rules/Blocklists, ranges) */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: #eaeef2;
+  border-radius: 12px;
+}
+.segmented > button, .segmented > a {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.875rem;
+  line-height: 1;
+  padding: 0 14px;
+  min-height: 36px;
+  border-radius: 9px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 140ms, color 140ms, box-shadow 140ms;
+}
+.segmented > button:hover, .segmented > a:hover { color: var(--ink); }
+.segmented > [aria-pressed="true"], .segmented > [aria-current="page"], .segmented > [aria-selected="true"] {
+  background: #fff;
+  color: var(--brand);
+  box-shadow: 0 1px 2px rgba(23, 32, 42, 0.12);
+}
+@media (max-width: 767px) { .segmented > button, .segmented > a { min-height: 40px; } }
+.segmented.segmented-fill { display: flex; width: 100%; }
+.segmented.segmented-fill > * { flex: 1 1 0; }
+.segmented.segmented-compact > button { min-height: 28px; padding: 0 9px; font-size: 0.75rem; }
+
+/* ------------------------------------------------------------------
+ * Tables: one calm style (white card, hairlines, soft hover)
+ * ------------------------------------------------------------------ */
+table.bp6-html-table {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+table.bp6-html-table th {
+  padding: 12px 14px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--ink-muted);
+  text-align: left;
+  background: #f7f8fa;
+  box-shadow: none;
+  border-bottom: 1px solid var(--line);
+}
+table.bp6-html-table td {
+  padding: 12px 14px;
+  vertical-align: middle;
+  box-shadow: none;
+  border-top: 1px solid var(--line);
+  background: transparent;
+}
+table.bp6-html-table tbody tr:first-child td { border-top: 0; }
+table.bp6-html-table.bp6-html-table-striped tbody tr:nth-child(odd) td { background: transparent; }
+table.bp6-html-table.bp6-interactive tbody tr:hover td { background: var(--brand-tint); }
+
+/* Inputs: keep the leading icon centred in the taller touch-sized field */
+@media (pointer: coarse), (max-width: 767px) {
+  .bp6-input-group:not(.bp6-small) > .bp6-icon:first-child { margin: 14px; }
+  .bp6-input-group:not(.bp6-small) > .bp6-input-action { top: 4px; right: 4px; }
+}
+
+/* Segmented control that is full-width only on phones */
+@media (max-width: 639px) {
+  .segmented.segmented-fill-mobile { display: flex; width: 100%; }
+  .segmented.segmented-fill-mobile > * { flex: 1 1 0; }
+}
