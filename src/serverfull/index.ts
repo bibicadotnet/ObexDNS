@@ -8,7 +8,6 @@ import path from 'node:path';
 import { initNodeGlobals } from './cache';
 import { getPackageVersion, getServerfullConfig } from './config';
 import { initServerfullDb } from './db';
-import { createWorkerDb } from './workerDb';
 import { createTursoClient, maskDatabaseUrl } from '../lib/turso';
 import { runTursoMigrations } from '../lib/turso/migrate';
 import { UdpDnsServer } from './udp';
@@ -115,7 +114,7 @@ async function bootstrap(): Promise<void> {
   }
 
   // 4. Initialize Database adapter based on DATABASE_SERVICE (File | Turso | D1)
-  let closeLocalDb: (() => void | Promise<void>) | null = null;
+  let localSqliteDb: { rawDb: { close(): void } } | null = null;
 
   if (config.databaseService === 'Turso') {
     if (!config.tursoDatabaseUrl || !config.tursoAuthToken) {
@@ -147,19 +146,9 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   } else {
     // Default: 'File' (Local SQLite)
-    // Migrations and the one-time auto_vacuum conversion run here, synchronously, before any socket is open.
     const db = initServerfullDb(config.dbPath);
-    // Then SQLite moves to worker threads (1 writer + readers) so no query can block the thread serving DNS.
-    // Returns null (DB_WORKER=0, bundle missing, startup failure) and we keep using this in-process connection.
-    const workerDb = await createWorkerDb(config.dbPath);
-    if (workerDb) {
-      db.close();
-      env.DB = workerDb;
-      closeLocalDb = () => workerDb.close();
-    } else {
-      env.DB = db;
-      closeLocalDb = () => db.close();
-    }
+    localSqliteDb = db;
+    env.DB = db;
   }
 
   // Cảnh báo cấu hình mâu thuẫn nếu MAX_LIST_DOMAINS * ~30 byte > MAX_LIST_BYTES
@@ -319,9 +308,9 @@ async function bootstrap(): Promise<void> {
       /* ignore */
     }
 
-    if (closeLocalDb) {
+    if (localSqliteDb) {
       try {
-        await closeLocalDb();
+        localSqliteDb.rawDb.close();
         console.log('[Serverfull] Database connection closed.');
       } catch {
         /* ignore */
