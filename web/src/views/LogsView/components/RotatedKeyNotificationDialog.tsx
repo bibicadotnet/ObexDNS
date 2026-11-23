@@ -26,7 +26,7 @@ export const RotatedKeyNotificationDialog: React.FC<RotatedKeyNotificationDialog
     <Dialog
       isOpen={!!rotatedKey}
       onClose={onClose}
-      title={t("account.recoveryKey.autoRotatedTitle")}
+      title={t("account.recoveryKey.autoRotatedTitle", "恢复密钥已自动轮换")}
       icon="warning-sign"
       isCloseButtonShown={false}
       canOutsideClickClose={false}
@@ -38,12 +38,15 @@ export const RotatedKeyNotificationDialog: React.FC<RotatedKeyNotificationDialog
           icon={<ShieldAlert size={16} />}
           className="mb-4 text-xs"
         >
-          {t("account.recoveryKey.autoRotatedNotice")}
+          {t(
+            "account.recoveryKey.autoRotatedNotice",
+            "根据恢复密钥单次使用规则，您的原恢复密钥已失效，系统已为您生成全新 30 位紧急恢复密钥。请务必立即复制并妥善离线保存，关闭后将无法再次查看！"
+          )}
         </Callout>
 
         {rotatedKey && (
           <div className="space-y-3">
-            <div className="p-3 bg-gray-100 rounded border border-gray-200 font-mono text-center text-lg font-bold select-all text-gray-900 ">
+            <div className="p-3 bg-gray-100 rounded border border-gray-200 font-mono text-center text-lg font-bold tracking-widest select-all text-gray-900">
               {rotatedKey}
             </div>
             <div className="flex justify-center">
@@ -58,8 +61,8 @@ export const RotatedKeyNotificationDialog: React.FC<RotatedKeyNotificationDialog
                 }
                 text={
                   copiedKey
-                    ? t("common.copied")
-                    : t("common.copyKey")
+                    ? t("common.copied", "已复制")
+                    : t("common.copyKey", "复制新恢复密钥")
                 }
                 onClick={() => onCopyKey(rotatedKey)}
               />
@@ -72,7 +75,7 @@ export const RotatedKeyNotificationDialog: React.FC<RotatedKeyNotificationDialog
           <Button
             intent={Intent.SUCCESS}
             onClick={onClose}
-            text={t("account.recoveryKey.savedAndClose")}
+            text={t("account.recoveryKey.savedAndClose", "我已妥善保存并继续")}
           />
         </div>
       </div>

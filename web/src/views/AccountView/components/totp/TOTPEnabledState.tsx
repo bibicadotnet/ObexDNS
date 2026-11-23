@@ -93,7 +93,7 @@ export const TOTPEnabledState: React.FC<TOTPEnabledStateProps> = ({
         </div>
       </div>
       <div className="space-y-4">
-        <p className="text-sm text-gray-600 ">
+        <p className="text-sm text-gray-600">
           {t(
             "account.totp.activeDesc",
             "Authenticator app (TOTP) is active and generating 6-digit verification codes for your account."

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import { Button, Intent } from "@blueprintjs/core";
 import { Plus, Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { preloadHeavyViews, preloadMainViews } from "../../routes/ProfileRoutes";
 import type { Profile, UserInfo } from "../../types/auth";
 import { useImportProfile } from "./hooks";
@@ -36,9 +36,11 @@ export const DashboardHomeView = ({
   error,
   onDelete,
   handleLogout,
+  navigate,
   onRefresh,
   currentUser,
 }: DashboardHomeProps) => {
+  const isMobile = useIsMobile();
   const { t } = useTranslation();
 
   const {
@@ -55,36 +57,60 @@ export const DashboardHomeView = ({
   }, []);
 
   return (
-    <div className="min-h-app flex flex-col bg-(--canvas)">
-      <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleFileChange} />
+    <div className="min-h-screen bg-[#f8fafc] text-gray-900 flex flex-col font-sans antialiased">
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept=".json"
+        onChange={handleFileChange}
+      />
 
-      <Navbar handleLogout={handleLogout} currentUser={currentUser} />
+      {/* Top Navbar */}
+      <Navbar
+        isMobile={isMobile}
+        navigate={navigate}
+        handleLogout={handleLogout}
+        currentUser={currentUser}
+      />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-12 pt-6 md:px-6 md:pt-10">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
-          <div className="min-w-0">
-            <h1 className="page-title">{t("common.yourProfiles", "Your profiles")}</h1>
-            <p className="page-subtitle">{t("common.selectProfile")}</p>
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        {/* Page Header with Action Buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 m-0">
+              {t("common.selectProfile", "Danh sách Profile DNS")}
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500 mt-1 font-medium">
+              {t("common.selectProfileSubtitle", "Quản lý các cấu hình chặn quảng cáo và bảo vệ mạng cho từng thiết bị")}
+            </p>
           </div>
-          <div className="flex w-full items-center gap-2 sm:w-auto">
-            <Button
-              icon={<Download size={16} />}
+
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
               onClick={handleImportClick}
-              text={t("common.import")}
-              loading={importing}
-              className="flex-1 sm:flex-none"
-            />
-            <Button
-              intent={Intent.PRIMARY}
-              icon={<Plus size={18} />}
+              disabled={importing}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#d0d7de] bg-white hover:bg-gray-50 text-gray-700 text-xs sm:text-sm font-semibold shadow-xs hover:border-gray-400 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Download className="w-4 h-4 text-gray-500" />
+              <span>{t("common.import", "Nhập cấu hình")}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowCreate(true)}
-              text={t("common.newProfile", "New profile")}
               disabled={showCreate}
-              className="flex-1 sm:flex-none"
-            />
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0969da] hover:bg-[#0854ad] active:bg-[#074794] text-white text-xs sm:text-sm font-semibold shadow-xs hover:shadow-sm transition-all cursor-pointer disabled:opacity-40"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t("common.add", "Thêm Profile")}</span>
+            </button>
           </div>
         </div>
 
+        {/* Create Profile Card Dropdown/Area */}
         {showCreate && (
           <CreateProfileCard
             newName={newName}
@@ -95,11 +121,12 @@ export const DashboardHomeView = ({
           />
         )}
 
+        {/* Profile Cards Grid */}
         <ProfileList
           profiles={profiles}
           onSelect={onSelect}
           onDelete={onDelete}
-          onCreate={() => setShowCreate(true)}
+          onRefresh={onRefresh}
         />
       </main>
     </div>

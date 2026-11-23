@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Card, Elevation, H4, Tag, Intent, Switch, Callout, Divider } from "@blueprintjs/core";
+import { Card, Elevation, H4, Tag, Intent, Switch, Callout } from "@blueprintjs/core";
 import { ShieldCheck, KeyRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { UserInfo } from "../types";
@@ -75,28 +75,25 @@ export const MfaCard: React.FC<MfaCardProps> = ({ user, onRefresh }) => {
         </p>
 
         {isMfaEnabled ? (
-          <>
-            <Divider className="my-3" />
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-1">
-              <div>
-                <div className="font-medium text-sm text-gray-900 ">
-                  {t("account.mfa.passwordlessTitle", "Passwordless Login")}
-                </div>
-                <div className="text-xs text-gray-500 ">
-                  {t(
-                    "account.mfa.passwordlessDesc",
-                    "When enabled, logging in will skip the password requirement and verify your identity directly via Passkey or TOTP."
-                  )}
-                </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2">
+            <div>
+              <div className="font-medium text-sm text-gray-900">
+                {t("account.mfa.passwordlessTitle", "Passwordless Login")}
               </div>
-              <Switch
-                checked={!!user.totp_skip_password}
-                onChange={(e) => handleToggleSkipPassword(e.currentTarget.checked)}
-                disabled={settingsLoading}
-                className="mb-0 shrink-0"
-              />
+              <div className="text-xs text-gray-500">
+                {t(
+                  "account.mfa.passwordlessDesc",
+                  "When enabled, logging in will skip the password requirement and verify your identity directly via Passkey or TOTP."
+                )}
+              </div>
             </div>
-          </>
+            <Switch
+              checked={!!user.totp_skip_password}
+              onChange={(e) => handleToggleSkipPassword(e.currentTarget.checked)}
+              disabled={settingsLoading}
+              className="mb-0 shrink-0"
+            />
+          </div>
         ) : (
           <Callout intent={Intent.PRIMARY} icon={<KeyRound size={16} style={{ display: "inline-flex", alignItems: "center", marginRight: "8px" }} />}>
             {t(
@@ -107,17 +104,11 @@ export const MfaCard: React.FC<MfaCardProps> = ({ user, onRefresh }) => {
         )}
       </div>
 
-      <Divider />
-
       {/* Section 1: Passkey */}
       <PasskeyCard user={user} onRefresh={onRefresh} />
 
-      <Divider />
-
       {/* Section 2: TOTP */}
       <TOTPCard user={user} onRefresh={onRefresh} />
-
-      <Divider />
 
       {/* Section 3: Recovery Keys */}
       <RecoveryKeyCard user={user} onRefresh={onRefresh} />

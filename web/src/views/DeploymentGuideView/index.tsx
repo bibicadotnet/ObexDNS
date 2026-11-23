@@ -32,7 +32,7 @@ export const DeploymentGuideView: React.FC = () => {
   return (
     <div className="flex flex-row min-h-screen bg-white overflow-hidden relative">
       {/* Scroll Intro Sidebar (Left Panel) */}
-      <div className="hidden lg:block w-1/2 h-screen overflow-hidden border-r border-gray-100 ">
+      <div className="hidden lg:block w-1/2 h-screen overflow-hidden border-r border-gray-100">
         <ScrollingIntro />
       </div>
 

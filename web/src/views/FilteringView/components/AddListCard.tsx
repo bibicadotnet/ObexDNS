@@ -2,6 +2,7 @@ import React from "react";
 import { Card, Elevation, InputGroup, Button, PopoverNext, Intent, Menu, MenuItem, MenuDivider, Tag } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { usePresetLists } from "../hooks";
+import { getListDisplay } from "../utils";
 import type {  FilterList  } from "../types";
 
 export interface AddListCardProps {
@@ -20,6 +21,7 @@ export const AddListCard: React.FC<AddListCardProps> = ({ newUrl, setNewUrl, onA
   const renderPreset = (preset: (typeof PRESET_LISTS)[number]) => {
     const description = preset.description?.trim();
     const added = lists.some((l) => l.url === preset.url);
+    const label = getListDisplay({ url: preset.url, title: preset.label }, t).name;
     return (
       <MenuItem
         key={preset.url}
@@ -31,7 +33,7 @@ export const AddListCard: React.FC<AddListCardProps> = ({ newUrl, setNewUrl, onA
         text={
           <div className="min-w-0">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="font-medium truncate">{preset.label}</span>
+              <span className="font-medium truncate">{label}</span>
               {added && (
                 <Tag minimal className="shrink-0">
                   {t("filtering.added", "Added")}

@@ -127,11 +127,11 @@ export const ForgotPasswordMfaStep: React.FC<ForgotPasswordMfaStepProps> = ({
 
       {(initData.has_totp || initData.has_recovery_keys) && initData.has_passkey && (
         <div className="relative flex py-1 items-center">
-          <div className="flex-grow border-t border-gray-200 " />
+          <div className="flex-grow border-t border-gray-200" />
           <span className="flex-shrink mx-3 text-gray-400 text-xs">
             {t("auth.orUseOtherMfa", "or use another method")}
           </span>
-          <div className="flex-grow border-t border-gray-200 " />
+          <div className="flex-grow border-t border-gray-200" />
         </div>
       )}
 
@@ -153,7 +153,10 @@ export const ForgotPasswordMfaStep: React.FC<ForgotPasswordMfaStepProps> = ({
           {mfaMode === "recovery" && initData.has_recovery_keys && (
             <FormGroup
               label={t("account.totp.recoveryKeysTitle", "Recovery Key")}
-              helperText={t("auth.recoveryPrompt")}
+              helperText={t(
+                "auth.recoveryPrompt",
+                "请输入 30 位应急恢复密钥（5 组，每组 6 位数字）"
+              )}
             >
               <div className="pt-2">
                 <RecoveryKeyInput

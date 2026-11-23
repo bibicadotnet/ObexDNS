@@ -11,8 +11,8 @@ interface MobileTopBarProps {
   selectedProfile: Profile | null;
   onSwitchProfile: (profile: Profile) => void;
   onShowAllProfiles: () => void;
-  /** True on the account page, where the bar shows a title and a back button instead of the profile. */
-  isAccountPage: boolean;
+  /** Set on the account and system pages: the bar shows this title and a back button instead of the profile. */
+  pageTitle?: string;
   onBack: () => void;
   isSaving?: boolean;
   currentUser: UserInfo | null;
@@ -28,7 +28,7 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
   selectedProfile,
   onSwitchProfile,
   onShowAllProfiles,
-  isAccountPage,
+  pageTitle,
   onBack,
   isSaving,
   currentUser,
@@ -38,7 +38,7 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
   return (
     <header className="pt-safe z-20 shrink-0 border-b border-gray-200 bg-white">
       <div className="flex h-14 items-center gap-2 px-3">
-        {isAccountPage ? (
+        {pageTitle ? (
           <>
             <button
               type="button"
@@ -48,7 +48,7 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({
             >
               <ArrowLeft size={20} />
             </button>
-            <h1 className="m-0 min-w-0 flex-1 truncate text-lg font-bold text-gray-900">{t("common.account")}</h1>
+            <h1 className="m-0 min-w-0 flex-1 truncate text-lg font-bold text-gray-900">{pageTitle}</h1>
           </>
         ) : (
           <div className="min-w-0 flex-1">

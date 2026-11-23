@@ -86,7 +86,7 @@ DATABASE_SERVICE = "D1"
 
 # Recommended: configure JWT_SECRET via Worker Secrets / Environment Variables
 # (e.g. `npx wrangler secret put JWT_SECRET` or via dashboard) to keep secrets out of git.
-# JWT_SECRET = ""
+JWT_SECRET = "a_very_secret_key_that_is_at_least_32_characters_long_for_dev"
 # (Optional) Cloudflare Zone Cache Purge by Tag.
 # When configured, profile config and bloom cache updates will be purged globally across all Cloudflare data centers by Cache-Tag.
 # CF_ZONE_ID can be configured here or in environment variables; CF_PURGE_TOKEN should be stored in Worker Secrets (e.g. `npx wrangler secret put CF_PURGE_TOKEN`).

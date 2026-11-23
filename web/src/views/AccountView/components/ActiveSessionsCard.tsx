@@ -126,7 +126,7 @@ export const ActiveSessionsCard: React.FC<ActiveSessionsCardProps> = ({
                   key={session.id}
                   onMouseEnter={() => setHoveredSessionId?.(session.id)}
                   onMouseLeave={() => setHoveredSessionId?.(null)}
-                  className={hoveredSessionId === session.id ? "bg-gray-100/80 " : ""}
+                  className={hoveredSessionId === session.id ? "bg-gray-100/80" : ""}
                 >
                   <td>
                     <div className="flex items-start gap-2">

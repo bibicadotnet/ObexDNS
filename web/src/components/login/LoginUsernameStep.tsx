@@ -1,36 +1,18 @@
 import React from "react";
-import { FormGroup, InputGroup, Button, Intent } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
+import { User, ArrowRight, Loader2 } from "lucide-react";
 
-/**
- * Properties for the LoginUsernameStep component.
- */
 export interface LoginUsernameStepProps {
-  /** The current username value. */
   username: string;
-  /** Callback to update the username value. */
   setUsername: (val: string) => void;
-  /** Flag showing if Turnstile verification is enabled. */
   isTurnstileEnabled: boolean | undefined;
-  /** Ref pointing to the Turnstile container div. */
   turnstileRef: React.RefObject<HTMLDivElement | null>;
-  /** Indicates if Turnstile has rendered a visible widget (managed/challenge). */
   hasVisibleWidget?: boolean;
-  /** Indicates if prelogin check is loading. */
   loading: boolean;
-  /** The current state of Turnstile verification. */
   turnstileStatus: "idle" | "verifying" | "success" | "error";
-  /** Callback to handle form submission. */
   onSubmit: (e: React.FormEvent) => void;
 }
 
-/**
- * LoginUsernameStep is the first step of the login flow.
- * It takes the username and runs Turnstile verification.
- *
- * @param props - Component props.
- * @returns React element representing login username form step.
- */
 export const LoginUsernameStep: React.FC<LoginUsernameStepProps> = ({
   username,
   setUsername,
@@ -39,55 +21,62 @@ export const LoginUsernameStep: React.FC<LoginUsernameStepProps> = ({
   hasVisibleWidget,
   loading,
   turnstileStatus,
-  onSubmit
+  onSubmit,
 }) => {
   const { t } = useTranslation();
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <FormGroup label={t("auth.username")} labelFor="username">
-        <InputGroup
-          id="username"
-          leftIcon="user"
-          placeholder={t("auth.usernamePlaceholder")}
-          size="large"
-          className="rounded-xl w-full"
-          value={username}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setUsername(e.target.value)
-          }
-          autoFocus
-          required
-        />
-      </FormGroup>
+      <div>
+        <label
+          htmlFor="username"
+          className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1.5"
+        >
+          {t("auth.username", "Tên đăng nhập")}
+        </label>
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+            <User className="w-4 h-4" />
+          </div>
+          <input
+            id="username"
+            type="text"
+            placeholder={t("auth.usernamePlaceholder", "Nhập tên đăng nhập")}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoFocus
+            required
+            className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-300 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium"
+          />
+        </div>
+      </div>
 
       {isTurnstileEnabled && (
         <div
-          className={`flex justify-center transition-all duration-200 ${
-            hasVisibleWidget
-              ? "py-2 min-h-16.25"
-              : "h-0 overflow-hidden [&:has(iframe:not([style*='height: 0px']))]:py-2 [&:has(iframe:not([style*='height: 0px']))]:min-h-16.25"
+          ref={turnstileRef}
+          className={`flex justify-center transition-all duration-300 ${
+            hasVisibleWidget ? "opacity-100 min-h-[65px] my-3" : "opacity-0 h-0 overflow-hidden"
           }`}
-        >
-          <div ref={turnstileRef} />
-        </div>
+        />
       )}
 
-      <Button
-        fill
-        size="large"
-        intent={Intent.PRIMARY}
+      <button
         type="submit"
-        loading={loading || turnstileStatus === "verifying"}
-        disabled={
-          !!isTurnstileEnabled && turnstileStatus !== "success"
-        }
-        className="mt-6 font-bold py-6 rounded-xl shadow-lg shadow-blue-500/20"
+        disabled={loading || (isTurnstileEnabled && turnstileStatus !== "success")}
+        className="w-full mt-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-xs hover:shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
       >
-        {turnstileStatus === "verifying"
-          ? t("auth.verifying")
-          : t("auth.next", "Next")}
-      </Button>
+        {loading ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>{t("common.loading", "Đang xử lý...")}</span>
+          </>
+        ) : (
+          <>
+            <span>{t("auth.next", "Tiếp tục")}</span>
+            <ArrowRight className="w-4 h-4" />
+          </>
+        )}
+      </button>
     </form>
   );
 };

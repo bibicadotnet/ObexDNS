@@ -88,7 +88,10 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
       const e2eeStatus = await e2ee.getUserStatus();
       if (e2eeStatus.hasKeys && !rewrapSuccess) {
         setCardMessage({
-          text: t("account.recoveryKey.rotateSuccessE2eeWarning"),
+          text: t(
+            "account.recoveryKey.rotateSuccessE2eeWarning",
+            "恢复密钥已成功轮换！注意：由于端到端加密此前处于锁定状态且未能解密，旧 E2EE 密文仍需使用轮换前的旧恢复密钥解锁，或可在下方端到端加密卡片中点击「重置密钥对」。"
+          ),
           intent: Intent.WARNING
         });
         onRefresh();
@@ -99,7 +102,10 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
     }
 
     setCardMessage({
-      text: t("account.recoveryKey.rotateSuccess"),
+      text: t(
+        "account.recoveryKey.rotateSuccess",
+        "恢复密钥已成功轮换！请立即妥善离线保存新密钥，旧密钥已失效。"
+      ),
       intent: Intent.SUCCESS
     });
     onRefresh();
@@ -117,15 +123,18 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
         <div className="flex items-center gap-2 flex-wrap">
           <Key size={18} className="text-amber-500" />
           <H4 className="section-title">
-            {t("account.recoveryKey.title")}
+            {t("account.recoveryKey.title", "紧急恢复密钥")}
           </H4>
           <Tag intent={hasRecoveryKeys ? Intent.SUCCESS : Intent.NONE} minimal round>
             {hasRecoveryKeys
-              ? t("account.recoveryKey.configured")
-              : t("account.recoveryKey.notConfigured")}
+              ? t("account.recoveryKey.configured", "已配置")
+              : t("account.recoveryKey.notConfigured", "未配置")}
           </Tag>
           <Tooltip
-            content={t("account.recoveryKey.oneWayTooltip")}
+            content={t(
+              "account.recoveryKey.oneWayTooltip",
+              "采用 SHA-256 单向密码学散列保护，服务端不存储明文且不可解密，仅支持身份轮换验证。"
+            )}
             position={Position.TOP}
           >
             <Tag
@@ -134,7 +143,7 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
               round
               icon={<ShieldCheck size={12} style={{ display: "inline-flex", alignItems: "center", marginRight: "4px" }} />}
             >
-              {t("account.recoveryKey.oneWayHash")}
+              {t("account.recoveryKey.oneWayHash", "单向不可逆散列")}
             </Tag>
           </Tooltip>
         </div>
@@ -144,14 +153,17 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
             small
             intent={Intent.WARNING}
             icon={<RefreshCw size={14} />}
-            text={t("account.recoveryKey.rotateBtn")}
+            text={t("account.recoveryKey.rotateBtn", "轮换恢复密钥")}
             onClick={handleStartRotate}
           />
         </div>
       </div>
 
-      <p className="text-sm text-gray-600 ">
-        {t("account.recoveryKey.descOneWay")}
+      <p className="text-sm text-gray-600">
+        {t(
+          "account.recoveryKey.descOneWay",
+          "紧急恢复密钥是在您丢失所有通行密钥 (Passkey) 或身份验证器时，恢复账号访问及端到端解密数据的唯一凭据。为确保零知识安全，恢复密钥采用单向不可逆散列存储，无法在网页端查看明文，仅支持通过原恢复密钥或现有 Passkey 进行轮换。密钥一旦被使用将立即自动轮换。"
+        )}
       </p>
 
       {cardMessage && (
@@ -164,9 +176,9 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
       {newKey && (
         <Card elevation={Elevation.ZERO} className="bg-amber-50/50 border border-amber-300 p-4 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
               <ShieldAlert size={14} />
-              {t("account.recoveryKey.newKeyGenerated")}
+              {t("account.recoveryKey.newKeyGenerated", "已生成全新 30 位恢复密钥（请立即保存）")}
             </span>
             <div className="flex items-center gap-1.5 flex-wrap">
               <Button
@@ -174,27 +186,27 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
                 small
                 icon={isMasked ? <Eye size={14} /> : <EyeOff size={14} />}
                 onClick={() => setIsMasked(!isMasked)}
-                title={isMasked ? t("auth.showPassword") : t("auth.hidePassword")}
+                title={isMasked ? t("auth.showPassword", "显示") : t("auth.hidePassword", "隐藏")}
               />
               <Button
                 minimal
                 small
                 icon={copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                 onClick={() => handleCopy(newKey)}
-                title={t("common.copy")}
-                text={copied ? t("common.copied") : t("common.copy")}
+                title={t("common.copy", "复制")}
+                text={copied ? t("common.copied", "已复制") : t("common.copy", "复制")}
               />
               <Button
                 minimal
                 small
                 icon="cross"
                 onClick={() => setNewKey(null)}
-                title={t("common.close")}
+                title={t("common.close", "关闭")}
               />
             </div>
           </div>
 
-          <div className="p-3 bg-white rounded border border-amber-200 font-mono text-center text-lg sm:text-xl font-bold select-all text-gray-900 ">
+          <div className="p-3 bg-white rounded border border-amber-200 font-mono text-center text-lg sm:text-xl font-bold tracking-widest select-all text-gray-900">
             {isMasked
               ? "••••••-••••••-••••••-••••••-••••••"
               : newKey}
@@ -202,7 +214,10 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
 
           <p className="text-xs text-amber-700 flex items-center gap-1">
             <Lock size={14} className="shrink-0" />
-            {t("account.recoveryKey.oneWayWarning")}
+            {t(
+              "account.recoveryKey.oneWayWarning",
+              "注意：此密钥仅在此显示一次，关闭后将无法再次查看！服务端仅保存不可逆散列，请务必将其妥善复制并离线安全保存。"
+            )}
           </p>
         </Card>
       )}
@@ -212,13 +227,16 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
         isOpen={confirmRotateOpen}
         onConfirm={handleConfirmRotate}
         onCancel={() => setConfirmRotateOpen(false)}
-        cancelButtonText={t("common.cancel")}
-        confirmButtonText={t("account.recoveryKey.confirmRotateBtn")}
+        cancelButtonText={t("common.cancel", "取消")}
+        confirmButtonText={t("account.recoveryKey.confirmRotateBtn", "确认进入轮换验证")}
         intent={Intent.DANGER}
         icon="warning-sign"
       >
         <p>
-          {t("account.recoveryKey.rotateConfirm")}
+          {t(
+            "account.recoveryKey.rotateConfirm",
+            "轮换恢复密钥将立即使原恢复密钥失效，并重新派生信封加密密钥。仅允许通过现有通行密钥 (Passkey) 或原恢复密钥完成轮换验证。是否继续？"
+          )}
         </p>
       </Alert>
 
@@ -228,7 +246,7 @@ export const RecoveryKeyCard: React.FC<RecoveryKeyCardProps> = ({ user, onRefres
         onClose={() => setVerifyDialogOpen(false)}
         user={user}
         allowedMethods={["passkey", "recovery_key"]}
-        title={t("account.recoveryKey.rotateVerifyTitle")}
+        title={t("account.recoveryKey.rotateVerifyTitle", "验证身份以轮换恢复密钥")}
         onVerify={handleVerifySubmit}
       />
     </div>

@@ -45,7 +45,7 @@ export const RotatedKeyAlert: React.FC<RotatedKeyAlertProps> = ({
 
         {rotatedKey && (
           <div className="space-y-3">
-            <div className="p-3 bg-gray-100 rounded border border-gray-200 font-mono text-center text-lg font-bold select-all text-gray-900 ">
+            <div className="p-3 bg-gray-100 rounded border border-gray-200 font-mono text-center text-lg font-bold tracking-widest select-all text-gray-900">
               {rotatedKey}
             </div>
             <div className="flex justify-center">

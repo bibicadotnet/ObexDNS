@@ -22,7 +22,7 @@ export const InitKeyCallout: React.FC<InitKeyCalloutProps> = ({
     <Callout intent={Intent.PRIMARY} icon="shield" className="my-3 text-xs">
       <div className="space-y-3">
         <div>
-          <h5 className="font-semibold text-sm mb-1 text-blue-900 ">
+          <h5 className="font-semibold text-sm mb-1 text-blue-900">
             {t("account.e2ee.noKeypairTitle")}
           </h5>
           <p className="text-xs text-blue-800 m-0">

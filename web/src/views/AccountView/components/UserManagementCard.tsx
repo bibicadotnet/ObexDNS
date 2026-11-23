@@ -17,6 +17,7 @@ import {
 import { ShieldCheck, UserPlus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatDateTime } from "../../../utils/date";
+import { useContainerWidth } from "../../../hooks/useContainerWidth";
 import { PASSWORD_REGEX, USERNAME_REGEX, hashPasswordClient } from "../../../utils/auth";
 import type { UserInfo } from "../../../services";
 import { createUser, deleteUser, updateSystemSettings } from "../../../services";
@@ -32,6 +33,8 @@ export interface UserManagementCardProps {
   toasterRef?: React.RefObject<OverlayToaster | null>;
 }
 
+const TABLE_MIN_WIDTH = 768;
+
 export const UserManagementCard: React.FC<UserManagementCardProps> = ({
   users,
   currentUserId,
@@ -42,6 +45,9 @@ export const UserManagementCard: React.FC<UserManagementCardProps> = ({
   toasterRef,
 }) => {
   const { t } = useTranslation();
+  const [containerRef, containerWidth] = useContainerWidth();
+  const showCards = containerWidth > 0 && containerWidth < TABLE_MIN_WIDTH;
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
@@ -66,7 +72,7 @@ export const UserManagementCard: React.FC<UserManagementCardProps> = ({
         10000
       );
       toasterRef?.current?.show({
-        message: t("common.saveSuccess"),
+        message: t("common.saveSuccess", "保存成功"),
         intent: Intent.SUCCESS,
         icon: "tick",
       });
@@ -76,7 +82,7 @@ export const UserManagementCard: React.FC<UserManagementCardProps> = ({
       // Revert to original configuration
       setIsRegistrationEnabled(previousState);
       toasterRef?.current?.show({
-        message: e.message || t("common.saveFailed"),
+        message: e.message || t("common.saveFailed", "保存失败"),
         intent: Intent.DANGER,
         icon: "error",
       });
@@ -105,6 +111,20 @@ export const UserManagementCard: React.FC<UserManagementCardProps> = ({
     finally { setCreateLoading(false); }
   };
 
+  const renderCompactDate = (timestamp?: number | null) => {
+    if (!timestamp) return <span className="text-gray-400">—</span>;
+    const d = new Date(timestamp * 1000);
+    const fullStr = formatDateTime(d);
+    const dateStr = d.toLocaleDateString();
+    const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    return (
+      <div className="leading-tight" title={fullStr}>
+        <span className="font-medium text-gray-700 block">{dateStr}</span>
+        <span className="text-[11px] text-gray-400 block font-mono">{timeStr}</span>
+      </div>
+    );
+  };
+
   const handleDeleteUser = async (id: string) => {
     if (!confirm(t("account.confirmDeleteUser"))) return;
     try {
@@ -114,15 +134,15 @@ export const UserManagementCard: React.FC<UserManagementCardProps> = ({
   };
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <Card elevation={Elevation.ONE} className="p-5 sm:p-6 rounded-2xl bg-white border border-[#d0d7de] shadow-xs space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <ShieldCheck size={20} className="text-red-500" />
-          <H4 className="section-title">{t("account.userManagement")}</H4>
+          <H4 className="section-title m-0">{t("account.userManagement")}</H4>
         </div>
         <div className="flex items-center gap-4 flex-wrap">
           <Switch
-            label={t("account.enableRegistration")}
+            label={t("account.enableRegistration", "Cho phép đăng ký mới")}
             checked={isRegistrationEnabled}
             disabled={toggleLoading}
             onChange={(e) => handleToggleRegistration(e.currentTarget.checked)}
@@ -131,54 +151,132 @@ export const UserManagementCard: React.FC<UserManagementCardProps> = ({
           <Button className="whitespace-nowrap" icon={<UserPlus size={16} />} intent={Intent.SUCCESS} text={t("account.createUser")} onClick={() => setIsDialogOpen(true)} />
         </div>
       </div>
-      <Card elevation={Elevation.ONE} className="p-0 overflow-hidden overflow-x-auto">
-        <HTMLTable interactive striped className="w-full">
-          <thead>
-            <tr>
-              <th>{t("account.username")}</th>
-              <th>{t("account.role")}</th>
-              <th>MFA</th>
-              <th>ID</th>
-              <th>{t("account.createdAt")}</th>
-              <th>{t("account.lastActive")}</th>
-              <th>{t("account.lastResolve")}</th>
-              <th className="text-right">{t("account.actions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id}>
-                <td className="font-bold">{u.username}</td>
-                <td><Tag minimal intent={u.role === 'admin' ? Intent.DANGER : Intent.NONE}>{u.role === 'admin' ? t("account.roleAdmin") : t("account.roleUser")}</Tag></td>
-                <td>
-                  <div className="flex flex-wrap gap-1">
-                    {Boolean(u.totp_enabled) && <Tag minimal intent={Intent.SUCCESS}>TOTP</Tag>}
-                    {Boolean(u.passkeys_count && u.passkeys_count > 0) && <Tag minimal intent={Intent.PRIMARY}>Passkey</Tag>}
-                    {!u.totp_enabled && !(u.passkeys_count && u.passkeys_count > 0) && (
-                      <Tag minimal intent={Intent.NONE} style={{ color: "#8a9ba8" }}>{t("account.mfaNone")}</Tag>
-                    )}
+      {showCards ? (
+        <div ref={containerRef} className="w-full min-w-0 pb-2">
+          <div className="flex flex-col gap-3">
+            {users.map((u) => (
+              <div
+                key={u.id}
+                className="p-4 rounded-xl border border-gray-200 bg-white shadow-xs space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-sm text-gray-900 truncate">
+                        {u.username}
+                      </span>
+                      <Tag minimal intent={u.role === "admin" ? Intent.DANGER : Intent.NONE}>
+                        {u.role === "admin" ? t("account.roleAdmin") : t("account.roleUser")}
+                      </Tag>
+                      {Boolean(u.totp_enabled) && <Tag minimal intent={Intent.SUCCESS}>TOTP</Tag>}
+                      {Boolean(u.passkeys_count && u.passkeys_count > 0) && <Tag minimal intent={Intent.PRIMARY}>Passkey</Tag>}
+                      {!u.totp_enabled && !(u.passkeys_count && u.passkeys_count > 0) && (
+                        <Tag minimal intent={Intent.NONE} style={{ color: "#8a9ba8" }}>
+                          {t("account.mfaNone", "无")}
+                        </Tag>
+                      )}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-400 font-mono">
+                      ID: {u.id}
+                    </div>
                   </div>
-                </td>
-                <td><code className="text-xs">{u.id}</code></td>
-                <td className="text-xs text-gray-500">{u.created_at ? formatDateTime(new Date(u.created_at * 1000)) : '-'}</td>
-                <td className="text-xs text-gray-500">{u.last_active_at ? formatDateTime(new Date(u.last_active_at * 1000)) : '-'}</td>
-                <td className="text-xs text-gray-500">{u.last_resolve_at ? formatDateTime(new Date(u.last_resolve_at * 1000)) : '-'}</td>
-                <td className="text-right">
-                  <div className="inline-flex items-center gap-1">
-                    <Button
-                      minimal
-                      intent={Intent.DANGER}
-                      icon={<Trash2 size={14} />}
-                      disabled={u.id === currentUserId}
-                      onClick={() => handleDeleteUser(u.id)}
-                    />
+                  <Button
+                    minimal
+                    intent={Intent.DANGER}
+                    icon={<Trash2 size={15} />}
+                    disabled={u.id === currentUserId}
+                    onClick={() => handleDeleteUser(u.id)}
+                    title={t("common.delete", "Xóa")}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-gray-100 text-xs">
+                  <div>
+                    <span className="text-gray-400 block text-[11px] uppercase tracking-wide mb-0.5">
+                      {t("account.createdAt")}
+                    </span>
+                    {renderCompactDate(u.created_at)}
                   </div>
-                </td>
-              </tr>
+                  <div>
+                    <span className="text-gray-400 block text-[11px] uppercase tracking-wide mb-0.5">
+                      {t("account.lastActive")}
+                    </span>
+                    {renderCompactDate(u.last_active_at)}
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[11px] uppercase tracking-wide mb-0.5">
+                      {t("account.lastResolve")}
+                    </span>
+                    {renderCompactDate(u.last_resolve_at)}
+                  </div>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </HTMLTable>
-      </Card>
+          </div>
+        </div>
+      ) : (
+        <div ref={containerRef} className="p-0 overflow-hidden rounded-xl border border-gray-200">
+          <HTMLTable interactive striped className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-3">{t("account.username")}</th>
+                <th className="text-left font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-3">{t("account.role")}</th>
+                <th className="text-left font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-3">MFA</th>
+                <th className="text-left font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-3">ID</th>
+                <th className="text-left font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-3 whitespace-nowrap">{t("account.createdAt")}</th>
+                <th className="text-left font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-3 whitespace-nowrap">{t("account.lastActive")}</th>
+                <th className="text-left font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-3 whitespace-nowrap">{t("account.lastResolve")}</th>
+                <th className="text-right font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-3 w-14">{t("account.actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id}>
+                  <td className="font-bold text-sm text-gray-900 py-3 px-3">{u.username}</td>
+                  <td className="py-3 px-3">
+                    <Tag minimal intent={u.role === 'admin' ? Intent.DANGER : Intent.NONE}>
+                      {u.role === 'admin' ? t("account.roleAdmin") : t("account.roleUser")}
+                    </Tag>
+                  </td>
+                  <td className="py-3 px-3">
+                    <div className="flex flex-wrap gap-1">
+                      {Boolean(u.totp_enabled) && <Tag minimal intent={Intent.SUCCESS}>TOTP</Tag>}
+                      {Boolean(u.passkeys_count && u.passkeys_count > 0) && <Tag minimal intent={Intent.PRIMARY}>Passkey</Tag>}
+                      {!u.totp_enabled && !(u.passkeys_count && u.passkeys_count > 0) && (
+                        <Tag minimal intent={Intent.NONE} style={{ color: "#8a9ba8" }}>{t("account.mfaNone", "无")}</Tag>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-3 px-3">
+                    <code className="text-xs font-mono text-gray-600 select-all" title={u.id}>{u.id}</code>
+                  </td>
+                  <td className="py-3 px-3 whitespace-nowrap">
+                    {renderCompactDate(u.created_at)}
+                  </td>
+                  <td className="py-3 px-3 whitespace-nowrap">
+                    {renderCompactDate(u.last_active_at)}
+                  </td>
+                  <td className="py-3 px-3 whitespace-nowrap">
+                    {renderCompactDate(u.last_resolve_at)}
+                  </td>
+                  <td className="text-right py-3 px-3">
+                    <div className="inline-flex items-center gap-1">
+                      <Button
+                        minimal
+                        intent={Intent.DANGER}
+                        icon={<Trash2 size={14} />}
+                        disabled={u.id === currentUserId}
+                        onClick={() => handleDeleteUser(u.id)}
+                        title={t("common.delete", "Xóa")}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </HTMLTable>
+        </div>
+      )}
 
       <Dialog isOpen={isDialogOpen} onClose={() => { setIsDialogOpen(false); setShowNewUserPassword(false); }} title={t("account.createNewUser")} icon="user">
         <div className="p-6 space-y-4">
@@ -208,6 +306,6 @@ export const UserManagementCard: React.FC<UserManagementCardProps> = ({
           </div>
         </div>
       </Dialog>
-    </>
+    </Card>
   );
 };

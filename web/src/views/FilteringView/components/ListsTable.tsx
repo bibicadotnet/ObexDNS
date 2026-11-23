@@ -29,16 +29,14 @@ interface ColumnConfig {
 }
 
 /** Below this container width the table is replaced by cards, so there is never a horizontal scrollbar. */
-const TABLE_MIN_WIDTH = 720;
+const TABLE_MIN_WIDTH = 768;
 
 export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, onSelect, onToggleEnabled, pendingIds }) => {
   const { t } = useTranslation();
   const [containerRef, containerWidth] = useContainerWidth();
-  // 0 = not measured yet (first paint): assume the wide layout, the real width arrives before the browser paints.
   const showCards = containerWidth > 0 && containerWidth < TABLE_MIN_WIDTH;
 
   // Built-in (admin-provided) lists first, recommended ones leading; user-added lists below.
-  // Group headings only appear when both kinds exist: a single kind reads fine as a plain list.
   const builtIn = lists.filter((l) => l.is_system).sort((a, b) => Number(!!b.is_default) - Number(!!a.is_default));
   const custom = lists.filter((l) => !l.is_system);
   const groups: { key: string; title?: string; items: FilterList[]; max?: number }[] =
@@ -49,7 +47,6 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, o
         ]
       : [{ key: "all", items: [...builtIn, ...custom] }];
 
-  // "n/max" when the group has a cap (custom lists); amber once the cap is reached.
   const countLabel = (g: { items: FilterList[]; max?: number }) => (g.max ? `${g.items.length}/${g.max}` : g.items.length);
   const countIntent = (g: { items: FilterList[]; max?: number }) =>
     g.max && g.items.length >= g.max ? Intent.WARNING : Intent.PRIMARY;
@@ -58,15 +55,29 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, o
     {
       key: "name",
       header: t("filtering.tableName", "List"),
-      cellClassName: "max-w-xl whitespace-normal",
+      headerClassName: "w-full text-left font-semibold text-xs text-gray-500 uppercase tracking-wider py-3",
+      cellClassName: "w-full align-middle py-3 pr-4 min-w-0",
       render: (list: FilterList): React.ReactNode => {
-        // The source URL is intentionally not shown here: it lives in the details dialog.
-        const { name } = getListDisplay(list);
+        const { name } = getListDisplay(list, t);
         const description = list.description?.trim();
+        const enabled = !!list.enabled;
+        const syncStatus = parseSyncStatus(list.sync_error);
+        const hasError = !!syncStatus.error;
+        const hasSynced = !!list.last_synced_at;
+
+        let problem: { text: string; intent: Intent } | null = null;
+        if (enabled && hasError) {
+          problem = hasSynced
+            ? { text: t("filtering.statusOutdated", "Outdated"), intent: Intent.WARNING }
+            : { text: t("filtering.statusMissing", "Missing"), intent: Intent.DANGER };
+        }
+
         return (
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="text-sm font-medium truncate">{name}</div>
+          <div className="min-w-0 pr-2">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <span className="text-sm font-semibold text-[#111827] truncate" title={name}>
+                {name}
+              </span>
               {list.is_default && (
                 <Tooltip
                   content={t(
@@ -75,14 +86,31 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, o
                   )}
                   placement="top"
                 >
-                  <Tag intent={Intent.PRIMARY} minimal className="shrink-0">
+                  <Tag intent={Intent.PRIMARY} minimal className="shrink-0 text-[10px] font-semibold">
                     {t("filtering.defaultBadge", "Recommended")}
+                  </Tag>
+                </Tooltip>
+              )}
+              {enabled && syncStatus.warnings.length > 0 && (
+                <Tooltip
+                  content={syncStatus.warnings.map((w) => limitWarningText(t, w)).join(" ")}
+                  placement="top"
+                >
+                  <Tag intent={Intent.WARNING} minimal className="shrink-0 text-[10px] font-semibold">
+                    {t("filtering.statusTruncated", "Truncated")}
+                  </Tag>
+                </Tooltip>
+              )}
+              {problem && (
+                <Tooltip content={syncStatus.error || problem.text} placement="top">
+                  <Tag intent={problem.intent} minimal className="shrink-0 text-[10px] font-semibold">
+                    {problem.text}
                   </Tag>
                 </Tooltip>
               )}
             </div>
             {description && (
-              <div className="text-xs opacity-70 line-clamp-3 break-words" title={description}>
+              <div className="text-xs text-[#6b7280] line-clamp-2 break-words mt-1 leading-relaxed" title={description}>
                 {description}
               </div>
             )}
@@ -93,7 +121,8 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, o
     {
       key: "lastSync",
       header: t("filtering.tableLastSync"),
-      cellClassName: "text-xs opacity-60 whitespace-nowrap",
+      headerClassName: "w-px whitespace-nowrap text-left font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-4",
+      cellClassName: "w-px whitespace-nowrap align-middle text-xs text-[#6b7280] py-3 px-4",
       render: (list: FilterList): React.ReactNode =>
         list.last_synced_at
           ? formatDateTime(new Date(list.last_synced_at * 1000))
@@ -102,49 +131,26 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, o
     {
       key: "status",
       header: t("filtering.tableStatus"),
-      cellClassName: "whitespace-normal",
+      headerClassName: "w-32 min-w-[120px] text-center font-semibold text-xs text-gray-500 uppercase tracking-wider py-3 px-3 whitespace-nowrap",
+      cellClassName: "w-32 min-w-[120px] align-middle text-center whitespace-nowrap py-3 px-3",
       stopRowClick: true,
       render: (list: FilterList): React.ReactNode => {
         const enabled = !!list.enabled;
-        const syncStatus = parseSyncStatus(list.sync_error);
-        const hasError = !!syncStatus.error;
-        const hasSynced = !!list.last_synced_at;
-
-        // Sync health only matters while the list is on: a disabled list contributes
-        // nothing, so reporting freshness for it would contradict the switch.
-        let problem: { text: string; intent: Intent } | null = null;
-        if (enabled && hasError) {
-          problem = hasSynced
-            ? { text: t("filtering.statusOutdated", "Outdated"), intent: Intent.WARNING }
-            : { text: t("filtering.statusMissing", "Missing"), intent: Intent.DANGER };
-        }
 
         return (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <Switch
-              className="mb-0!"
-              checked={enabled}
-              disabled={pendingIds?.has(list.id)}
-              label={enabled ? t("filtering.statusNormal", "Active") : t("filtering.statusDisabled", "Disabled")}
-              onChange={(e) => onToggleEnabled(list.id, (e.target as HTMLInputElement).checked)}
-            />
-            {problem && (
-              <Tooltip content={syncStatus.error || problem.text} placement="top">
-                <Tag intent={problem.intent} minimal>
-                  {problem.text}
-                </Tag>
-              </Tooltip>
-            )}
-            {enabled && syncStatus.warnings.length > 0 && (
-              <Tooltip
-                content={syncStatus.warnings.map((w) => limitWarningText(t, w)).join(" ")}
-                placement="top"
-              >
-                <Tag intent={Intent.WARNING} minimal>
-                  {t("filtering.statusTruncated", "Truncated")}
-                </Tag>
-              </Tooltip>
-            )}
+          <div className="flex justify-center items-center">
+            <Tooltip
+              content={enabled ? t("filtering.statusNormal", "Active") : t("filtering.statusDisabled", "Disabled")}
+              placement="top"
+              hoverOpenDelay={200}
+            >
+              <Switch
+                className="mb-0! cursor-pointer"
+                checked={enabled}
+                disabled={pendingIds?.has(list.id)}
+                onChange={(e) => onToggleEnabled(list.id, (e.target as HTMLInputElement).checked)}
+              />
+            </Tooltip>
           </div>
         );
       },
@@ -157,35 +163,36 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, o
     const statusCol = columns.find((c) => c.key === "status")!;
     return (
       <div ref={containerRef} className="w-full min-w-0 pb-4">
-        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
           {groups.map((group) => (
             <React.Fragment key={group.key}>
               {group.title && (
                 <li className="flex items-center gap-2 px-1 pt-2">
-                  <span className="text-xs font-semibold tracking-wide opacity-60">{group.title}</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{group.title}</span>
                   <Tag minimal round intent={countIntent(group)} className="text-xs">
                     {countLabel(group)}
                   </Tag>
                 </li>
               )}
               {group.items.map((list) => (
-            <li
-              key={list.id}
-              onClick={() => onSelect(list)}
-              className="cursor-pointer rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:bg-gray-50 "
-            >
-              {nameCol.render(list)}
-              <div
-                className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
-                // The switch must not open the details dialog
-                onClick={(e) => e.stopPropagation()}
-              >
-                {statusCol.render(list)}
-                <span className="text-xs opacity-60">
-                  {t("filtering.tableLastSync")}: {syncCol.render(list)}
-                </span>
-              </div>
-            </li>
+                <li
+                  key={list.id}
+                  onClick={() => onSelect(list)}
+                  className="cursor-pointer rounded-xl border border-[#d0d7de] bg-white p-4 shadow-xs transition-colors hover:bg-gray-50"
+                >
+                  {nameCol.render(list)}
+                  <div
+                    className="mt-3 flex items-center justify-between gap-3 pt-2.5 border-t border-gray-100"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-xs text-gray-500 whitespace-nowrap">
+                      {syncCol.render(list)}
+                    </span>
+                    <div className="shrink-0">
+                      {statusCol.render(list)}
+                    </div>
+                  </div>
+                </li>
               ))}
             </React.Fragment>
           ))}
@@ -195,10 +202,10 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, o
   }
 
   return (
-    <div ref={containerRef} className="w-full min-w-0 pb-4">
-      <HTMLTable interactive striped className="w-full">
+    <div ref={containerRef} className="w-full min-w-0 pb-4 overflow-x-auto">
+      <HTMLTable interactive striped className="w-full border-collapse">
         <thead>
-          <tr>
+          <tr className="border-b border-[#d0d7de]">
             {columns.map((col) => (
               <th key={col.key} className={col.headerClassName}>
                 {col.header}
@@ -211,9 +218,9 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, o
             <React.Fragment key={group.key}>
               {group.title && (
                 <tr>
-                  <td colSpan={columns.length} className="pt-4! pb-1.5! bg-transparent!">
+                  <td colSpan={columns.length} className="pt-4! pb-1.5! bg-transparent! border-none!">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold tracking-wide opacity-60">{group.title}</span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{group.title}</span>
                       <Tag minimal round intent={countIntent(group)} className="text-xs">
                         {countLabel(group)}
                       </Tag>
@@ -222,19 +229,17 @@ export const ListsTable: React.FC<ListsTableProps> = ({ lists, maxCustomLists, o
                 </tr>
               )}
               {group.items.map((list) => (
-            <tr key={list.id} onClick={() => onSelect(list)} className="cursor-pointer">
-              {columns.map((col) => (
-                <td
-                  key={col.key}
-                  className={col.cellClassName}
-                  // Stop at the <td> (not an inner div) so the cell padding and the empty
-                  // space around the switch don't open the details dialog either.
-                  onClick={col.stopRowClick ? (e) => e.stopPropagation() : undefined}
-                >
-                  {col.render(list)}
-                </td>
-              ))}
-            </tr>
+                <tr key={list.id} onClick={() => onSelect(list)} className="cursor-pointer hover:bg-gray-50/70 transition-colors">
+                  {columns.map((col) => (
+                    <td
+                      key={col.key}
+                      className={col.cellClassName}
+                      onClick={col.stopRowClick ? (e) => e.stopPropagation() : undefined}
+                    >
+                      {col.render(list)}
+                    </td>
+                  ))}
+                </tr>
               ))}
             </React.Fragment>
           ))}

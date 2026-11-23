@@ -60,7 +60,7 @@ export const RefreshButton: React.FC<RefreshButtonProps> = ({
           }}
         />
       </svg>
-      <span className="text-xs font-semibold leading-none tabular-nums">{remainingSec}</span>
+      <span className="text-[9px] font-semibold leading-none tabular-nums">{remainingSec}</span>
     </span>
   ) : (
     "refresh"

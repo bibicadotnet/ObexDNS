@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Suspense } from "react";
-import { OverlayToaster } from "@blueprintjs/core";
+import { Spinner, OverlayToaster } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { Helmet } from "react-helmet-async";
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
@@ -16,7 +16,6 @@ import { useBranding } from "./hooks/useBranding";
 import { useAuth } from "./hooks/useAuth";
 import { useProfiles } from "./hooks/useProfiles";
 import { IdleSessionLock } from "./components/IdleSessionLock";
-import { LoadingScreen } from "./components/LoadingScreen";
 import { DeploymentGuideView } from "./views/DeploymentGuideView";
 import { loadLocale } from "./i18n/config";
 
@@ -26,16 +25,19 @@ const AccountView = lazyWithPreload(() =>
   import("./views/AccountView").then((m) => ({ default: m.AccountView })),
 );
 
+const SystemView = lazyWithPreload(() =>
+  import("./views/SystemView").then((m) => ({ default: m.SystemView })),
+);
+
 function App() {
-  // Wide screens start with labels; tablets and small laptops start with the icon rail.
-  const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 1280);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
   const toasterRef = useRef<OverlayToaster | null>(null);
   const { i18n } = useTranslation();
 
-  // Abstracted hooks for theme (light only), page metadata/SEO, branding, and authentication & profile state
-  useTheme();
+  // Abstracted hooks for theme, page metadata/SEO, branding, and authentication & profile state
+  const { theme, setTheme } = useTheme();
   const { appFaviconUrl } = useBranding();
   const pageMeta = usePageMeta();
   const {
@@ -72,7 +74,11 @@ function App() {
   }, [i18n.language]);
 
   if (!localeReady) {
-    return <LoadingScreen />;
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <Spinner size={50} />
+      </div>
+    );
   }
 
   // Check for configuration errors (missing DB or JWT_SECRET)
@@ -84,17 +90,21 @@ function App() {
 
   if (isLoggedIn === null) {
     return (
-      <>
+      <div className="h-screen flex items-center justify-center">
         <GitHubCorner />
-        <LoadingScreen />
-      </>
+        <Spinner size={50} />
+      </div>
     );
   }
 
   if (!isLoggedIn) {
     return (
       <Suspense
-        fallback={<LoadingScreen />}
+        fallback={
+          <div className="h-screen flex items-center justify-center">
+            <Spinner size={50} />
+          </div>
+        }
       >
         <Helmet>
           <title>{pageMeta.title}</title>
@@ -112,7 +122,11 @@ function App() {
 
   return (
     <Suspense
-      fallback={<LoadingScreen />}
+      fallback={
+        <div className="h-screen flex items-center justify-center">
+          <Spinner size={50} />
+        </div>
+      }
     >
       <Helmet>
         <title>{pageMeta.title}</title>
@@ -121,6 +135,7 @@ function App() {
         {appFaviconUrl && <link rel="icon" href={appFaviconUrl} />}
         {appFaviconUrl && <link rel="shortcut icon" href={appFaviconUrl} />}
       </Helmet>
+      <GitHubCorner />
       <OverlayToaster position="bottom" ref={toasterRef} />
       <IdleSessionLock currentUser={currentUser} handleLogout={handleLogout} onUnlock={fetchProfiles}>
         <Routes>
@@ -154,6 +169,8 @@ function App() {
               <MainLayout
                 isSidebarOpen={isSidebarOpen}
                 setIsSidebarOpen={setIsSidebarOpen}
+                theme={theme}
+                setTheme={setTheme}
                 selectedProfile={selectedProfile}
                 profiles={profiles}
                 setSelectedProfile={setSelectedProfile}
@@ -181,6 +198,8 @@ function App() {
               <MainLayout
                 isSidebarOpen={isSidebarOpen}
                 setIsSidebarOpen={setIsSidebarOpen}
+                theme={theme}
+                setTheme={setTheme}
                 selectedProfile={selectedProfile}
                 profiles={profiles}
                 setSelectedProfile={setSelectedProfile}
@@ -191,6 +210,27 @@ function App() {
                 isSaving={isSaving}
               >
                 <AccountView onSavingChange={setIsSaving} toasterRef={toasterRef} />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/system"
+            element={
+              <MainLayout
+                isSidebarOpen={isSidebarOpen}
+                setIsSidebarOpen={setIsSidebarOpen}
+                theme={theme}
+                setTheme={setTheme}
+                selectedProfile={selectedProfile}
+                profiles={profiles}
+                setSelectedProfile={setSelectedProfile}
+                location={location}
+                navigate={navigate}
+                handleLogout={handleLogout}
+                currentUser={currentUser}
+                isSaving={isSaving}
+              >
+                <SystemView onSavingChange={setIsSaving} toasterRef={toasterRef} currentUser={currentUser} />
               </MainLayout>
             }
           />

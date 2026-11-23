@@ -1,6 +1,6 @@
 import React from "react";
 import { Menu, MenuDivider, MenuItem, PopoverNext, Intent } from "@blueprintjs/core";
-import { Code, Lock, LogOut, User as UserIcon } from "lucide-react";
+import { Code, Lock, LogOut, Server, User as UserIcon } from "lucide-react";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -51,6 +51,9 @@ export const UserMenu: React.FC<UserMenuProps> = ({ currentUser, handleLogout, d
             </li>
             <MenuDivider />
             <MenuItem icon={<UserIcon size={16} />} text={t("common.account")} onClick={() => navigate("/account")} />
+            {currentUser?.role === "admin" && (
+              <MenuItem icon={<Server size={16} />} text={t("nav.system", "System")} onClick={() => navigate("/system")} />
+            )}
             {canLock && <MenuItem icon={<Lock size={16} />} text={t("auth.lockNow", "Lock Now")} onClick={lock} />}
             {githubCornerEnabled && githubCornerUrl && (
               <MenuItem

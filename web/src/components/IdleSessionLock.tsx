@@ -102,7 +102,7 @@ export const IdleSessionLock: React.FC<IdleSessionLockProps> = ({
 
   if (isLocked) {
     return (
-      <div className="fixed inset-0 z-1500 bg-white ">
+      <div className="fixed inset-0 z-1500 bg-white">
         <AuthView
           isLocked={true}
           currentUser={currentUser}

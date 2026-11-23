@@ -1,31 +1,19 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Divider, Tag, Intent, Callout, type OverlayToaster } from "@blueprintjs/core";
-import { ShieldCheck, AlertTriangle } from "lucide-react";
+import { Tag, Intent, type OverlayToaster } from "@blueprintjs/core";
+import { ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { AccountSectionNav } from "./components/AccountSectionNav";
 import { PageHeader } from "../../components/PageHeader";
 
 import type { UserInfo } from "./types";
-import {
-  getUsers,
-  getSystemSettings,
-  getMe,
-  updateMe,
-  getDatabaseStatus,
-  type DatabaseStatusResponse
-} from "../../services";
+import { getMe, updateMe } from "../../services";
 import { executeWithTimeout } from "../../utils/async";
 import { MfaCard } from "./components/MfaCard";
 import { ActivityLogCard } from "./components/ActivityLogCard";
 import { ActiveSessionsCard } from "./components/ActiveSessionsCard";
-import { UserManagementCard } from "./components/UserManagementCard";
-import { SystemSettingsCard } from "./components/SystemSettingsCard";
-import { DatabaseMigrationCard } from "./components/DatabaseMigrationCard";
 import { DangerZoneCard } from "./components/DangerZoneCard";
 import { PersonalInfoCard } from "./components/PersonalInfoCard";
 import { ChangePasswordCard } from "./components/ChangePasswordCard";
 import { SessionLockCard } from "./components/SessionLockCard";
-import { E2eeCard } from "./components/E2eeCard";
 import { USERNAME_REGEX } from "../../utils/auth";
 
 export interface AccountViewProps {
@@ -34,15 +22,11 @@ export interface AccountViewProps {
 }
 
 /**
- * AccountView serves as the primary dashboard for user settings, profile updates,
- * MFA (Passkey & TOTP) status, active login sessions, security activity logs, and administrative tools
- * (user management, system preferences) for admins.
- *
- * @returns React elements representing the account dashboard view.
+ * AccountView serves as the dashboard for personal user settings: profile updates,
+ * MFA (Passkey & TOTP) status, session lock, active login sessions, and security logs.
  */
 export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toasterRef }) => {
   const [me, setMe] = useState<UserInfo | null>(null);
-  const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const { t, i18n } = useTranslation();
@@ -51,36 +35,6 @@ export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toaste
   const [editUsername, setEditUsername] = useState("");
   const [usernameLoading, setUsernameLoading] = useState(false);
   const [usernameFocused, setUsernameFocused] = useState(false);
-
-  const [sysSettings, setSysSettings] = useState<Record<string, string>>({});
-  const [dbStatus, setDbStatus] = useState<DatabaseStatusResponse | null>(null);
-
-  const fetchUsers = async () => {
-    try {
-      const data = await getUsers() as UserInfo[];
-      setUsers(data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchSystemSettings = async () => {
-    try {
-      const settings = await getSystemSettings();
-      setSysSettings(settings);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchDbStatus = useCallback(async () => {
-    try {
-      const status = await getDatabaseStatus();
-      setDbStatus(status);
-    } catch (e) {
-      console.error("Failed to fetch database status:", e);
-    }
-  }, []);
 
   const fetchMe = useCallback(async () => {
     try {
@@ -97,17 +51,12 @@ export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toaste
         setSystemLocale(data.locale);
         i18n.changeLanguage(data.locale);
       }
-      if (data.role === "admin") {
-        fetchUsers();
-        fetchSystemSettings();
-        fetchDbStatus();
-      }
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [fetchDbStatus, i18n]);
+  }, [i18n]);
 
   const handleUpdateUsername = async () => {
     if (editUsername === me?.username) {
@@ -131,18 +80,17 @@ export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toaste
       setMe((prev) => (prev ? { ...prev, username: targetUsername } : null));
       setIsEditingUsername(false);
       toasterRef?.current?.show({
-        message: t("common.saveSuccess"),
+        message: t("common.saveSuccess", "Lưu thành công"),
         intent: Intent.SUCCESS,
         icon: "tick",
       });
     } catch (e: any) {
       console.error(e);
-      // Revert to original username on timeout or error
       setEditUsername(previousUsername);
       setMe((prev) => (prev ? { ...prev, username: previousUsername } : null));
       setIsEditingUsername(false);
       toasterRef?.current?.show({
-        message: e.message || t("common.saveFailed"),
+        message: e.message || t("common.saveFailed", "Lưu thất bại"),
         intent: Intent.DANGER,
         icon: "error",
       });
@@ -161,18 +109,17 @@ export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toaste
       const { setSystemTimeZone } = await import("../../utils/date");
       setSystemTimeZone(newTimezone || "");
       toasterRef?.current?.show({
-        message: t("common.saveSuccess"),
+        message: t("common.saveSuccess", "Lưu thành công"),
         intent: Intent.SUCCESS,
         icon: "tick",
       });
     } catch (e: any) {
       console.error(e);
-      // Revert to original timezone on timeout or error
       setMe((prev) => (prev ? { ...prev, timezone: previousTimezone } : null));
       const { setSystemTimeZone } = await import("../../utils/date");
       setSystemTimeZone(previousTimezone || "");
       toasterRef?.current?.show({
-        message: e.message || t("common.saveFailed"),
+        message: e.message || t("common.saveFailed", "Lưu thất bại"),
         intent: Intent.DANGER,
         icon: "error",
       });
@@ -186,19 +133,10 @@ export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toaste
   }, [fetchMe]);
 
   if (loading)
-    return <div className="p-8 text-center">{t("common.loading")}</div>;
-
-  const sections = [
-    { id: "acc-profile", label: t("account.sectionProfile", "Profile") },
-    { id: "acc-security", label: t("account.sectionSecurity", "Sign-in security") },
-    { id: "acc-privacy", label: t("account.sectionPrivacy", "Privacy") },
-    { id: "acc-devices", label: t("account.sectionDevices", "Devices & activity") },
-    ...(me?.role === "admin" ? [{ id: "acc-admin", label: t("account.sectionAdmin", "Administration") }] : []),
-    { id: "acc-danger", label: t("account.sectionDanger", "Delete account") },
-  ];
+    return <div className="p-8 text-center text-gray-500 font-medium">{t("common.loading", "Đang tải...")}</div>;
 
   return (
-    <div className="page space-y-6">
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8 space-y-6">
       <PageHeader
         className="mb-0"
         title={t("account.title")}
@@ -217,23 +155,8 @@ export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toaste
         }
       />
 
-      {/* Non-blocking Security Warning for Weak JWT_SECRET (Admin only) */}
-      {me?.role === "admin" && me?.jwt_secret_warning && (
-        <Callout
-          intent={Intent.WARNING}
-          icon={<AlertTriangle size={18} />}
-          title={t("account.jwtSecretWarningTitle")}
-        >
-          <div className="text-sm leading-relaxed mt-1">
-            {t("account.jwtSecretWarningDesc")}
-          </div>
-        </Callout>
-      )}
-
-      <AccountSectionNav sections={sections} />
-
       {/* Personal Info + Password */}
-      <div id="acc-profile" className="grid scroll-mt-16 grid-cols-1 gap-6 md:grid-cols-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <PersonalInfoCard
           me={me}
           isEditingUsername={isEditingUsername}
@@ -250,86 +173,40 @@ export const AccountView: React.FC<AccountViewProps> = ({ onSavingChange, toaste
         <ChangePasswordCard me={me} onRefresh={fetchMe} />
       </div>
 
-      {/* Sign-in security: MFA, passkeys, session lock */}
-      <div id="acc-security" className="scroll-mt-16 space-y-6">
-        {me && <MfaCard user={me} onRefresh={fetchMe} />}
-        {me && (
-          <SessionLockCard
-            user={me}
-            onRefresh={fetchMe}
-            onSavingChange={onSavingChange}
-            toasterRef={toasterRef}
-          />
-        )}
-      </div>
+      {/* MFA: TOTP & Passkeys */}
+      {me && <MfaCard user={me} onRefresh={fetchMe} />}
 
-      {/* Privacy: end-to-end encryption */}
-      <div id="acc-privacy" className="scroll-mt-16">
-        {me && <E2eeCard user={me} onRefresh={fetchMe} />}
-      </div>
-
-      {/* Devices: active sessions and account activity */}
-      <div id="acc-devices" className="scroll-mt-16 space-y-6">
-        {me && (
-          <ActiveSessionsCard
-            hoveredSessionId={hoveredSessionId}
-            setHoveredSessionId={setHoveredSessionId}
-          />
-        )}
-        {me && (
-          <ActivityLogCard
-            hoveredSessionId={hoveredSessionId}
-            setHoveredSessionId={setHoveredSessionId}
-          />
-        )}
-      </div>
-
-      {/* Admin: User Management */}
-      {me?.role === "admin" && (
-        <div id="acc-admin" className="scroll-mt-16 space-y-6">
-          <Divider />
-          <div className="space-y-4">
-            <UserManagementCard
-              users={users}
-              currentUserId={me.id}
-              onRefresh={fetchUsers}
-              registrationEnabled={sysSettings.registration_enabled !== "false"}
-              onRefreshSettings={fetchSystemSettings}
-              onSavingChange={onSavingChange}
-              toasterRef={toasterRef}
-            />
-          </div>
-
-          <Divider />
-          <div className="space-y-4">
-            <SystemSettingsCard
-              initialSettings={sysSettings}
-              onRefresh={fetchSystemSettings}
-              onSavingChange={onSavingChange}
-              toasterRef={toasterRef}
-            />
-          </div>
-
-          {/* Admin: Database Management (Shown for all database types) */}
-          <Divider />
-          <div className="space-y-4">
-            <DatabaseMigrationCard
-              status={dbStatus}
-              onRefresh={fetchDbStatus}
-              toasterRef={toasterRef}
-            />
-          </div>
-        </div>
+      {/* Session Lock */}
+      {me && (
+        <SessionLockCard
+          user={me}
+          onRefresh={fetchMe}
+          onSavingChange={onSavingChange}
+          toasterRef={toasterRef}
+        />
       )}
 
-      {/* Danger Zone */}
-      <Divider />
-      <div id="acc-danger" className="scroll-mt-16 space-y-4">
-        <DangerZoneCard
-          isAdmin={me?.role === "admin"}
-          user={me}
+      {/* Active Sessions */}
+      {me && (
+        <ActiveSessionsCard
+          hoveredSessionId={hoveredSessionId}
+          setHoveredSessionId={setHoveredSessionId}
         />
-      </div>
+      )}
+
+      {/* Activity Log */}
+      {me && (
+        <ActivityLogCard
+          hoveredSessionId={hoveredSessionId}
+          setHoveredSessionId={setHoveredSessionId}
+        />
+      )}
+
+      {/* Danger Zone: Account Deletion / Inactivity Policy */}
+      <DangerZoneCard
+        isAdmin={me?.role === "admin"}
+        user={me}
+      />
     </div>
   );
 };

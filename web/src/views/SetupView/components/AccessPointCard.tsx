@@ -3,7 +3,6 @@ import { Section, SectionCard, Button, HTMLSelect, Intent, Tag } from "@blueprin
 import { MonitorSmartphone, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AccessPoint } from "../../../types/auth";
-import { StepNumber } from "./StepStampWatermark";
 
 export interface AccessPointCardProps {
   accessPoints: AccessPoint[];
@@ -26,7 +25,7 @@ export const AccessPointCard: React.FC<AccessPointCardProps> = ({
 
   return (
     <Section
-      title={<span className="inline-flex items-center"><StepNumber step={1} />{t("setup.accessPointsCardTitle")}</span>}
+      title={t("setup.accessPointsCardTitle", "接入点")}
       icon={<MonitorSmartphone size={16} />}
     >
       <SectionCard>
@@ -41,11 +40,11 @@ export const AccessPointCard: React.FC<AccessPointCardProps> = ({
                   value={selectedApId || ""}
                   onChange={(e) => onSelectAp(e.target.value)}
                   options={accessPoints.map((ap) => ({ label: ap.name, value: ap.id }))}
-                  className="font-semibold text-gray-900 "
+                  className="font-semibold text-gray-900"
                 />
               ) : (
                 <div className="font-semibold text-gray-900 flex items-center gap-2">
-                  {accessPointName || t("setup.defaultAccessPointName")}
+                  {accessPointName || t("setup.defaultAccessPointName", "设备-1")}
                 </div>
               )}
               {accessPoints.length > 0 && (
@@ -60,7 +59,7 @@ export const AccessPointCard: React.FC<AccessPointCardProps> = ({
             variant="outlined"
             intent={Intent.NONE}
             icon={<Settings2 size={14} />}
-            text={t("setup.manageAccessPoints")}
+            text={t("setup.manageAccessPoints", "管理接入点")}
             onClick={onManageAccessPoints}
             fill={isMobile}
             className="shrink-0"

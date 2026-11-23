@@ -118,7 +118,10 @@ export function useLogExport({
 
         if (stillEncrypted) {
           toasterRef?.current?.show({
-            message: t("logs.e2eeLockedExportWarning"),
+            message: t(
+              "logs.e2eeLockedExportWarning",
+              "部分日志处于加密状态且未解锁，导出的数据可能包含未解密内容。"
+            ),
             intent: Intent.WARNING,
             icon: "lock"
           });

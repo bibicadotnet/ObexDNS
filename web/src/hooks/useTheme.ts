@@ -1,9 +1,7 @@
 import { useEffect } from "react";
 
 /**
- * The dashboard only ships a light theme.
- * This hook pins the document to it: it clears any `dark` / `bp6-dark` class that
- * an earlier version may have left behind and marks the root as `light`.
+ * Forces light theme. No dark mode support.
  */
 export function useTheme() {
   useEffect(() => {
@@ -11,4 +9,6 @@ export function useTheme() {
     root.classList.remove("dark", "bp6-dark");
     root.classList.add("light");
   }, []);
+
+  return { theme: "light" as const, setTheme: (_t: string) => {} };
 }

@@ -22,7 +22,7 @@ export const RecoveryKeyVerifyForm: React.FC<RecoveryKeyVerifyFormProps> = ({
 
   return (
     <form onSubmit={onSubmit} autoComplete="off" className="py-2 space-y-4">
-      <FormGroup label={t("account.recoveryKey.verifyPromptLabel")}>
+      <FormGroup label={t("account.recoveryKey.verifyPromptLabel", "原恢复密钥 (Original Recovery Key)")}>
         <InputGroup
           leftIcon="key"
           type="text"

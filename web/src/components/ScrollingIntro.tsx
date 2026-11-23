@@ -73,7 +73,7 @@ export const ScrollingIntro: React.FC = (): React.ReactElement => {
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <span
-                  className={`font-mono text-xs font-bold transition-colors duration-300 ${
+                  className={`font-mono text-xs font-bold tracking-widest transition-colors duration-300 ${
                     isActive ? "text-blue-600" : "text-gray-400"
                   }`}
                 >
@@ -89,15 +89,15 @@ export const ScrollingIntro: React.FC = (): React.ReactElement => {
               </div>
               <div className="space-y-2">
                 <h2
-                  className={`text-4xl font-black leading-none tracking-tighter transition-colors duration-300 ${
-                    isActive ? "text-gray-900 " : "text-gray-300 "
+                  className={`text-4xl font-black leading-none tracking-tighter uppercase transition-colors duration-300 ${
+                    isActive ? "text-gray-900" : "text-gray-300"
                   }`}
                 >
                   {t(item.titleKey)}
                 </h2>
                 <p
                   className={`max-w-md text-lg font-medium leading-snug transition-colors duration-300 ${
-                    isActive ? "text-gray-600 " : "text-transparent"
+                    isActive ? "text-gray-600" : "text-transparent"
                   }`}
                 >
                   {t(item.descKey)}
@@ -105,7 +105,7 @@ export const ScrollingIntro: React.FC = (): React.ReactElement => {
               </div>
               {isActive && (
                 <div className="flex gap-1 mt-2 transition-all duration-300">
-                  <div className="h-1 w-2 bg-gray-200 " />
+                  <div className="h-1 w-2 bg-gray-200" />
                 </div>
               )}
             </div>

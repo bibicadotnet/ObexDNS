@@ -55,7 +55,7 @@ export const SessionLockCard: React.FC<SessionLockCardProps> = ({
     try {
       await executeWithTimeout(updateMe({ session_lock_timeout: val }), 10000);
       toasterRef?.current?.show({
-        message: t("common.saveSuccess"),
+        message: t("common.saveSuccess", "保存成功"),
         intent: Intent.SUCCESS,
         icon: "tick",
       });
@@ -65,7 +65,7 @@ export const SessionLockCard: React.FC<SessionLockCardProps> = ({
       // Revert to original configuration on timeout or error
       setSelectedTimeout(previousTimeout);
       toasterRef?.current?.show({
-        message: err.message || t("common.saveFailed"),
+        message: err.message || t("common.saveFailed", "保存失败"),
         intent: Intent.DANGER,
         icon: "error",
       });

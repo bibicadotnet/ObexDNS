@@ -1,36 +1,19 @@
-import React from "react";
-import { FormGroup, InputGroup, Button, Intent, Checkbox } from "@blueprintjs/core";
+import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Lock, Eye, EyeOff, Loader2, KeyRound } from "lucide-react";
 
-/**
- * Properties for the LoginPasswordStep component.
- */
 export interface LoginPasswordStepProps {
-  /** Current password input value. */
   password: string;
-  /** Callback to update password value. */
   setPassword: (val: string) => void;
-  /** True if user has any MFA configured (Passkey or TOTP). */
   hasMfa: boolean;
-  /** Callback to switch directly to MFA step via "Other options". */
   onSwitchToMfa?: () => void;
-  /** Indicates if submission is actively in progress. */
   loading: boolean;
-  /** Callback to handle form submission. */
   onSubmit: (e: React.FormEvent) => void;
-  /** Whether the user wants to stay logged in. */
   keepLoggedIn: boolean;
-  /** Callback to toggle stay logged in. */
   setKeepLoggedIn: (val: boolean) => void;
-  /** Optional session expiration duration in days. */
   optionalSessionExpirationDays: number;
 }
 
-/**
- * LoginPasswordStep renders the password input step.
- * If the user has MFA configured, an "Other options" button is provided
- * to switch to MFA verification directly without requiring password entry.
- */
 export const LoginPasswordStep: React.FC<LoginPasswordStepProps> = ({
   password,
   setPassword,
@@ -40,84 +23,86 @@ export const LoginPasswordStep: React.FC<LoginPasswordStepProps> = ({
   onSubmit,
   keepLoggedIn,
   setKeepLoggedIn,
-  optionalSessionExpirationDays
+  optionalSessionExpirationDays,
 }) => {
-  const [showPassword, setShowPassword] = React.useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { t } = useTranslation();
-
-  const renderPasswordRightElement = (): React.JSX.Element => {
-    return (
-      <div className="flex items-center">
-        {password && (
-          <Button
-            minimal={true}
-            icon="cross"
-            onClick={() => setPassword("")}
-          />
-        )}
-        <Button
-          minimal={true}
-          icon={showPassword ? "eye-open" : "eye-off"}
-          onClick={() => setShowPassword(!showPassword)}
-          title={showPassword ? t("auth.hidePassword", "Hide password") : t("auth.showPassword", "Show password")}
-        />
-      </div>
-    );
-  };
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <FormGroup label={t("auth.password")} labelFor="password">
-        <InputGroup
-          id="password"
-          leftIcon="lock"
-          placeholder={t("auth.passwordPlaceholder")}
-          type={showPassword ? "text" : "password"}
-          size="large"
-          className="rounded-xl"
-          value={password}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setPassword(e.target.value)
-          }
-          rightElement={renderPasswordRightElement()}
-          autoFocus
-          required
-        />
-      </FormGroup>
-
-      <Checkbox
-        checked={keepLoggedIn}
-        onChange={(e) => setKeepLoggedIn(e.currentTarget.checked)}
-        label={t("auth.keepLoggedIn", "Keep me logged in for {{days}} days", {
-          days: optionalSessionExpirationDays
-        })}
-        className="mt-4 text-left"
-      />
-
-      <div className="pt-2 space-y-3">
-        <Button
-          fill
-          size="large"
-          intent={Intent.PRIMARY}
-          type="submit"
-          loading={loading}
-          className="font-bold py-6 rounded-xl shadow-lg shadow-blue-500/20"
+      <div>
+        <label
+          htmlFor="password"
+          className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1.5"
         >
-          {hasMfa ? t("auth.next", "Next") : t("auth.loginBtn", "Login")}
-        </Button>
+          {t("auth.password", "Mật khẩu")}
+        </label>
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+            <Lock className="w-4 h-4" />
+          </div>
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            placeholder={t("auth.passwordPlaceholder", "Nhập mật khẩu")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoFocus
+            required
+            className="w-full pl-10 pr-10 py-2.5 text-sm bg-white border border-gray-300 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+            tabIndex={-1}
+          >
+            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center">
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={keepLoggedIn}
+            onChange={(e) => setKeepLoggedIn(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+          />
+          <span className="text-xs text-gray-600 font-medium">
+            {t("auth.keepLoggedIn", "Duy trì đăng nhập trong {{days}} ngày", {
+              days: optionalSessionExpirationDays,
+            })}
+          </span>
+        </label>
+      </div>
+
+      <div className="pt-2 space-y-2.5">
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-xs hover:shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>{t("common.loading", "Đang đăng nhập...")}</span>
+            </>
+          ) : (
+            <span>{t("auth.loginBtn", "Đăng nhập")}</span>
+          )}
+        </button>
 
         {hasMfa && onSwitchToMfa && (
-          <Button
-            fill
-            minimal
-            size="large"
+          <button
             type="button"
-            disabled={loading}
             onClick={onSwitchToMfa}
-            className="font-medium text-blue-600 py-2.5 rounded-xl transition-colors hover:bg-blue-50 "
+            className="w-full py-2 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            {t("auth.otherOptions")}
-          </Button>
+            <KeyRound className="w-3.5 h-3.5 text-blue-600" />
+            <span>{t("auth.otherOptions", "Đăng nhập bằng Passkey / Mã xác thực")}</span>
+          </button>
         )}
       </div>
     </form>

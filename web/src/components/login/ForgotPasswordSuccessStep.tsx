@@ -36,7 +36,7 @@ export const ForgotPasswordSuccessStep: React.FC<ForgotPasswordSuccessStepProps>
       </div>
 
       <div className="space-y-1">
-        <h3 className="text-lg font-bold text-gray-800 ">
+        <h3 className="text-lg font-bold text-gray-800">
           {t("auth.resetSuccessTitle", "Password Reset Complete")}
         </h3>
         <p className="text-sm text-gray-500">

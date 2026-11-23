@@ -63,28 +63,28 @@ export const DnsTestCard: React.FC<DnsTestCardProps> = ({ testInput, setTestInpu
                 {testResult.action}
               </Tag>
               <div className="flex flex-col">
-                <span className="text-xs font-bold opacity-40">{t("settings.hitRule")}</span>
+                <span className="text-[10px] uppercase font-bold opacity-40">{t("settings.hitRule")}</span>
                 <span className="text-sm font-bold">{testResult.reason || t("settings.defaultAllow")}</span>
               </div>
               <div className="flex flex-col border-l border-gray-200 pl-4">
-                <span className="text-xs font-bold opacity-40">{t("settings.parseLatency")}</span>
+                <span className="text-[10px] uppercase font-bold opacity-40">{t("settings.parseLatency")}</span>
                 <span className="text-sm font-mono font-bold">{testResult.latency ? `${testResult.latency}ms` : "-"}</span>
               </div>
               {testResult.timings && (
                 <div className="flex flex-wrap gap-x-4 gap-y-1 border-l border-gray-200 pl-4 max-w-md">
                   {Object.entries(testResult.timings).map(([stage, ms]) => (
                     <div key={stage} className="flex gap-1 items-baseline">
-                      <span className="text-xs opacity-40 font-mono">{stage}:</span>
-                      <span className="text-xs font-mono font-bold">{ms}ms</span>
+                      <span className="text-[9px] opacity-40 uppercase font-mono">{stage}:</span>
+                      <span className="text-[10px] font-mono font-bold">{ms}ms</span>
                     </div>
                   ))}
                 </div>
               )}
               <Divider />
-              <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-gray-100 ">
+              <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-gray-100">
                 <MapPin size={14} className="text-red-500" />
                 <div className="flex flex-col">
-                  <span className="text-xs font-bold opacity-40 leading-none">{t("settings.sourceIp")}</span>
+                  <span className="text-[10px] uppercase font-bold opacity-40 leading-none">{t("settings.sourceIp")}</span>
                   <span className="text-xs font-mono">
                     {testResult.client_ip} ({testResult.geo_country})
                   </span>
@@ -93,7 +93,7 @@ export const DnsTestCard: React.FC<DnsTestCardProps> = ({ testInput, setTestInpu
             </div>
 
             <div className="space-y-3">
-              <div className="text-xs font-bold opacity-40 flex items-center gap-1">
+              <div className="text-[10px] uppercase font-bold opacity-40 flex items-center gap-1">
                 <Activity size={10} /> {t("settings.answerSection")}
               </div>
               <div className="font-mono text-sm leading-relaxed bg-white p-4 rounded-xl border border-gray-100 shadow-inner">
@@ -101,8 +101,8 @@ export const DnsTestCard: React.FC<DnsTestCardProps> = ({ testInput, setTestInpu
                   testResult.answers.map((a: any, i: number) => (
                     <div key={i} className="flex gap-4 py-1 border-b border-gray-50 last:border-0 hover:bg-blue-50/50 transition-colors px-2">
                       <span className="w-16 font-bold text-blue-500">{a.type}</span>
-                      <span className="flex-1 ">{a.data}</span>
-                      <span className="text-xs opacity-30 italic">TTL: {a.ttl}s</span>
+                      <span className="flex-1">{a.data}</span>
+                      <span className="text-[10px] opacity-30 italic">TTL: {a.ttl}s</span>
                     </div>
                   ))
                 ) : (
@@ -119,7 +119,7 @@ export const DnsTestCard: React.FC<DnsTestCardProps> = ({ testInput, setTestInpu
               >
                 <div className="flex flex-col gap-2">
                   <div className="flex justify-between items-center">
-                    <span className="font-bold ">{t("settings.diagnostics")}</span>
+                    <span className="font-bold uppercase tracking-wider">{t("settings.diagnostics")}</span>
                     <span className="font-bold">
                       {testResult.action === "FAIL"
                         ? (testResult.diagnostics.status > 0
@@ -132,14 +132,14 @@ export const DnsTestCard: React.FC<DnsTestCardProps> = ({ testInput, setTestInpu
                   </div>
 
                   <div className="flex items-center gap-2 text-xs opacity-80">
-                    <span className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-bold">
+                    <span className="px-1.5 py-0.5 bg-gray-200 rounded text-[10px] font-bold">
                       {testResult.diagnostics.method}
                     </span>
                     <span className="break-all">{testResult.diagnostics.upstream_url}</span>
                   </div>
 
                   {testResult.diagnostics.cf_ray && (
-                    <div className="text-xs opacity-75">
+                    <div className="text-[11px] opacity-75">
                       CF-Ray: <span className="font-bold">{testResult.diagnostics.cf_ray}</span>
                     </div>
                   )}
@@ -152,7 +152,7 @@ export const DnsTestCard: React.FC<DnsTestCardProps> = ({ testInput, setTestInpu
                   )}
 
                   {testResult.diagnostics.response_body && (
-                    <div className="p-2 bg-gray-100 rounded border border-gray-200 text-gray-700 break-words text-xs">
+                    <div className="p-2 bg-gray-100 rounded border border-gray-200 text-gray-700 break-words text-[11px]">
                       <div className="font-bold mb-0.5 opacity-60">{t("settings.upstreamResponse")}:</div>
                       <div className="line-clamp-3">{testResult.diagnostics.response_body}</div>
                     </div>

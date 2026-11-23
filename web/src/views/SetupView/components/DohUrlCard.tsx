@@ -1,8 +1,6 @@
-import React from "react";
-import { Section, SectionCard, Button, PopoverNext, H5, Intent } from "@blueprintjs/core";
-import { ExternalLink } from "lucide-react";
+import React, { useState } from "react";
+import { Copy, Check, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { StepNumber } from "./StepStampWatermark";
 
 export interface DohUrlCardProps {
   dohUrl: string;
@@ -13,59 +11,44 @@ export interface DohUrlCardProps {
 export const DohUrlCard: React.FC<DohUrlCardProps> = ({
   dohUrl,
   copyToClipboard,
-  isMobile,
 }) => {
   const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    copyToClipboard(dohUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
-    <Section
-      title={<span className="inline-flex items-center"><StepNumber step={2} />{t("setup.accessPointTitle", "Access DoH URL")}</span>}
-      icon="globe"
-      rightElement={
-        <PopoverNext
-          placement="bottom-end"
-          usePortal={true}
-          content={
-            <div className="p-4 max-w-sm">
-              <H5>{t("setup.whatIsDoh")}</H5>
-              <p className="text-sm mb-2">
-                {t("setup.dohDesc")}
-              </p>
-              <ul className="list-disc list-inside text-sm opacity-80 mb-3 space-y-1">
-                <li>{t("setup.dohBenefit1")}</li>
-                <li>{t("setup.dohBenefit2")}</li>
-              </ul>
-              <div className="text-xs border-t border-gray-100 pt-2">
-                <a
-                  href="https://en.wikipedia.org/wiki/DNS_over_HTTPS"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1 text-blue-500 hover:underline"
-                >
-                  <ExternalLink size={10} /> {t("setup.learnMore")}
-                </a>
-              </div>
-            </div>
-          }
-        >
-          <Button icon="help" variant="minimal" intent={Intent.NONE} />
-        </PopoverNext>
-      }
-    >
-      <SectionCard>
-        <div className="w-full bg-gray-100 p-3 rounded-lg border border-gray-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <span className="font-mono text-blue-600 break-all text-xs sm:text-sm">{dohUrl}</span>
-          <Button
-            intent={Intent.PRIMARY}
-            icon="duplicate"
-            text={t("setup.copyUrl")}
-            fill={isMobile}
-            onClick={() => copyToClipboard(dohUrl)}
-            className="shrink-0 whitespace-nowrap min-w-fit w-auto"
-          />
+    <div className="p-4 sm:p-5 rounded-2xl bg-white border border-gray-200/80 shadow-xs mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Globe className="w-4 h-4 text-blue-600" />
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 m-0">
+            {t("setup.accessPointTitle", "Địa chỉ DoH URL")}
+          </h3>
         </div>
-      </SectionCard>
-    </Section>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-gray-50 border border-gray-200">
+        <code className="text-xs sm:text-sm font-mono text-blue-600 truncate select-all">
+          {dohUrl}
+        </code>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className={`p-2 rounded-lg text-xs font-semibold flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+            copied
+              ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+              : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 shadow-2xs"
+          }`}
+          title={copied ? t("common.copied", "Đã sao chép") : t("setup.copyUrl", "Sao chép DoH URL")}
+        >
+          {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
   );
 };
-

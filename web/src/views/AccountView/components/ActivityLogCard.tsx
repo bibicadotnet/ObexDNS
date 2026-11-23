@@ -149,7 +149,7 @@ export const ActivityLogCard: React.FC<ActivityLogCardProps> = ({
                         onMouseLeave={() => {
                           if (sessionId) setHoveredSessionId?.(null);
                         }}
-                        className={hoveredSessionId && hoveredSessionId === sessionId ? "bg-gray-100/80 " : ""}
+                        className={hoveredSessionId && hoveredSessionId === sessionId ? "bg-gray-100/80" : ""}
                       >
                         <td className="align-middle">
                           <div className="flex flex-col items-start gap-1">

@@ -227,17 +227,17 @@ export const MapTooltip: React.FC<MapTooltipProps> = ({
       </div>
       {loading ? (
         <div className="mt-1.5 pt-1.5 border-t border-gray-150 flex flex-col gap-1 min-w-36">
-          <div className="text-xs font-bold text-gray-400 ">
+          <div className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
             {t("analytics.topIsps", "Top ISPs")}
           </div>
-          <div className="text-xs text-gray-400 italic">
+          <div className="text-[11px] text-gray-400 italic">
             {t("analytics.loading", "Loading...")}
           </div>
         </div>
       ) : (
         isps.length > 0 && (
           <div className="mt-1.5 pt-1.5 border-t border-gray-150 flex flex-col gap-1">
-            <div className="text-xs font-bold text-gray-400 ">
+            <div className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
               {t("analytics.topIsps", "Top ISPs")}
             </div>
             <div
@@ -246,15 +246,15 @@ export const MapTooltip: React.FC<MapTooltipProps> = ({
               }`}
             >
               {(isPinned ? isps : isps.slice(0, 5)).map((isp) => (
-                <div key={isp.name} className="flex justify-between gap-3 text-xs text-gray-600 ">
+                <div key={isp.name} className="flex justify-between gap-3 text-[11px] text-gray-600">
                   <span className="truncate" title={isp.name}>{isp.name}</span>
-                  <span className="font-mono text-gray-400 ">{isp.count.toLocaleString()}</span>
+                  <span className="font-mono text-gray-400">{isp.count.toLocaleString()}</span>
                 </div>
               ))}
               {!isPinned && isps.length > 5 && (
                 <>
                   <div className="text-center text-gray-400 leading-none py-0.5 font-bold">...</div>
-                  <div className="text-xs text-center text-blue-500 font-medium whitespace-nowrap mt-0.5">
+                  <div className="text-[10px] text-center text-blue-500 font-medium whitespace-nowrap mt-0.5">
                     {t("analytics.pressToShowMore", "Click to show more")}
                   </div>
                 </>

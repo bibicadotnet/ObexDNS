@@ -76,7 +76,7 @@ export const NetworkDetailsSection: React.FC<NetworkDetailsSectionProps> = ({
         <div className="space-y-4">
           {/* Client (Source) */}
           <div>
-            <div className="text-xs font-bold opacity-50 mb-1">
+            <div className="text-[10px] uppercase font-bold opacity-50 mb-1">
               {t("logs.clientSource")}
             </div>
             <div className="flex justify-between items-center">
@@ -94,7 +94,7 @@ export const NetworkDetailsSection: React.FC<NetworkDetailsSectionProps> = ({
           {/* Destination */}
           <div>
             <div className="flex justify-between items-center mb-1">
-              <div className="text-xs font-bold opacity-50">
+              <div className="text-[10px] uppercase font-bold opacity-50">
                 {t("logs.destination")}
               </div>
               {(destCountryCode || loading) && (

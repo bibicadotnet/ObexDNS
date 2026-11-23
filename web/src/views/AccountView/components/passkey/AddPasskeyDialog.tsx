@@ -111,7 +111,7 @@ export const AddPasskeyDialog: React.FC<AddPasskeyDialogProps> = ({
               </div>
             </Tooltip>
           </FormGroup>
-          <p className="text-xs text-gray-500 ">
+          <p className="text-xs text-gray-500">
             {t(
               "account.passkey.promptNotice",
               "After clicking continue, your browser will prompt you to authenticate via Key, face scan, PIN, or hardware key."

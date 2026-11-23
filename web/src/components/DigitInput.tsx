@@ -129,8 +129,8 @@ export const DigitInput = forwardRef<DigitInputRef, DigitInputProps>(({
           className={`w-10 h-12 text-center text-xl font-bold rounded-lg border-2 bg-white text-slate-900 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
             error
               ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
-              : "border-slate-200 focus:border-indigo-500 "
-          } ${disabled ? "opacity-60 cursor-not-allowed bg-slate-50 " : ""}`}
+              : "border-slate-200 focus:border-indigo-500"
+          } ${disabled ? "opacity-60 cursor-not-allowed bg-slate-50" : ""}`}
         />
       ))}
     </div>

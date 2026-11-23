@@ -28,11 +28,14 @@ export const E2eeUnlockBanner: React.FC<E2eeUnlockBannerProps> = ({
       <Callout
         intent={Intent.PRIMARY}
         icon="lock"
-        title={t("settings.e2eeTitle")}
+        title={t("settings.e2eeTitle", "端到端加密日志")}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-1">
           <p className="text-xs opacity-80 m-0">
-            {t("settings.e2eeUnlockPrompt")}
+            {t(
+              "settings.e2eeUnlockPrompt",
+              "日志已通过端到端加密保护。请验证已授权的硬件 Passkey 或输入紧急恢复密钥以在本地解密。"
+            )}
           </p>
           <div className="flex items-center gap-2 flex-wrap shrink-0">
             <Button
@@ -43,7 +46,7 @@ export const E2eeUnlockBanner: React.FC<E2eeUnlockBannerProps> = ({
               onClick={onUnlockPasskey}
               className="font-medium"
             >
-              {t("settings.e2eeUnlockNow")}
+              {t("settings.e2eeUnlockNow", "验证 Passkey 解锁")}
             </Button>
             <Button
               intent={Intent.NONE}
@@ -53,7 +56,7 @@ export const E2eeUnlockBanner: React.FC<E2eeUnlockBannerProps> = ({
               onClick={onOpenRecoveryDialog}
               className="font-medium"
             >
-              {t("settings.e2eeUnlockRecovery")}
+              {t("settings.e2eeUnlockRecovery", "使用恢复密钥解锁")}
             </Button>
           </div>
         </div>

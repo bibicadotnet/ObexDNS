@@ -43,14 +43,14 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({
     try {
       await clearProfileLogs(profileId);
       toasterRef?.current?.show({
-        message: t("settings.clearProfileLogsSuccess"),
+        message: t("settings.clearProfileLogsSuccess", "配置日志已成功清空"),
         intent: Intent.SUCCESS,
         icon: "tick",
       });
     } catch (err) {
       console.error("[LogRetentionCard] Failed to clear profile logs:", err);
       toasterRef?.current?.show({
-        message: t("settings.clearProfileLogsError"),
+        message: t("settings.clearProfileLogsError", "清空配置日志失败"),
         intent: Intent.DANGER,
         icon: "error",
       });
@@ -63,7 +63,7 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({
   const isLoggingDisabled = settings.log_retention_days === 0;
 
   return (
-    <Card elevation={Elevation.ONE} className="h-full min-w-0 ">
+    <Card elevation={Elevation.ONE} className="h-full min-w-0">
       <div className="flex items-center justify-between min-h-[30px] mb-4">
         <H5 className="section-title flex items-center gap-2 m-0">
           <Clock size={18} className="text-purple-500" /> {t("settings.logRetentionTitle")}
@@ -90,7 +90,7 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({
         <div className="pt-3 border-t border-gray-100 space-y-3">
           <div>
             <Switch
-              label={t("settings.skipLogOnPass")}
+              label={t("settings.skipLogOnPass", "不记录放行记录")}
               checked={!isLoggingDisabled && !!settings.skip_log_on_pass}
               disabled={isLoggingDisabled}
               onChange={(e) =>
@@ -101,7 +101,10 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({
               }
             />
             <p className="text-xs opacity-60 mt-1">
-              {t("settings.skipLogOnPassDesc")}
+              {t(
+                "settings.skipLogOnPassDesc",
+                "启用后不记录正常放行的 DNS 查询，仅记录被拦截、重定向或解析失败的记录。可大幅减少存储占用与写操作。"
+              )}
             </p>
           </div>
 
@@ -112,7 +115,7 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({
                 small
                 intent={Intent.DANGER}
                 icon={<Trash2 size={13} />}
-                text={t("settings.clearProfileLogs")}
+                text={t("settings.clearProfileLogs", "清空配置日志")}
                 loading={clearing}
                 disabled={clearing}
                 onClick={() => setIsAlertOpen(true)}
@@ -124,8 +127,8 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({
 
       <Alert
         isOpen={isAlertOpen}
-        confirmButtonText={t("common.confirm")}
-        cancelButtonText={t("common.cancel")}
+        confirmButtonText={t("common.confirm", "确认清空")}
+        cancelButtonText={t("common.cancel", "取消")}
         intent={Intent.DANGER}
         icon="trash"
         onConfirm={handleClearLogs}
@@ -133,7 +136,10 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({
         loading={clearing}
       >
         <p>
-          {t("settings.clearProfileLogsConfirm")}
+          {t(
+            "settings.clearProfileLogsConfirm",
+            "确定要清空此配置的所有解析日志吗？此操作不可撤销。"
+          )}
         </p>
       </Alert>
     </Card>

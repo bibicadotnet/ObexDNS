@@ -33,9 +33,9 @@ export const BestEffortEchCard: React.FC<BestEffortEchCardProps> = ({ settings, 
   };
 
   return (
-    <Card elevation={Elevation.ONE} className="h-full min-w-0 ">
+    <Card elevation={Elevation.ONE} className="h-full min-w-0">
       <div className="flex items-center justify-between min-h-[30px] mb-4">
-        <H5 className="section-title flex items-center gap-2 m-0 text-purple-600 ">
+        <H5 className="section-title flex items-center gap-2 m-0 text-purple-600">
           <Lock size={18} /> {t("settings.echTitle")}
         </H5>
         <PopoverNext
@@ -43,7 +43,7 @@ export const BestEffortEchCard: React.FC<BestEffortEchCardProps> = ({ settings, 
           usePortal={true}
           content={
             <div className="p-4 max-w-sm">
-              <H5>{t("settings.whatIsEch")}</H5>
+              <H5>{t("settings.whatIsEch", "何为 ECH (Encrypted Client Hello)？")}</H5>
               <p className="text-sm mb-2">
                 {t("settings.echHelpDesc")}
               </p>
@@ -58,7 +58,7 @@ export const BestEffortEchCard: React.FC<BestEffortEchCardProps> = ({ settings, 
                   rel="noreferrer"
                   className="flex items-center gap-1 text-blue-500 hover:underline"
                 >
-                  <ExternalLink size={10} /> {t("setup.learnMore")}
+                  <ExternalLink size={10} /> {t("setup.learnMore", "了解更多")}
                 </a>
               </div>
             </div>
@@ -70,12 +70,15 @@ export const BestEffortEchCard: React.FC<BestEffortEchCardProps> = ({ settings, 
 
       <div className="space-y-4">
         <Switch
-          label={t("settings.enableEch")}
+          label={t("settings.enableEch", "启用重写 ECH")}
           checked={isEnabled}
           onChange={(e) => handleToggle(e.currentTarget.checked)}
         />
         <p className="text-xs opacity-60 leading-relaxed">
-          {t("settings.echDesc")}
+          {t(
+            "settings.echDesc",
+            "针对由 Cloudflare 代理的域名，当查询 HTTPS (Type 65) 或 SVCB (Type 64) 记录且上游未配置 ECH 时，自动重写注入 ECH 参数以保护 SNI 隐私。"
+          )}
         </p>
         <p className="text-xs opacity-60 leading-relaxed">
           {t(

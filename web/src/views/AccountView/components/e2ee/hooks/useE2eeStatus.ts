@@ -117,7 +117,7 @@ export function useE2eeStatus({
     e2ee.clearStorage();
     setIsUnlocked(false);
     toasterRef.current?.show({
-      message: t("account.e2ee.lockSuccess"),
+      message: t("account.e2ee.lockSuccess", "已锁定，私钥已从本地清除"),
       intent: Intent.NONE
     });
   };

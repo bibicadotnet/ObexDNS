@@ -5,7 +5,6 @@ import { getAccessToken, setAccessToken } from "../utils/token";
 import { setSystemTimeZone, setSystemLocale } from "../utils/date";
 import { refresh, getMe, logout, ApiError, e2ee } from "../services";
 import type { UserInfo } from "../services";
-import { normalizeLocale } from "../config/locales";
 
 /**
  * Helper to clear the CSRF cookie and session storage flags.
@@ -81,10 +80,8 @@ export function useAuth(toasterRef: React.RefObject<OverlayToaster | null>) {
           setSystemTimeZone(meData.timezone);
         }
         if (meData.locale) {
-          // Accounts created before the language list was trimmed may hold another locale.
-          const accountLocale = normalizeLocale(meData.locale);
-          setSystemLocale(accountLocale);
-          i18n.changeLanguage(accountLocale);
+          setSystemLocale(meData.locale);
+          i18n.changeLanguage(meData.locale);
         }
         setIsLoggedIn(true);
       } catch (err: any) {

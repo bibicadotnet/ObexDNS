@@ -67,7 +67,7 @@ export const LockScreenForm: React.FC<LockScreenFormProps> = ({
       })
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 401) {
-          setError(t("auth.sessionExpiredNotice"));
+          setError(t("auth.sessionExpiredNotice", "会话已失效，请重新登录。"));
           setTimeout(() => {
             handleLogout?.();
           }, 1500);
@@ -111,7 +111,7 @@ export const LockScreenForm: React.FC<LockScreenFormProps> = ({
         nonceUserId;
 
       if (!userId) {
-        setError(t("auth.sessionExpiredNotice"));
+        setError(t("auth.sessionExpiredNotice", "会话已失效，请重新登录。"));
         setTimeout(() => {
           handleLogout?.();
         }, 1500);
@@ -138,7 +138,7 @@ export const LockScreenForm: React.FC<LockScreenFormProps> = ({
       setPin(""); // Clear PIN on failure for immediate retry
       if (err instanceof ApiError) {
         if (err.status === 401 && err.bodyText.includes("too_many_attempts")) {
-          setError(t("auth.tooManyAttemptsTerminate"));
+          setError(t("auth.tooManyAttemptsTerminate", "尝试次数过多，会话已终结。"));
           setTimeout(() => {
             handleLogout?.();
           }, 1500);
@@ -153,17 +153,17 @@ export const LockScreenForm: React.FC<LockScreenFormProps> = ({
             // Ignore JSON parse failure and fallback to default
           }
           setAttemptsRemaining(attemptsLeft);
-          setError(t("auth.pinIncorrect"));
+          setError(t("auth.pinIncorrect", "PIN 码错误"));
           setTimeout(() => {
             digitInputRef.current?.focus();
           }, 50);
         } else {
-          setError(t("auth.networkError"));
+          setError(t("auth.networkError", "网络错误，请稍后重试。"));
         }
       } else if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError(t("common.errorNetwork"));
+        setError(t("common.errorNetwork", "网络异常"));
       }
     } finally {
       setLoading(false);
@@ -192,12 +192,12 @@ export const LockScreenForm: React.FC<LockScreenFormProps> = ({
           className="w-20 h-20 object-contain"
         />
         {displayUsername && (
-          <H3 className="font-bold tracking-tight text-2xl mt-4 text-slate-900 ">
+          <H3 className="font-bold tracking-tight text-2xl mt-4 text-slate-900">
             {displayUsername}
           </H3>
         )}
         <p className="text-gray-500 mt-2 text-center text-sm leading-relaxed">
-          {t("auth.sessionLocked")}
+          {t("auth.sessionLocked", "由于长时间未活动，会话已锁定")}
         </p>
       </div>
 
@@ -210,7 +210,7 @@ export const LockScreenForm: React.FC<LockScreenFormProps> = ({
           <div className="text-sm font-medium">{error}</div>
           {attemptsRemaining !== null && (
             <div className="text-xs mt-1 opacity-80">
-              {t("auth.attemptsRemaining", { count: attemptsRemaining })}
+              {t("auth.attemptsRemaining", "还剩 {{count}} 次尝试机会", { count: attemptsRemaining })}
             </div>
           )}
         </Callout>
@@ -249,9 +249,9 @@ export const LockScreenForm: React.FC<LockScreenFormProps> = ({
               e.stopPropagation();
               handleLogout();
             }}
-            className="text-gray-400 hover:text-gray-700 "
+            className="text-gray-400 hover:text-gray-700"
           >
-            {t("auth.logoutAndReturn")}
+            {t("auth.logoutAndReturn", "登出会话")}
           </Button>
         </div>
       )}

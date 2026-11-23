@@ -34,25 +34,32 @@ export const UpstreamCard: React.FC<UpstreamCardProps> = ({ settings, setSetting
 
   const upstreamMenu = (
     <Menu className="min-w-96">
-      {PRESET_UPSTREAMS.map((preset, i) => (
-        <MenuItem
-          key={i}
-          text={preset.label}
-          onClick={() => commit(preset.url)}
-          labelElement={
-            <div className="flex flex-col items-end text-right">
-              <span className="text-xs opacity-85 max-w-64 truncate" title={preset.url}>
-                {preset.url}
-              </span>
-            </div>
-          }
-        />
-      ))}
+      {PRESET_UPSTREAMS.map((preset, i) => {
+        const label = preset.label.startsWith("settings.")
+          ? t(preset.label)
+          : preset.label.startsWith("preset")
+          ? t(`settings.${preset.label}`)
+          : preset.label;
+        return (
+          <MenuItem
+            key={i}
+            text={label}
+            onClick={() => commit(preset.url)}
+            labelElement={
+              <div className="flex flex-col items-end text-right">
+                <span className="text-[9px] opacity-85 max-w-64 truncate" title={preset.url}>
+                  {preset.url}
+                </span>
+              </div>
+            }
+          />
+        );
+      })}
     </Menu>
   );
 
   return (
-    <Card elevation={Elevation.ONE} className="h-full min-w-0 ">
+    <Card elevation={Elevation.ONE} className="h-full min-w-0">
       <div className="flex items-center justify-between min-h-[30px] mb-4">
         <H5 className="section-title flex items-center gap-2 m-0">
           <Server size={18} className="text-blue-500" /> {t("settings.upstreamTitle")}

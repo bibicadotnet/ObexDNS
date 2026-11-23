@@ -5,16 +5,34 @@ import { useTranslation } from "react-i18next";
 import { lockSession } from "../services";
 import type { UserInfo } from "../types/auth";
 
-/**
- * Locks the current session (shows the PIN screen) when a PIN is configured.
- * Shared by every place that offers a "Lock now" action.
- */
-export function useLockSession(currentUser?: UserInfo | null) {
-  const [locking, setLocking] = useState(false);
-  const canLock = Boolean(currentUser?.pin_enabled);
+export interface SessionLockButtonProps {
+  /** Current logged in user info. Used to check if PIN is configured. */
+  currentUser?: UserInfo | null;
+  /** Whether button uses minimal styling. Defaults to true to match LanguageSwitcher. */
+  minimal?: boolean;
+  /** Size of the button. Defaults to "small" to match LanguageSwitcher. */
+  size?: "small" | "medium" | "large";
+}
 
-  const lock = async () => {
-    if (locking || !canLock) return;
+/**
+ * SessionLockButton renders a lock button in the top navbar when PIN code is configured.
+ * Styled identically to LanguageSwitcher (minimal variant, small size, 14px icon).
+ */
+export const SessionLockButton: React.FC<SessionLockButtonProps> = ({
+  currentUser,
+  minimal = true,
+  size = "small",
+}) => {
+  const { t } = useTranslation();
+  const [locking, setLocking] = useState(false);
+
+  // Render only if PIN is configured on the user account
+  if (!currentUser?.pin_enabled) {
+    return null;
+  }
+
+  const handleLock = async () => {
+    if (locking) return;
     setLocking(true);
     try {
       await lockSession();
@@ -27,37 +45,12 @@ export function useLockSession(currentUser?: UserInfo | null) {
     }
   };
 
-  return { lock, locking, canLock };
-}
-
-export interface SessionLockButtonProps {
-  /** Current logged in user info. Used to check if PIN is configured. */
-  currentUser?: UserInfo | null;
-  /** Whether button uses minimal styling. Defaults to true. */
-  minimal?: boolean;
-  /** Size of the button. Defaults to "small". */
-  size?: "small" | "medium" | "large";
-}
-
-/**
- * Icon button that locks the session. Rendered only when a PIN code is configured.
- */
-export const SessionLockButton: React.FC<SessionLockButtonProps> = ({
-  currentUser,
-  minimal = true,
-  size = "small",
-}) => {
-  const { t } = useTranslation();
-  const { lock, locking, canLock } = useLockSession(currentUser);
-
-  if (!canLock) return null;
-
   return (
     <Button
       variant={minimal ? "minimal" : undefined}
       size={size}
-      icon={locking ? <Spinner size={16} /> : <Lock size={16} />}
-      onClick={lock}
+      icon={locking ? <Spinner size={14} /> : <Lock size={14} />}
+      onClick={handleLock}
       disabled={locking}
       title={t("auth.lockNow", "Lock Now")}
       aria-label={t("auth.lockNow", "Lock Now")}

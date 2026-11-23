@@ -1,13 +1,11 @@
 import React from "react";
 import {
-  ButtonGroup,
   Button,
   PopoverNext,
   H5,
   FormGroup,
   InputGroup,
   HTMLSelect,
-  Tooltip,
   Intent
 } from "@blueprintjs/core";
 import { Calendar } from "lucide-react";
@@ -79,23 +77,31 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
   );
 
   return (
-    <div className="flex flex-wrap justify-between items-center gap-2 bg-white p-2 rounded-lg shadow-sm border border-gray-100 ">
-      <ButtonGroup variant="minimal" className="flex-wrap">
-        {visibleRanges.map((r) => (
-          <Tooltip key={r} content={t(`analytics.range${r}`)} placement="bottom" hoverOpenDelay={300} compact>
-            <Button
-              active={range === r}
+    <div className="flex flex-wrap justify-between items-center gap-2 bg-white p-2 rounded-lg shadow-sm border border-gray-100">
+      <div className="inline-flex items-center p-0.5 bg-[#f3f4f6] rounded-lg border border-[#d0d7de] text-xs font-medium flex-wrap gap-0.5">
+        {visibleRanges.map((r) => {
+          const isActive = range === r;
+          return (
+            <button
+              key={r}
+              type="button"
               onClick={() => setRange(r)}
-              text={r.toUpperCase()}
-            />
-          </Tooltip>
-        ))}
-        <Tooltip content={t("analytics.rangeCustom")} placement="bottom" hoverOpenDelay={300} compact>
+              className={`px-3 py-1 text-xs font-semibold rounded-md transition-all duration-150 cursor-pointer ${
+                isActive
+                  ? "bg-white text-[#111827] shadow-xs border border-[#d0d7de]/80 font-bold"
+                  : "text-[#6b7280] hover:text-[#111827] hover:bg-white/50 border border-transparent"
+              }`}
+            >
+              {r.toUpperCase()}
+            </button>
+          );
+        })}
         <PopoverNext
+          placement="bottom-start"
           content={
-            <div className="p-4 space-y-4 w-64">
-              <H5>{t("analytics.customRange")}</H5>
-              <FormGroup label={t("analytics.startTime")}>
+            <div className="p-4 space-y-4 w-64 bg-white rounded-lg">
+              <H5 className="text-sm font-bold text-[#111827] m-0">{t("analytics.customRange")}</H5>
+              <FormGroup label={t("analytics.startTime")} className="mb-2!">
                 <InputGroup
                   type="datetime-local"
                   min={minStr}
@@ -110,7 +116,7 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
                   }
                 />
               </FormGroup>
-              <FormGroup label={t("analytics.endTime")}>
+              <FormGroup label={t("analytics.endTime")} className="mb-2!">
                 <InputGroup
                   type="datetime-local"
                   min={customRange.start || minStr}
@@ -126,7 +132,7 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
                 />
               </FormGroup>
               {issueKey && (
-                <div className="text-xs text-red-600 " role="alert">
+                <div className="text-xs text-red-600 mb-2" role="alert">
                   {t(issueKey, { days: logRetentionDays })}
                 </div>
               )}
@@ -140,14 +146,19 @@ export const AnalyticsRangeSelector: React.FC<AnalyticsRangeSelectorProps> = ({
             </div>
           }
         >
-          <Button
-            active={range === "custom"}
-            icon={<Calendar size={14} className="mr-1" />}
-            text={t("analytics.custom")}
-          />
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all duration-150 cursor-pointer ${
+              range === "custom"
+                ? "bg-white text-[#111827] shadow-xs border border-[#d0d7de]/80 font-bold"
+                : "text-[#6b7280] hover:text-[#111827] hover:bg-white/50 border border-transparent"
+            }`}
+          >
+            <Calendar size={13} />
+            <span>{t("analytics.custom")}</span>
+          </button>
         </PopoverNext>
-        </Tooltip>
-      </ButtonGroup>
+      </div>
       <div className="flex items-center gap-2 min-w-0">
         {accessPoints.length > 0 && (
           <HTMLSelect

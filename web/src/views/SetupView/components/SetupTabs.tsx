@@ -1,56 +1,49 @@
-import React from "react";
-import { Tabs, Tab, H5, Button, Icon, Intent, Tag, Callout } from "@blueprintjs/core";
-import { Globe, AppWindowMac, Monitor, Terminal, Smartphone, Router, ExternalLink } from "lucide-react";
+import React, { useState } from "react";
+import { Tabs, Tab } from "@blueprintjs/core";
+import { Globe, Monitor, Terminal, Smartphone, Router, ExternalLink, Copy, Check } from "lucide-react";
+import { AppleIcon } from "../../../components/icons/AppleIcon";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { generateMobileConfig, formatProfileLabel, extractDomain } from "../../../utils/mobileconfig";
-import { StepNumber } from "./StepStampWatermark";
 import { useDeploymentMode } from "../../../hooks/useDeploymentMode";
 import { useBranding } from "../../../hooks/useBranding";
 import { isDummyOrPlaceholderDomain } from "../../../services";
 
+const PANEL = "space-y-6 md:pl-6 pt-4 md:pt-0";
 
-/** Consistent panel layout: title (18px) -> description (14px muted) -> content blocks. */
-const PanelHeader: React.FC<{ title: React.ReactNode; desc?: React.ReactNode }> = ({ title, desc }) => (
-  <header className="space-y-2">
-    <H5 className="section-title">{title}</H5>
-    {desc && <p className="text-sm leading-6 text-gray-600 ">{desc}</p>}
-  </header>
-);
+/** Unified NextDNS-style Command / Hostname Box with 1-click copy */
+const CommandBlock: React.FC<{ command: string; onCopy: (text: string) => void }> = ({ command, onCopy }) => {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center justify-between p-3.5 rounded-xl bg-gray-50 border border-[#d0d7de] font-mono text-xs sm:text-sm text-[#111827] leading-relaxed">
+      <code className="truncate pr-3 select-all">{command}</code>
+      <button
+        type="button"
+        onClick={() => {
+          onCopy(command);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}
+        className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-white border border-transparent hover:border-[#d0d7de] transition-all cursor-pointer shrink-0"
+        title="Sao chép"
+      >
+        {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+};
 
-/** A labelled step: small semibold label above its content. */
-const Step: React.FC<{ label?: React.ReactNode; children: React.ReactNode }> = ({ label, children }) => (
-  <section className="space-y-2.5">
-    {label && <h6 className="subsection-title">{label}</h6>}
-    {children}
-  </section>
-);
-
-/** Command box with a copy button that stays visible on touch screens. */
-const CommandBlock: React.FC<{ command: string; onCopy: (text: string) => void }> = ({ command, onCopy }) => (
-  <div className="relative group">
-    <pre className="bg-gray-50 py-3.5 pl-4 pr-12 rounded-lg overflow-x-auto text-[13px] leading-6 font-mono border border-gray-200 ">
-      <code>{command}</code>
-    </pre>
-    <Button
-      className="absolute top-1/2 -translate-y-1/2 right-2 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity"
-      icon="duplicate"
-      minimal
-      small
-      onClick={() => onCopy(command)}
-    />
+/** Unified clean notes container */
+const NotesList: React.FC<{ items: React.ReactNode[] }> = ({ items }) => (
+  <div className="p-3.5 rounded-xl bg-gray-50/70 border border-[#d0d7de] text-xs text-[#4b5563] leading-relaxed space-y-1.5">
+    {items.map((item, i) => (
+      <div key={i} className="flex items-start gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 mt-1.5 shrink-0" />
+        <span className="flex-1">{item}</span>
+      </div>
+    ))}
   </div>
 );
-
-const Notes: React.FC<{ items: React.ReactNode[] }> = ({ items }) => (
-  <ul className="space-y-1.5 text-[13px] leading-5 text-gray-500 list-disc pl-5 marker:text-gray-400">
-    {items.map((item, i) => (
-      <li key={i}>{item}</li>
-    ))}
-  </ul>
-);
-
-const PANEL = "space-y-6 md:pl-6 pt-4 md:pt-0";
 
 export interface SetupTabsProps {
   isMobile: boolean;
@@ -74,20 +67,24 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
   const { t } = useTranslation();
   const { isCloudflare } = useDeploymentMode();
   const { appName } = useBranding();
+  const dohUrl = `${window.location.origin}/${profileKey}`;
+  const [selectedBrowser, setSelectedBrowser] = useState<"chrome" | "edge">("chrome");
+  const [copiedBrowser, setCopiedBrowser] = useState(false);
+
+  const browserStepsRaw = t(
+    "setup.browserSteps",
+    "Settings > Privacy and security > Security > Use secure DNS > Custom > Paste URL."
+  );
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="flex items-center border-b border-gray-200 px-4 py-3.5 md:px-6">
-        <StepNumber step={3} />
-        <h2 className="section-title">{t("setup.guideTitle", "Set up your device")}</h2>
-      </div>
+    <div className="rounded-2xl border border-[#d0d7de] bg-white shadow-xs p-5 sm:p-6">
       <Tabs
         id="setup-tabs"
         renderActiveTabPanelOnly={true}
-        vertical={!isMobile} // 移动端使用水平 Tab
+        vertical={!isMobile}
         size="large"
         className={clsx(
-          "p-4 md:p-6 setup-tabs-container relative z-10 bg-transparent",
+          "setup-tabs-container relative z-10 bg-transparent",
           isMobile && [
             "[&_.bp6-tab-list]:overflow-x-auto!",
             "[&_.bp6-tab-list]:flex-nowrap!",
@@ -99,225 +96,340 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
           ]
         )}
       >
-      <Tab
-        id="browsers"
-        title={
-          <span>
-            <Globe size={16} className="inline mr-2" />
-            {t("setup.browsers")}
-          </span>
-        }
-        panel={
-          <div className={PANEL}>
-            <PanelHeader title={t("setup.browserTitle")} desc={t("setup.browserSteps")} />
-            <Step label={t("setup.browserTips", "or copy this URL to the address bar: ").replace(/:\s*$/, "")}>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <p className="text-[13px] text-gray-500 ">Chrome</p>
-                  <CommandBlock command="chrome://settings/security" onCopy={copyToClipboard} />
-                </div>
-                <div className="space-y-1.5">
-                  <p className="text-[13px] text-gray-500 ">Edge</p>
-                  <CommandBlock command="edge://settings/privacy/security" onCopy={copyToClipboard} />
+        {/* Browsers Tab */}
+        <Tab
+          id="browsers"
+          title={
+            <span>
+              <Globe size={16} className="inline mr-2" />
+              {t("setup.browsers", "Trình duyệt")}
+            </span>
+          }
+          panel={
+            <div className={PANEL}>
+              <div>
+                <h3 className="text-base font-bold text-[#111827] tracking-tight mb-2">
+                  {t("setup.browserTitle", "Cấu hình trình duyệt (Chrome/Edge)")}
+                </h3>
+                <p className="text-sm text-[#4b5563] leading-relaxed mb-3">
+                  {t("setup.browserPathTitle", "Các bước thiết lập trong trình duyệt:")}
+                </p>
+                <div className="p-3.5 rounded-xl bg-gray-50 border border-[#d0d7de] font-mono text-xs sm:text-sm text-[#111827] leading-relaxed select-all">
+                  {browserStepsRaw}
                 </div>
               </div>
-            </Step>
-          </div>
-        }
-      />
 
-      <Tab
-        id="apple"
-        title={
-          <span>
-            <AppWindowMac size={16} className="inline mr-2" />
-            {t("setup.apple")}
-          </span>
-        }
-        panel={
-          <div className={PANEL}>
-            <PanelHeader title={t("setup.appleTitle")} desc={t("setup.appleDesc")} />
-            <div className="p-6 bg-gray-50 rounded-xl border border-dashed border-gray-300 flex flex-col items-center justify-center">
-              <Icon icon="document" size={36} className="opacity-25 mb-4" />
-              <Button
-                intent={Intent.PRIMARY}
-                text={t("setup.downloadConfig")}
-                icon="download"
-                onClick={() => {
-                  const xml = generateMobileConfig({
-                    profileKey,
-                    profileName,
-                    accessPointName,
-                    origin: window.location.origin,
-                    appName,
-                  });
-                  const blob = new Blob([xml], { type: "application/x-apple-aspen-config" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  const label = formatProfileLabel(profileName, accessPointName, appName);
-                  const domain = extractDomain(window.location.origin);
-                  const fileTag = (label || domain)
-                    .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, "_")
-                    .replace(/_+/g, "_")
-                    .replace(/^_|_$/g, "");
-                  const appPrefix = (appName || "dns_worker")
-                    .toLowerCase()
-                    .replace(/[^a-z0-9_]/g, "_")
-                    .replace(/_+/g, "_")
-                    .replace(/^_|_$/g, "");
-                  a.download = `${appPrefix || "dns_worker"}-${fileTag}-${profileKey}.mobileconfig`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
+              {/* Direct address bar shortcuts with Chrome / Edge toggle */}
+              <div className="p-4 rounded-xl bg-gray-50 border border-[#d0d7de]">
+                <div className="flex items-center justify-between gap-3 mb-2.5">
+                  <span className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">
+                    {t("setup.browserTips", "Hoặc dán trực tiếp vào thanh địa chỉ:")}
+                  </span>
+                  <div className="inline-flex rounded-lg border border-[#d0d7de] bg-white p-0.5 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBrowser("chrome")}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                        selectedBrowser === "chrome"
+                          ? "bg-[#0969da] text-white shadow-xs"
+                          : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                      }`}
+                    >
+                      Chrome
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBrowser("edge")}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                        selectedBrowser === "edge"
+                          ? "bg-[#0969da] text-white shadow-xs"
+                          : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                      }`}
+                    >
+                      Edge
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-[#d0d7de]">
+                  <code className="text-xs sm:text-sm font-mono text-[#111827] truncate select-all">
+                    {selectedBrowser === "chrome" ? "chrome://settings/security" : "edge://settings/privacy/security"}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = selectedBrowser === "chrome" ? "chrome://settings/security" : "edge://settings/privacy/security";
+                      copyToClipboard(url);
+                      setCopiedBrowser(true);
+                      setTimeout(() => setCopiedBrowser(false), 2000);
+                    }}
+                    className="p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-all cursor-pointer shrink-0 ml-2"
+                    title={t("common.copy", "Sao chép")}
+                  >
+                    {copiedBrowser ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        />
+
+        {/* Apple Tab */}
+        <Tab
+          id="apple"
+          title={
+            <span>
+              <AppleIcon size={16} className="inline mr-2" />
+              {t("setup.apple", "Apple")}
+            </span>
+          }
+          panel={
+            <div className={PANEL}>
+              <div>
+                <h3 className="text-base font-bold text-[#111827] tracking-tight mb-2">
+                  {t("setup.appleTitle", "macOS / iOS / iPadOS / tvOS")}
+                </h3>
+                <p className="text-sm text-[#4b5563] leading-relaxed mb-3">
+                  {t("setup.appleDesc", "Mở liên kết sau trong Safari (hoặc nhập vào Apple TV) để tự động cài đặt hồ sơ mã hóa DoH:")}
+                </p>
+                <CommandBlock
+                  command={`${window.location.origin}/apple?key=${profileKey}`}
+                  onCopy={copyToClipboard}
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-gray-50 rounded-xl border border-[#d0d7de]">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-[#6b7280]">
+                    {t("setup.downloadConfig", "Tải tệp cấu hình .mobileconfig")}
+                  </div>
+                  <div className="text-xs text-[#4b5563] mt-0.5">
+                    {t("setup.appleManualHint", "Dành cho macOS hoặc lưu trữ file cài đặt thủ công")}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const xml = generateMobileConfig({
+                      profileKey,
+                      profileName,
+                      accessPointName,
+                      origin: window.location.origin,
+                      appName,
+                    });
+                    const blob = new Blob([xml], { type: "application/x-apple-aspen-config" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    const label = formatProfileLabel(profileName, accessPointName, appName);
+                    const domain = extractDomain(window.location.origin);
+                    const fileTag = (label || domain)
+                      .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, "_")
+                      .replace(/_+/g, "_")
+                      .replace(/^_|_$/g, "");
+                    const appPrefix = (appName || "dns_worker")
+                      .toLowerCase()
+                      .replace(/[^a-z0-9_]/g, "_")
+                      .replace(/_+/g, "_")
+                      .replace(/^_|_$/g, "");
+                    a.download = `${appPrefix || "dns_worker"}-${fileTag}-${profileKey}.mobileconfig`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#0969da] hover:bg-[#0854ad] text-white text-xs sm:text-sm font-semibold shadow-xs transition-colors cursor-pointer shrink-0"
+                >
+                  <AppleIcon size={16} />
+                  <span>{t("common.download", "Download")}</span>
+                </button>
+              </div>
+
+              <NotesList
+                items={[
+                  t("setup.appleInstallHint", "Mở liên kết trên bằng Safari trên iOS / iPadOS / macOS, sau đó vào Cài đặt > Đã tải về hồ sơ để cài đặt."),
+                  t("setup.appleTvosHint", "Apple TV (tvOS): Cài đặt > Cài đặt chung > Quyền riêng tư & Bảo mật > Gửi cho Apple (nhấn phím Play/Pause trên Điều khiển) > Thêm hồ sơ > Nhập đường dẫn trên."),
+                  t("setup.appleWarning", "Không thể cài đặt tệp cấu hình trong Chế độ phong tỏa (Lockdown Mode)."),
+                ]}
               />
             </div>
-            <Notes items={[t("setup.appleWarning"), t("setup.appleInstallHint")]} />
-          </div>
-        }
-      />
-      <Tab
-        id="windows"
-        title={
-          <span>
-            <Monitor size={16} className="inline mr-2" />
-            {t("setup.windows")}
-          </span>
-        }
-        panel={
-          <div className={PANEL}>
-            <PanelHeader title={t("setup.windowsTitle")} desc={t("setup.windowsDesc")} />
+          }
+        />
 
-            <Step label={t("setup.windowsStep1")}>
-              <CommandBlock command={`irm "${window.location.origin}/setup.ps1?key=${profileKey}" | iex`} onCopy={copyToClipboard} />
-            </Step>
+        {/* Windows Tab */}
+        <Tab
+          id="windows"
+          title={
+            <span>
+              <Monitor size={16} className="inline mr-2" />
+              {t("setup.windows", "MS Windows")}
+            </span>
+          }
+          panel={
+            <div className={PANEL}>
+              <div>
+                <h3 className="text-base font-bold text-[#111827] tracking-tight mb-2">
+                  {t("setup.windowsTitle", "Microsoft Windows")}
+                </h3>
+                <p className="text-sm text-[#4b5563] leading-relaxed mb-3">
+                  {t("setup.windowsStep1", "Mở PowerShell với quyền Administrator và chạy lệnh sau:")}
+                </p>
+                <CommandBlock
+                  command={`irm "${window.location.origin}/setup.ps1?key=${profileKey}" | iex`}
+                  onCopy={copyToClipboard}
+                />
+              </div>
 
-            <Notes items={[t("setup.windowsNote1"), t("setup.windowsNote2")]} />
-          </div>
-        }
-      />
+              <NotesList
+                items={[
+                  t("setup.windowsNote1", "Hỗ trợ Windows 11 và Windows 10 (bản 2004 trở lên)."),
+                  t("setup.windowsNote2", "Lệnh sẽ tự động đăng ký DNS-over-HTTPS và áp dụng ngay lập tức."),
+                ]}
+              />
+            </div>
+          }
+        />
 
-      <Tab
-        id="linux"
-        title={
-          <span>
-            <Terminal size={16} className="inline mr-2" />
-            {t("setup.linux")}
-          </span>
-        }
-        panel={
-          <div className={PANEL}>
-            <PanelHeader title={t("setup.linuxTitle")} desc={t("setup.linuxDesc")} />
+        {/* Linux Tab */}
+        <Tab
+          id="linux"
+          title={
+            <span>
+              <Terminal size={16} className="inline mr-2" />
+              {t("setup.linux", "Linux")}
+            </span>
+          }
+          panel={
+            <div className={PANEL}>
+              <div>
+                <h3 className="text-base font-bold text-[#111827] tracking-tight mb-2">
+                  {t("setup.linuxTitle", "Linux (systemd-resolved)")}
+                </h3>
+                <p className="text-sm text-[#4b5563] leading-relaxed mb-3">
+                  {t("setup.linuxStep1", "Chạy lệnh sau trong Terminal để cấu hình DoH:")}
+                </p>
+                <CommandBlock
+                  command={`curl -sL "${window.location.origin}/setup.sh?key=${profileKey}" | sudo bash`}
+                  onCopy={copyToClipboard}
+                />
+              </div>
 
-            <Step label={t("setup.linuxStep1")}>
-              <CommandBlock command={`curl -sL "${window.location.origin}/setup.sh?key=${profileKey}" | sudo bash`} onCopy={copyToClipboard} />
-            </Step>
+              <NotesList items={[t("setup.linuxStep2", "Áp dụng cấu hình DoH thông qua systemd-resolved trên các bản phân phối Ubuntu, Debian, Fedora, Arch.")]} />
+            </div>
+          }
+        />
 
-            <p className="text-sm leading-6 text-gray-600 ">{t("setup.linuxStep2")}</p>
-          </div>
-        }
-      />
+        {/* MikroTik Tab */}
+        <Tab
+          id="routeros"
+          title={
+            <span>
+              <Router size={16} className="inline mr-2" />
+              {t("setup.routeros", "MikroTik")}
+            </span>
+          }
+          panel={
+            <div className={PANEL}>
+              <div>
+                <h3 className="text-base font-bold text-[#111827] tracking-tight mb-2">
+                  {t("setup.routerosTitle", "MikroTik (RouterOS)")}
+                </h3>
+                <p className="text-sm text-[#4b5563] leading-relaxed mb-3">
+                  {t("setup.routerosStep1", "Mở Terminal RouterOS và chạy lệnh sau:")}
+                </p>
+                <CommandBlock
+                  command={`/ip dns set use-doh-server="${window.location.origin}/${profileKey}" verify-doh-cert=yes`}
+                  onCopy={copyToClipboard}
+                />
+              </div>
 
-      <Tab
-        id="routeros"
-        title={
-          <span>
-            <Router size={16} className="inline mr-2" />
-            {t("setup.routeros")}
-          </span>
-        }
-        panel={
-          <div className={PANEL}>
-            <PanelHeader title={t("setup.routerosTitle")} desc={t("setup.routerosDesc")} />
+              <NotesList items={[t("setup.routerosNote", "Yêu cầu RouterOS v6.47 trở lên. Đảm bảo router đã nhập chứng chỉ gốc nếu cần xác thực SSL.")]} />
 
-            <Step label={t("setup.routerosStep1")}>
-              <CommandBlock command={`/ip dns set use-doh-server="${window.location.origin}/${profileKey}" verify-doh-cert=yes`} onCopy={copyToClipboard} />
-            </Step>
+              <div>
+                <a
+                  href="https://help.mikrotik.com/docs/spaces/ROS/pages/37748767/DNS"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-[#0969da] hover:underline font-medium"
+                >
+                  <ExternalLink size={13} />
+                  <span>{t("setup.routerosDocs", "Xem tài liệu hướng dẫn chính thức từ MikroTik")}</span>
+                </a>
+              </div>
+            </div>
+          }
+        />
 
-            <Notes items={[t("setup.routerosNote")]} />
+        {/* Android Tab */}
+        <Tab
+          id="android"
+          title={
+            <span>
+              <Smartphone size={16} className="inline mr-2" />
+              {t("setup.android", "Android")}
+            </span>
+          }
+          panel={
+            <div className={PANEL}>
+              <div>
+                <h3 className="text-base font-bold text-[#111827] tracking-tight mb-2">
+                  {t("setup.androidTitle", "Android")}
+                </h3>
 
-            <a
-              href="https://help.mikrotik.com/docs/spaces/ROS/pages/37748767/DNS"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[13px] text-blue-500 hover:underline"
-            >
-              <ExternalLink size={12} /> {t("setup.routerosDocs")}
-            </a>
-          </div>
-        }
-      />
-
-      <Tab
-        id="android"
-        title={
-          <span>
-            <Smartphone size={16} className="inline mr-2" />
-            {t("setup.android")}
-          </span>
-        }
-        panel={
-          <div className={PANEL}>
-            <PanelHeader title={t("setup.androidTitle")} desc={t("setup.androidDesc")} />
-
-            {isCloudflare ? (
-              <Callout intent={Intent.WARNING} icon="warning-sign" className="text-xs">
-                <div className="font-semibold mb-1">{t("setup.dotUnavailableCfTitle")}</div>
-                <div>{t("setup.dotUnavailableCfDesc")}</div>
-              </Callout>
-            ) : (
-              (() => {
-                const isIpAddress = /^(\d{1,3}\.){3}\d{1,3}$/.test(window.location.hostname) ||
-                                    window.location.hostname === "localhost" ||
-                                    window.location.hostname === "127.0.0.1" ||
-                                    window.location.hostname.includes(":");
-                const cleanBaseDomain = (dotDomain || "").trim().replace(/^\*\./, "");
-                const isDummy = isDummyOrPlaceholderDomain(cleanBaseDomain);
-                const effectiveDotDomain = (!isDummy && cleanBaseDomain) || (!isIpAddress ? window.location.hostname : "");
-
-                return (
-                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                    <div className="text-sm font-semibold text-gray-800 ">
-                      {t("setup.androidDotTitle")}
-                    </div>
-                    <p className="text-[13px] leading-5 text-gray-500 ">
-                      {t("setup.androidDotDesc")}
+                {isCloudflare ? (
+                  <div>
+                    <p className="text-sm text-[#4b5563] leading-relaxed mb-3">
+                      {t(
+                        "setup.dotUnavailableCfDesc",
+                        "Cloudflare Workers không hỗ trợ cổng DoT (853). Vui lòng cài đặt ứng dụng Intra hoặc AdGuard for Android và sử dụng URL DoH bên dưới:"
+                      )}
                     </p>
-
-                    {effectiveDotDomain ? (
-                      <div className="space-y-3 pt-1">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
-                          <Tag
-                            minimal
-                            interactive
-                            onClick={() => copyToClipboard(`${profileKey}.${effectiveDotDomain}`)}
-                            icon="duplicate"
-                            className="font-mono text-xs sm:text-sm py-1 px-3 self-start"
-                            intent={Intent.PRIMARY}
-                          >
-                            {`${profileKey}.${effectiveDotDomain}`}
-                          </Tag>
-                        </div>
-                      </div>
-                    ) : (
-                      <Callout intent={Intent.WARNING} icon="warning-sign" className="text-xs">
-                        {t("setup.androidIpNotice")}
-                      </Callout>
-                    )}
+                    <CommandBlock command={dohUrl} onCopy={copyToClipboard} />
                   </div>
-                );
-              })()
-            )}
+                ) : (
+                  (() => {
+                    const isIpAddress =
+                      /^(\d{1,3}\.){3}\d{1,3}$/.test(window.location.hostname) ||
+                      window.location.hostname === "localhost" ||
+                      window.location.hostname === "127.0.0.1" ||
+                      window.location.hostname.includes(":");
+                    const cleanBaseDomain = (dotDomain || "").trim().replace(/^\*\./, "");
+                    const isDummy = isDummyOrPlaceholderDomain(cleanBaseDomain);
+                    const effectiveDotDomain =
+                      (!isDummy && cleanBaseDomain) || (!isIpAddress ? window.location.hostname : "");
+                    const dotHostname = effectiveDotDomain ? `${profileKey}.${effectiveDotDomain}` : "";
 
-            {!isCloudflare && (
-              <Callout intent={Intent.PRIMARY} icon="info-sign" className="text-xs">
-                {t("setup.androidWarning")}
-              </Callout>
-            )}
-          </div>
-        }
-      />
-    </Tabs>
+                    return (
+                      <div>
+                        <p className="text-sm text-[#4b5563] leading-relaxed mb-3">
+                          {t(
+                            "setup.androidDesc",
+                            "Settings > Network & internet > Private DNS > Private DNS provider hostname:"
+                          )}
+                        </p>
+                        {dotHostname ? (
+                          <CommandBlock command={dotHostname} onCopy={copyToClipboard} />
+                        ) : (
+                          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                            {t(
+                              "setup.androidIpNotice",
+                              "Android Private DNS yêu cầu tên miền hợp lệ (ví dụ: dns.example.com)."
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+
+              <NotesList
+                items={[
+                  t("setup.androidWarning", "Hỗ trợ Android 9 Pie trở lên."),
+                ]}
+              />
+            </div>
+          }
+        />
+      </Tabs>
     </div>
   );
 };

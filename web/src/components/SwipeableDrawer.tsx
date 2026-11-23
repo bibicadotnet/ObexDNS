@@ -39,7 +39,7 @@ export const SwipeableDrawer: React.FC<SwipeableDrawerProps> = ({
     touchStartRef.current = null;
   };
 
-  const combinedClassName = `shadow-none! bg-transparent! bg-bulletin! backdrop-blur-sm! ${className || ""}`;
+  const combinedClassName = `shadow-none! bg-white! backdrop-blur-sm! ${className || ""}`;
 
   return (
     <Drawer

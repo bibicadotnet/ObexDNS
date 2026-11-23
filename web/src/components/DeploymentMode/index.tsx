@@ -28,19 +28,19 @@ export const DeploymentModeBadge: React.FC<DeploymentModeBadgeProps> = ({
     <div
       className={clsx(
         "inline-flex items-center gap-1.5 font-medium rounded-full transition-colors select-none",
-        isSmall ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-xs",
+        isSmall ? "px-2 py-0.5 text-[11px]" : "px-3 py-1 text-xs",
         isServerfull
-          ? "bg-purple-50 text-purple-700 border border-purple-200 "
-          : "bg-blue-50 text-blue-700 border border-blue-200 ",
+          ? "bg-purple-50 text-purple-700 border border-purple-200"
+          : "bg-blue-50 text-blue-700 border border-blue-200",
         className
       )}
       title={isServerfull ? "Self-Hosted / Node.js Serverfull" : "Cloudflare Workers Serverless"}
     >
       {showIcon && (
         isServerfull ? (
-          <Server size={isSmall ? 12 : 14} className="shrink-0 text-purple-600 " />
+          <Server size={isSmall ? 12 : 14} className="shrink-0 text-purple-600" />
         ) : (
-          <Cloud size={isSmall ? 12 : 14} className="shrink-0 text-blue-600 " />
+          <Cloud size={isSmall ? 12 : 14} className="shrink-0 text-blue-600" />
         )
       )}
       <span>{isServerfull ? t("common.modeServerfull") : t("common.modeCloudflare")}</span>

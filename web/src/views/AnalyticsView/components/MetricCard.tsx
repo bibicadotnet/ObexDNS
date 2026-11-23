@@ -16,8 +16,8 @@ const MetricCardImpl: React.FC<MetricCardProps> = ({ title, value, icon, hint })
   >
     <div className="p-3 bg-gray-50 rounded-lg">{icon}</div>
     <div>
-      <div className="text-xs text-gray-500 font-medium ">{title}</div>
-      <div className="text-xl font-bold ">
+      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">{title}</div>
+      <div className="text-xl font-bold">
         {value}
         {hint && <span className="ml-2 text-xs font-medium text-gray-500">{hint}</span>}
       </div>

@@ -1,44 +1,28 @@
 import React from "react";
-import LogoIcon from "../../../assets/obex_cat_eye_logo-256.webp";
-import { LanguageSwitcher } from "../../../components/LanguageSwitcher";
-import { UserMenu } from "../../../layouts/UserMenu";
-import { useBranding } from "../../../hooks/useBranding";
+import { useLocation } from "react-router-dom";
 import type { UserInfo } from "../../../types/auth";
+import { BrandLogoHeader } from "../../../components/BrandLogoHeader";
+import { GlobalHeaderActions } from "../../../components/GlobalHeaderActions";
 
 interface NavbarProps {
+  isMobile: boolean;
+  navigate: (path: string) => void;
   handleLogout: () => void;
   currentUser?: UserInfo | null;
 }
 
-/**
- * Top bar of the profile list: brand on the left, language and account on the right.
- * Account, lock and log out are all inside the avatar menu, so the bar stays short.
- */
-export const Navbar: React.FC<NavbarProps> = ({ handleLogout, currentUser }) => {
-  const { appName, appLogoUrl } = useBranding();
-  const host = typeof window !== "undefined" ? window.location.host || window.location.hostname : "";
+export const Navbar: React.FC<NavbarProps> = ({ navigate, handleLogout, currentUser }) => {
+  const location = useLocation();
 
   return (
-    <header className="pt-safe sticky top-0 z-30 shrink-0 border-b border-gray-200 bg-white">
-      <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between gap-3 px-4 md:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <img src={appLogoUrl || LogoIcon} alt="" className="h-9 w-9 shrink-0 object-contain" />
-          <div className="min-w-0">
-            <div className="truncate text-base font-bold leading-tight text-gray-900">{appName}</div>
-            {host && (
-              <div className="hidden truncate text-xs leading-tight text-gray-500 select-all sm:block" title={host}>
-                {host}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <LanguageSwitcher compact />
-          <div className="w-12">
-            <UserMenu currentUser={currentUser ?? null} handleLogout={handleLogout} display="icon" />
-          </div>
-        </div>
-      </div>
+    <header className="sticky top-0 z-30 h-14 border-b border-[#d0d7de] bg-white/90 backdrop-blur-md flex items-center justify-between px-4 shrink-0">
+      <BrandLogoHeader onClick={() => navigate("/dash")} />
+      <GlobalHeaderActions
+        currentUser={currentUser}
+        navigate={navigate}
+        location={location}
+        handleLogout={handleLogout}
+      />
     </header>
   );
 };

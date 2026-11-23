@@ -115,15 +115,17 @@ export const DangerZoneCard: React.FC<DangerZoneCardProps> = ({ isAdmin, onLogsC
   };
 
   return (
-    <>
-      <H4 className="section-title text-red-500 flex items-center gap-2">
-        <Trash2 size={20} /> {t("account.dangerZone")}
-      </H4>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card elevation={Elevation.ONE} className="flex flex-col justify-between">
+    <Card elevation={Elevation.ONE} className="p-5 sm:p-6 rounded-2xl bg-white border border-red-200 shadow-xs space-y-5">
+      <div className="flex items-center gap-2">
+        <Trash2 size={20} className="text-red-500" />
+        <H4 className="section-title text-red-600 m-0">{t("account.dangerZone")}</H4>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 flex flex-col justify-between">
           <div>
-            <H4 className="subsection-title">{t("account.clearLogs")}</H4>
-            <p className="text-xs opacity-60 mb-3">{t("account.clearLogsDesc")}</p>
+            <H4 className="subsection-title mb-1">{t("account.clearLogs")}</H4>
+            <p className="text-xs text-gray-500 mb-4">{t("account.clearLogsDesc")}</p>
           </div>
           <Button
             fill
@@ -133,12 +135,12 @@ export const DangerZoneCard: React.FC<DangerZoneCardProps> = ({ isAdmin, onLogsC
             loading={clearingLogs}
             onClick={handleClearAllLogs}
           />
-        </Card>
+        </div>
         {!isAdmin && (
-          <Card elevation={Elevation.ONE} className="flex flex-col justify-between">
+          <div className="p-4 rounded-xl bg-red-50/50 border border-red-100 flex flex-col justify-between">
             <div>
-              <H4 className="subsection-title">{t("account.deleteAccount")}</H4>
-              <p className="text-xs opacity-60 mb-4">{t("account.deleteAccountDesc")}</p>
+              <H4 className="subsection-title text-red-700 mb-1">{t("account.deleteAccount")}</H4>
+              <p className="text-xs text-red-600/80 mb-4">{t("account.deleteAccountDesc")}</p>
             </div>
             <Button
               fill
@@ -151,9 +153,10 @@ export const DangerZoneCard: React.FC<DangerZoneCardProps> = ({ isAdmin, onLogsC
                 setDeleteDialogOpen(true);
               }}
             />
-          </Card>
+          </div>
         )}
       </div>
+
       {renderInactivityContent()}
 
       <Dialog
@@ -204,6 +207,6 @@ export const DangerZoneCard: React.FC<DangerZoneCardProps> = ({ isAdmin, onLogsC
           </div>
         </form>
       </Dialog>
-    </>
+    </Card>
   );
 };

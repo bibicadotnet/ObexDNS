@@ -82,7 +82,7 @@ export const TOTPSetupForm: React.FC<TOTPSetupFormProps> = ({
 
       {!setupData ? (
         <div className="space-y-3">
-          <p className="text-sm text-gray-600 ">
+          <p className="text-sm text-gray-600">
             {t(
               "account.totp.setupDesc",
               "Add an extra layer of security. Use Google Authenticator, Authy, or any TOTP app."

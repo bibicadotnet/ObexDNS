@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { Callout, Intent, Spinner } from "@blueprintjs/core";
+import { Callout, Intent, ButtonGroup, Button, Spinner } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 
 import type { Rule, RulesViewProps, ProfileSettings } from "./types";
 import { AddRuleCard } from "./components/AddRuleCard";
 import { RulesTable } from "./components/RulesTable";
 import { EditRuleDialog } from "./components/EditRuleDialog";
-import { ProtectionHeader } from "../../components/ProtectionHeader";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { PageHeader } from "../../components/PageHeader";
 import {
   getProfileRules,
   getProfileDetails,
@@ -16,6 +18,7 @@ import {
 } from "../../services";
 
 export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPrefillUsed, toasterRef }) => {
+  const navigate = useNavigate();
   const [rules, setRules] = useState<Rule[]>([]);
   const [settings, setSettings] = useState<ProfileSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,6 +26,7 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const [newRule, setNewRule] = useState<{
     type: Rule["type"];
     pattern: string;
@@ -209,12 +213,32 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
   }, [profileId]);
 
   return (
-    <div className="page">
-      <ProtectionHeader
-        profileId={profileId}
-        active="rules"
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8">
+      <PageHeader
+        title={t("rules.title")}
         subtitle={t("rules.subtitle")}
-        titleExtra={loading ? <Spinner size={18} /> : undefined}
+        titleExtra={loading && !isMobile ? <Spinner size={20} /> : undefined}
+        switcher={
+          isMobile ? (
+            <div className="flex items-center gap-2">
+              <ButtonGroup minimal fill className="flex-1">
+                <Button
+                  active={true}
+                  onClick={() => navigate(`/dash/${profileId}/rules`)}
+                  text={t("rules.title")}
+                  large
+                />
+                <Button
+                  active={false}
+                  onClick={() => navigate(`/dash/${profileId}/filter`)}
+                  text={t("filtering.title")}
+                  large
+                />
+              </ButtonGroup>
+              {loading && <Spinner size={16} />}
+            </div>
+          ) : undefined
+        }
       />
 
       <Callout intent={Intent.PRIMARY} icon="info-sign" className="mb-6">
@@ -232,7 +256,7 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
         <div className="p-16 flex flex-col justify-center items-center gap-3">
           <Spinner size={32} />
           <span className="text-xs text-gray-500 font-medium">
-            {t("common.loading")}
+            {t("common.loading", "加载中...")}
           </span>
         </div>
       ) : rules.length === 0 ? (

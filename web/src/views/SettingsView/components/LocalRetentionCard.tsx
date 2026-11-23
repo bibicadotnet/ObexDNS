@@ -62,14 +62,14 @@ export const LocalRetentionCard: React.FC<LocalRetentionCardProps> = ({ profileI
       await localDb.clearProfile(profileId);
       setRowCount(0);
       toasterRef?.current?.show({
-        message: t("settings.clearLocalDataSuccess"),
+        message: t("settings.clearLocalDataSuccess", "本地日志已成功清空"),
         intent: Intent.SUCCESS,
         icon: "tick",
       });
     } catch (err) {
       console.error("[LocalRetentionCard] Failed to clear local profile logs:", err);
       toasterRef?.current?.show({
-        message: t("settings.clearLocalDataError"),
+        message: t("settings.clearLocalDataError", "清空本地日志失败"),
         intent: Intent.DANGER,
         icon: "error",
       });
@@ -82,49 +82,52 @@ export const LocalRetentionCard: React.FC<LocalRetentionCardProps> = ({ profileI
   return (
     <Card elevation={Elevation.ONE} className="">
       <H5 className="section-title flex items-center gap-2 mb-4!">
-        <Database size={18} className="text-cyan-500" /> {t("settings.localRetentionTitle")}
+        <Database size={18} className="text-cyan-500" /> {t("settings.localRetentionTitle", "本地存储与留存")}
       </H5>
       <div className="space-y-4">
-        <FormGroup label={t("settings.localRetentionDuration")}>
+        <FormGroup label={t("settings.localRetentionDuration", "本地保留时长")}>
           <HTMLSelect
             fill
             value={retentionDays}
             onChange={(e) => handleRetentionChange(parseInt(e.target.value, 10))}
           >
-            <option value={30}>{t("settings.localRetention30d")}</option>
-            <option value={90}>{t("settings.localRetention90d")}</option>
-            <option value={180}>{t("settings.localRetention180d")}</option>
-            <option value={365}>{t("settings.localRetention365d")}</option>
-            <option value={0}>{t("settings.localRetentionUnlimited")}</option>
+            <option value={30}>{t("settings.localRetention30d", "30 天")}</option>
+            <option value={90}>{t("settings.localRetention90d", "90 天 (推荐)")}</option>
+            <option value={180}>{t("settings.localRetention180d", "180 天")}</option>
+            <option value={365}>{t("settings.localRetention365d", "365 天 (1 年)")}</option>
+            <option value={0}>{t("settings.localRetentionUnlimited", "永久保留 (直到手动清除)")}</option>
           </HTMLSelect>
         </FormGroup>
 
         <p className="text-xs opacity-60">
-          {t("settings.localRetentionDesc")}
+          {t(
+            "settings.localRetentionDesc",
+            "日志将持久化保存在当前浏览器本地的 SQLite 数据库 (OPFS) 中，提供秒级本地搜索并节省云端存储费用。超出此时长的本地日志将自动清除。"
+          )}
         </p>
 
         <div className="pt-3 border-t border-gray-100 space-y-3">
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-1.5 opacity-70">
               <HardDrive size={14} />
-              {t("settings.localEngineStorage")}:
+              {t("settings.localEngineStorage", "存储引擎")}:
             </span>
             <Tag
               minimal
               intent={isOpfs ? Intent.SUCCESS : Intent.WARNING}
-              className="text-xs"
+              className="text-[11px]"
             >
               {isOpfs
-                ? t("settings.localEngineOpfs")
-                : t("settings.localEngineMemory")}
+                ? t("settings.localEngineOpfs", "OPFS 本地持久化")
+                : t("settings.localEngineMemory", "内存临时存储 (无痕/私密模式)")}
             </Tag>
           </div>
 
           <div className="flex items-center justify-between text-xs">
-            <span className="opacity-70">{t("settings.localCachedCount")}:</span>
+            <span className="opacity-70">{t("settings.localCachedCount", "本地已缓存日志")}:</span>
             <span className="font-mono font-medium">
               {rowCount !== null
-                ? t("settings.localCachedCountUnit", { count: rowCount })
+                ? t("settings.localCachedCountUnit", "{{count}} 条记录", { count: rowCount })
                 : "..."}
             </span>
           </div>
@@ -135,7 +138,7 @@ export const LocalRetentionCard: React.FC<LocalRetentionCardProps> = ({ profileI
               small
               intent={Intent.DANGER}
               icon={<Trash2 size={13} />}
-              text={t("settings.clearLocalData")}
+              text={t("settings.clearLocalData", "清空本地日志")}
               disabled={rowCount === 0 || rowCount === null || clearing}
               onClick={() => setIsAlertOpen(true)}
             />
@@ -145,8 +148,8 @@ export const LocalRetentionCard: React.FC<LocalRetentionCardProps> = ({ profileI
 
       <Alert
         isOpen={isAlertOpen}
-        confirmButtonText={t("common.confirm")}
-        cancelButtonText={t("common.cancel")}
+        confirmButtonText={t("common.confirm", "确认清空")}
+        cancelButtonText={t("common.cancel", "取消")}
         intent={Intent.DANGER}
         icon="trash"
         onConfirm={handleClearConfirm}
@@ -154,7 +157,10 @@ export const LocalRetentionCard: React.FC<LocalRetentionCardProps> = ({ profileI
         loading={clearing}
       >
         <p>
-          {t("settings.clearLocalDataConfirm")}
+          {t(
+            "settings.clearLocalDataConfirm",
+            "确定要清空此配置在本地保存的所有日志吗？（云端日志不受影响）"
+          )}
         </p>
       </Alert>
     </Card>

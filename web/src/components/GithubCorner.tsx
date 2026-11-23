@@ -20,7 +20,7 @@ export const GitHubCorner = () => {
         height="60"
         viewBox="0 0 250 250"
         style={{
-          fill: "#151513",
+          fill: "#cbd5e1",
           color: "#fff",
           transform: "rotate(90deg)",
         }}

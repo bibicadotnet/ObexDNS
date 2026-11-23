@@ -110,7 +110,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
       setProfile((prev) => (prev ? { ...prev, name: editName } : null));
       setIsEditingName(false);
       toasterRef?.current?.show({
-        message: t("common.saveSuccess"),
+        message: t("common.saveSuccess", "保存成功"),
         intent: Intent.SUCCESS,
         icon: "tick",
       });
@@ -127,7 +127,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
         errMsg = t("common.profileNameFormatError", "Invalid Profile Name format");
       }
       toasterRef?.current?.show({
-        message: errMsg || t("common.saveFailed"),
+        message: errMsg || t("common.saveFailed", "保存失败"),
         intent: Intent.DANGER,
         icon: "error",
       });
@@ -146,7 +146,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
       if (currentSeq === saveSeqRef.current) {
         lastConfirmedSettingsRef.current = cloneSettings(settingsToSave);
         toasterRef?.current?.show({
-          message: t("common.saveSuccess"),
+          message: t("common.saveSuccess", "保存成功"),
           intent: Intent.SUCCESS,
           icon: "tick",
         });
@@ -169,8 +169,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
         const detail = serverMsg && serverMsg.length <= 400 && !serverMsg.startsWith("<") ? serverMsg : "";
         toasterRef?.current?.show({
           message: detail
-            ? `${t("common.saveFailed")}: ${detail}`
-            : t("common.saveFailed"),
+            ? `${t("common.saveFailed", "保存失败")}: ${detail}`
+            : t("common.saveFailed", "保存失败"),
           intent: Intent.DANGER,
           icon: "error",
           timeout: detail ? 8000 : undefined,
@@ -274,14 +274,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
       URL.revokeObjectURL(url);
 
       toasterRef?.current?.show({
-        message: t("settings.exportSuccess"),
+        message: t("settings.exportSuccess", "配置成功导出"),
         intent: Intent.SUCCESS,
         icon: "download",
       });
     } catch (e) {
       console.error(e);
       toasterRef?.current?.show({
-        message: t("settings.exportError"),
+        message: t("settings.exportError", "导出失败"),
         intent: Intent.DANGER,
         icon: "error",
       });
@@ -296,7 +296,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ profileId, toasterRe
     );
 
   return (
-    <div className="page space-y-6">
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8 space-y-6 pb-20">
       <SettingsHeader
         profile={profile}
         isEditingName={isEditingName}

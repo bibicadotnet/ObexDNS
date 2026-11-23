@@ -83,7 +83,7 @@ export function useE2eeActions({
     try {
       await e2ee.rotateUserE2eeKey();
       toasterRef.current?.show({
-        message: t("account.e2ee.upgradePqcSuccess"),
+        message: t("account.e2ee.upgradePqcSuccess", "已成功升级到后量子混合加密 (P256-MLKEM768)"),
         intent: Intent.SUCCESS,
         icon: "tick"
       });
@@ -92,7 +92,7 @@ export function useE2eeActions({
     } catch (err: unknown) {
       console.error("[useE2eeActions] Upgrade to PQC failed:", err);
       toasterRef.current?.show({
-        message: (err as Error).message || t("account.e2ee.upgradePqcError"),
+        message: (err as Error).message || t("account.e2ee.upgradePqcError", "升级到后量子加密失败"),
         intent: Intent.DANGER,
         icon: "error"
       });
@@ -109,19 +109,19 @@ export function useE2eeActions({
       const success = await e2ee.wrapCurrentKeyForPasskey(passkeyId);
       if (success) {
         toasterRef.current?.show({
-          message: t("account.e2ee.enrollPasskeySuccess"),
+          message: t("account.e2ee.enrollPasskeySuccess", "已成功将通行密钥关联至端到端加密！"),
           intent: Intent.SUCCESS,
           icon: "tick"
         });
         await loadStatus();
         onRefresh?.();
       } else {
-        throw new Error(t("account.e2ee.enrollPasskeyFailed"));
+        throw new Error(t("account.e2ee.enrollPasskeyFailed", "关联通行密钥失败"));
       }
     } catch (err: unknown) {
       console.error("[useE2eeActions] Enroll passkey failed:", err);
       toasterRef.current?.show({
-        message: (err as Error).message || t("account.e2ee.enrollPasskeyFailed"),
+        message: (err as Error).message || t("account.e2ee.enrollPasskeyFailed", "关联通行密钥失败"),
         intent: Intent.DANGER,
         icon: "error"
       });
@@ -139,13 +139,13 @@ export function useE2eeActions({
       if (hasPasskey) {
         await e2ee.enableUserE2ee();
         toasterRef.current?.show({
-          message: t("account.e2ee.resetAndInitPasskeySuccess"),
+          message: t("account.e2ee.resetAndInitPasskeySuccess", "密钥对已成功重置并使用通行密钥重新加密！"),
           intent: Intent.SUCCESS,
           icon: "tick"
         });
       } else {
         toasterRef.current?.show({
-          message: t("account.e2ee.resetSuccessEnterRecovery"),
+          message: t("account.e2ee.resetSuccessEnterRecovery", "旧密钥已清除，请使用恢复密钥初始化新密钥对。"),
           intent: Intent.WARNING,
           icon: "refresh"
         });
@@ -156,7 +156,7 @@ export function useE2eeActions({
     } catch (err: unknown) {
       console.error("[useE2eeActions] Reset keypair failed:", err);
       toasterRef.current?.show({
-        message: (err as Error).message || t("account.e2ee.resetFailed"),
+        message: (err as Error).message || t("account.e2ee.resetFailed", "重置密钥对失败"),
         intent: Intent.DANGER,
         icon: "error"
       });

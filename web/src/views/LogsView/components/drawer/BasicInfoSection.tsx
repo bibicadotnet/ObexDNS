@@ -45,8 +45,8 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                 ) : (
                   <DomainIcon domain={selectedLog.domain} />
                 )}
-                <span className={clsx({ "italic text-gray-400 ": isEncryptedLocked })}>
-                  {isEncryptedLocked ? t("logs.encryptedRecord") : selectedLog.domain}
+                <span className={clsx({ "italic text-gray-400": isEncryptedLocked })}>
+                  {isEncryptedLocked ? t("logs.encryptedRecord", "[加密记录]") : selectedLog.domain}
                 </span>
               </div>
             }
@@ -127,7 +127,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             italic
           />
           <DetailItem
-            label={t("logs.detailIsClientEncrypted")}
+            label={t("logs.detailIsClientEncrypted", "是否用户端加密")}
             value={
               isEncrypted ? (
                 <div className="flex items-center gap-1.5 justify-end">
@@ -135,18 +135,18 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                   <span
                     className={clsx(
                       "text-xs font-medium",
-                      isEncryptedLocked ? "text-amber-600 " : "text-emerald-600 "
+                      isEncryptedLocked ? "text-amber-600" : "text-emerald-600"
                     )}
                   >
                     {isEncryptedLocked
-                      ? t("logs.encryptedLocked")
-                      : t("logs.encryptedYes")}
+                      ? t("logs.encryptedLocked", "是 (未解锁)")
+                      : t("logs.encryptedYes", "是")}
                     {isPqc ? " (PQC)" : ""}
                   </span>
                 </div>
               ) : (
-                <span className="text-xs text-gray-400 ">
-                  {t("logs.notEncrypted")}
+                <span className="text-xs text-gray-400">
+                  {t("logs.notEncrypted", "否")}
                 </span>
               )
             }

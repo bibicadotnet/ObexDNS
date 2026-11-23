@@ -32,7 +32,7 @@ export const TOTPRecoveryKeys: React.FC<TOTPRecoveryKeysProps> = ({
   const { t } = useTranslation();
 
   return (
-    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 ">
+    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
       <div className="flex items-center gap-2 mb-4">
         <ShieldCheck size={20} className="text-green-500" />
         <H4 className="section-title">
@@ -49,7 +49,7 @@ export const TOTPRecoveryKeys: React.FC<TOTPRecoveryKeysProps> = ({
         {recoveryKeys.map((key, i) => (
           <code
             key={i}
-            className="block font-mono text-sm sm:text-base font-semibold bg-gray-100 text-blue-600 px-4 py-3 rounded-xl text-center break-all select-all border border-gray-200 "
+            className="block font-mono text-sm sm:text-base font-semibold bg-gray-100 text-blue-600 px-4 py-3 rounded-xl text-center tracking-widest break-all select-all border border-gray-200"
           >
             {key}
           </code>

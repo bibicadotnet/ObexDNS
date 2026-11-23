@@ -1,178 +1,202 @@
-import React from "react";
-import { Link } from "react-router-dom";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { clsx } from "clsx";
+import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import LogoIcon from "../assets/obex_cat_eye_logo-256.webp";
-import type { Profile, UserInfo } from "../types/auth";
-import { useUpstreamUpdate } from "../hooks/useUpstreamUpdate";
-import { useBranding } from "../hooks/useBranding";
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
-import { ProfileSwitcher } from "./ProfileSwitcher";
-import { UserMenu } from "./UserMenu";
-import type { NavItem } from "./navItems";
+import {
+  ListFilter,
+  Settings,
+  User as UserIcon,
+  Server,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import type { UserInfo } from "../types/auth";
+import { BrandLogoHeader } from "../components/BrandLogoHeader";
 
 interface DesktopSidebarProps {
-  /** True if the sidebar shows labels; false = icon rail. */
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
-  /** True if there is a selected/active profile. */
   isProfileActive: boolean;
-  profiles: Profile[];
-  selectedProfile: Profile | null;
-  onSwitchProfile: (profile: Profile) => void;
-  onShowAllProfiles: () => void;
+  activeId: string | undefined;
+  location: any;
+  navigate: (path: string) => void;
   handleLogout: () => void;
   currentUser: UserInfo | null;
-  mainItems: NavItem[];
-  settingsItem: NavItem;
+  navItems: Array<{ id: string; label: string; icon: React.ReactNode; path: string }>;
 }
 
-const NavLink: React.FC<{ item: NavItem; collapsed: boolean; disabled: boolean }> = ({ item, collapsed, disabled }) => {
-  const className = clsx(
-    "relative flex min-h-11 w-full items-center gap-3 rounded-xl text-[0.9375rem] font-semibold transition-colors",
-    collapsed ? "justify-center px-0" : "px-3",
-    item.active ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
-    disabled && "pointer-events-none opacity-40",
-  );
-  const inner = (
-    <>
-      {item.active && (
-        <span aria-hidden="true" className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-peach-300" />
-      )}
-      <span className="shrink-0">{item.icon}</span>
-      {!collapsed && <span className="truncate">{item.label}</span>}
-    </>
-  );
-  if (disabled) {
-    return (
-      <span className={className} aria-disabled="true" title={collapsed ? item.label : undefined}>
-        {inner}
-      </span>
-    );
-  }
-  return (
-    <Link
-      to={item.path}
-      className={className}
-      aria-current={item.active ? "page" : undefined}
-      title={collapsed ? item.label : undefined}
-      aria-label={collapsed ? item.label : undefined}
-    >
-      {inner}
-    </Link>
-  );
-};
-
-/**
- * Left navigation for tablets and desktops.
- *
- * Top to bottom, most-used first:
- *   brand -> which profile am I in -> the five places -> (spacer) -> me, language, collapse.
- * The same order is used by the phone layout, so nothing has to be re-learned.
- */
 export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   isSidebarOpen,
   setIsSidebarOpen,
   isProfileActive,
-  profiles,
-  selectedProfile,
-  onSwitchProfile,
-  onShowAllProfiles,
+  activeId,
+  location,
+  navigate,
   handleLogout,
   currentUser,
-  mainItems,
-  settingsItem,
+  navItems,
 }) => {
   const { t } = useTranslation();
-  const { hasUpdate, latestTag, gitTag, gitCommit } = useUpstreamUpdate();
-  const { appName, appLogoUrl } = useBranding();
-  const host = typeof window !== "undefined" ? window.location.host || window.location.hostname : "";
-  const collapsed = !isSidebarOpen;
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  const allItems = [
+    ...navItems,
+    {
+      id: "filter",
+      label: t("nav.filter", "Bộ lọc"),
+      icon: <ListFilter className="w-5 h-5 shrink-0" />,
+      path: `/dash/${activeId}/filter`,
+    },
+    {
+      id: "settings",
+      label: t("nav.settings", "Cài đặt"),
+      icon: <Settings className="w-5 h-5 shrink-0" />,
+      path: `/dash/${activeId}/settings`,
+    },
+  ];
 
   return (
     <aside
-      className={clsx(
-        "flex shrink-0 flex-col border-r border-gray-200 bg-white transition-[width] duration-200",
-        collapsed ? "w-(--sidebar-w-rail)" : "w-(--sidebar-w)",
-      )}
-      aria-label={t("nav.primary", "Main navigation")}
+      className={`hidden md:flex flex-col border-r border-[#d0d7de] bg-white transition-all duration-200 select-none ${
+        isSidebarOpen ? "w-64" : "w-16"
+      }`}
     >
-      {/* Brand */}
-      <div className={clsx("flex h-16 shrink-0 items-center", collapsed ? "justify-center" : "gap-3 px-4")}>
-        <img src={appLogoUrl || LogoIcon} alt={collapsed ? appName : ""} className="h-9 w-9 shrink-0 object-contain" />
-        {!collapsed && (
-          <div className="min-w-0">
-            <div className="truncate text-base font-bold leading-tight text-gray-900">{appName}</div>
-            <div className="truncate text-xs leading-tight text-gray-500 select-all" title={host}>
-              {host}
-            </div>
-          </div>
+      {/* Brand Header */}
+      <div
+        onClick={() => navigate("/dash")}
+        className="h-14 flex items-center px-4 border-b border-[#d0d7de] shrink-0 cursor-pointer hover:bg-gray-50/80 transition-colors"
+        title={t("common.selectProfile", "Danh sách Profile")}
+      >
+        <BrandLogoHeader showVersion={isSidebarOpen} />
+      </div>
+
+      {/* Navigation List */}
+      <div className="flex-1 py-3 px-2.5 space-y-1 overflow-y-auto">
+        {allItems.map((item) => {
+          const isActive = location.pathname.endsWith(
+            item.id === "stats" ? "/stats" : `/${item.id}`,
+          );
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              disabled={!isProfileActive}
+              onClick={() => navigate(item.path)}
+              title={!isSidebarOpen ? item.label : undefined}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] transition-all cursor-pointer ${
+                !isProfileActive
+                  ? "opacity-40 cursor-not-allowed text-gray-400"
+                  : isActive
+                  ? "bg-blue-50 text-[#0969da] font-semibold shadow-xs"
+                  : "text-gray-700 hover:bg-gray-100/80 hover:text-gray-900 font-medium"
+              }`}
+            >
+              <span className={isActive ? "text-[#0969da]" : "text-gray-500"}>
+                {item.icon}
+              </span>
+              {isSidebarOpen && <span className="truncate">{item.label}</span>}
+            </button>
+          );
+        })}
+
+        <div className="my-2.5 border-t border-[#d0d7de]" />
+
+        {/* Account Menu Item */}
+        <button
+          type="button"
+          onClick={() => navigate("/account")}
+          title={!isSidebarOpen ? t("common.account", "Tài khoản") : undefined}
+          className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] transition-all cursor-pointer ${
+            location.pathname === "/account"
+              ? "bg-blue-50 text-[#0969da] font-semibold shadow-xs"
+              : "text-gray-700 hover:bg-gray-100/80 hover:text-gray-900 font-medium"
+          }`}
+        >
+          <UserIcon className={`w-5 h-5 shrink-0 ${location.pathname === "/account" ? "text-[#0969da]" : "text-gray-500"}`} />
+          {isSidebarOpen && <span className="truncate">{t("common.account", "Tài khoản")}</span>}
+        </button>
+
+        {/* System (Admin) Menu Item */}
+        {currentUser?.role === "admin" && (
+          <button
+            type="button"
+            onClick={() => navigate("/system")}
+            title={!isSidebarOpen ? t("nav.system", "Hệ thống") : undefined}
+            className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] transition-all cursor-pointer ${
+              location.pathname === "/system"
+                ? "bg-blue-50 text-[#0969da] font-semibold shadow-xs"
+                : "text-gray-700 hover:bg-gray-100/80 hover:text-gray-900 font-medium"
+            }`}
+          >
+            <Server className={`w-5 h-5 shrink-0 ${location.pathname === "/system" ? "text-[#0969da]" : "text-gray-500"}`} />
+            {isSidebarOpen && <span className="truncate">{t("nav.system", "Hệ thống")}</span>}
+          </button>
+        )}
+
+        {/* Logout Button */}
+        <button
+          type="button"
+          onClick={() => setShowLogoutConfirm(true)}
+          title={!isSidebarOpen ? t("common.logout", "Đăng xuất") : undefined}
+          className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-all cursor-pointer"
+        >
+          <LogOut className="w-5 h-5 shrink-0" />
+          {isSidebarOpen && <span className="truncate">{t("common.logout", "Đăng xuất")}</span>}
+        </button>
+      </div>
+
+      {/* Footer Toggle */}
+      <div className="p-3 border-t border-[#d0d7de] flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all cursor-pointer"
+          title={isSidebarOpen ? "Thu gọn menu" : "Mở rộng menu"}
+        >
+          {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </button>
+
+        {isSidebarOpen && currentUser && (
+          <span className="text-[11px] font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md uppercase tracking-wider truncate max-w-[120px]">
+            {currentUser.username}
+          </span>
         )}
       </div>
 
-      {/* Which profile am I working in */}
-      <div className={clsx("shrink-0 pb-3", collapsed ? "px-3" : "px-3")}>
-        <ProfileSwitcher
-          profiles={profiles}
-          selectedProfile={selectedProfile}
-          onSelect={onSwitchProfile}
-          onShowAll={onShowAllProfiles}
-          display={collapsed ? "icon" : "full"}
-          placement={collapsed ? "right-start" : "bottom-start"}
-        />
-      </div>
-
-      {/* The places */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
-        <ul className="m-0 flex list-none flex-col gap-1 p-0">
-          {mainItems.map((item) => (
-            <li key={item.id}>
-              <NavLink item={item} collapsed={collapsed} disabled={!isProfileActive} />
-            </li>
-          ))}
-        </ul>
-        <div className="my-3 border-t border-gray-100" role="separator" />
-        <NavLink item={settingsItem} collapsed={collapsed} disabled={!isProfileActive} />
-      </nav>
-
-      {/* Me, language, collapse */}
-      <div className="shrink-0 border-t border-gray-100 p-3">
-        <div className={clsx("flex gap-2", collapsed ? "flex-col items-center" : "items-center")}>
-          <div className={clsx(!collapsed && "min-w-0 flex-1")}>
-            <UserMenu currentUser={currentUser} handleLogout={handleLogout} display={collapsed ? "icon" : "full"} />
+      {/* Logout Confirmation Dialog */}
+      {showLogoutConfirm && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-[#d0d7de] space-y-4">
+            <h3 className="text-sm font-bold text-[#111827] m-0">
+              {t("common.confirmLogout", "Confirm Logout?")}
+            </h3>
+            <p className="text-xs text-gray-600 leading-relaxed m-0">
+              {t("common.confirmLogoutDesc", "Are you sure you want to end your current session?")}
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-2 px-3 rounded-lg border border-[#d0d7de] text-[#111827] text-xs font-semibold hover:bg-gray-50 transition-all cursor-pointer"
+              >
+                {t("common.cancel", "Cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  handleLogout();
+                }}
+                className="flex-1 py-2 px-3 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+              >
+                {t("common.logout", "Logout")}
+              </button>
+            </div>
           </div>
-          <LanguageSwitcher compact className={clsx(collapsed && "flex-col")} />
-        </div>
-        <div className={clsx("mt-2 flex items-center", collapsed ? "justify-center" : "justify-between")}>
-          {!collapsed && (
-            <span className="min-w-0 truncate pl-2 text-xs text-gray-500" title={`${gitTag}${gitCommit ? `-${gitCommit}` : ""}`}>
-              {hasUpdate ? (
-                <a
-                  href="https://github.com/Obein/DNS-Worker/releases"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-semibold text-amber-700 hover:underline"
-                  title={latestTag ? `${t("nav.updateAvailable", "Update available")}: ${latestTag}` : t("nav.updateAvailable", "Update available")}
-                >
-                  {t("nav.updateAvailable", "Update available")}
-                </a>
-              ) : (
-                gitTag
-              )}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            aria-label={collapsed ? t("nav.expand", "Expand sidebar") : t("nav.collapse", "Collapse sidebar")}
-            title={collapsed ? t("nav.expand", "Expand sidebar") : t("nav.collapse", "Collapse sidebar")}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
-          >
-            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-          </button>
-        </div>
-      </div>
+        </div>,
+        document.body
+      )}
     </aside>
   );
 };

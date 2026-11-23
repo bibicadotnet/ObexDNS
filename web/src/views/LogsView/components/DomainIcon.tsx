@@ -16,7 +16,7 @@ export const DomainIcon: React.FC<DomainIconProps> = React.memo(({ domain, class
   const failed = failedFor === domain;
 
   if (failed) {
-    return <Globe className={`${className} shrink-0 text-gray-400 `} aria-hidden />;
+    return <Globe className={`${className} shrink-0 text-gray-400`} aria-hidden />;
   }
 
   return (

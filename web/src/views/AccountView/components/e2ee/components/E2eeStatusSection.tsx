@@ -44,10 +44,10 @@ export const E2eeStatusSection: React.FC<E2eeStatusSectionProps> = ({
       <Divider className="my-2" />
 
       {/* Direct Master Switch Card */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border border-gray-200 bg-gray-50/70 ">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border border-gray-200 bg-gray-50/70">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm text-gray-900 ">
+            <span className="font-semibold text-sm text-gray-900">
               {t("account.e2ee.enableSwitch")}
             </span>
             <Tag
@@ -87,7 +87,7 @@ export const E2eeStatusSection: React.FC<E2eeStatusSectionProps> = ({
               {isPqc ? "P256-MLKEM768 + AES-256-GCM" : "ECDH P-256 + AES-256-GCM"}
             </span>
             {isPqc ? (
-              <Tag minimal intent={Intent.PRIMARY} className="text-xs">
+              <Tag minimal intent={Intent.PRIMARY} className="text-[10px]">
                 {t("account.e2ee.pqcTag", "PQC / NIST FIPS 203")}
               </Tag>
             ) : (
@@ -96,7 +96,7 @@ export const E2eeStatusSection: React.FC<E2eeStatusSectionProps> = ({
                 intent={Intent.PRIMARY}
                 minimal
                 icon={<RefreshCw size={12} />}
-                text={t("account.e2ee.upgradePqcBtn")}
+                text={t("account.e2ee.upgradePqcBtn", "升级到后量子 (PQC)")}
                 loading={processing}
                 onClick={onUpgradeToPqc}
               />
@@ -111,7 +111,7 @@ export const E2eeStatusSection: React.FC<E2eeStatusSectionProps> = ({
           </span>
           {isUnlocked ? (
             <div className="flex items-center gap-2 flex-wrap justify-end">
-              <Tag minimal intent={Intent.SUCCESS} className="text-xs">
+              <Tag minimal intent={Intent.SUCCESS} className="text-[10px]">
                 {t("account.e2ee.unlocked")}
               </Tag>
               {hasPasskey && (status?.wrappedPasskeys?.length || 0) === 0 && onEnrollPasskey && (
@@ -119,7 +119,7 @@ export const E2eeStatusSection: React.FC<E2eeStatusSectionProps> = ({
                   small
                   intent={Intent.PRIMARY}
                   icon={<KeyRound size={12} />}
-                  text={t("account.e2ee.enrollPasskeyBtn")}
+                  text={t("account.e2ee.enrollPasskeyBtn", "关联当前通行密钥")}
                   loading={processing}
                   onClick={onEnrollPasskey}
                 />
@@ -129,7 +129,7 @@ export const E2eeStatusSection: React.FC<E2eeStatusSectionProps> = ({
                 minimal
                 intent={Intent.NONE}
                 icon="lock"
-                text={t("account.e2ee.lockDevice")}
+                text={t("account.e2ee.lockDevice", "锁定此设备")}
                 onClick={onLockDevice}
               />
             </div>
@@ -160,7 +160,7 @@ export const E2eeStatusSection: React.FC<E2eeStatusSectionProps> = ({
                   minimal
                   intent={Intent.DANGER}
                   icon="reset"
-                  text={t("account.e2ee.resetKeypairBtn")}
+                  text={t("account.e2ee.resetKeypairBtn", "重置密钥对")}
                   onClick={onOpenResetAlert}
                 />
               )}

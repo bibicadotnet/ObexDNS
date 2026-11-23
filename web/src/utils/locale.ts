@@ -1,7 +1,6 @@
 import i18n from "../i18n/config";
 import { loadLocale } from "../i18n/config";
 import { setSystemLocale } from "./date";
-import { normalizeLocale } from "../config/locales";
 
 import { updateMe } from "../services";
 
@@ -19,10 +18,11 @@ import { updateMe } from "../services";
 export async function updateLocale(
   newLocale: string,
 ): Promise<{ loaded: boolean; persisted: boolean }> {
-  const locale = normalizeLocale(newLocale);
+  const locale = newLocale || "en-US";
 
   // Fetch and cache the locale bundle BEFORE switching the language.
-  // English is bundled with the app, so loadLocale returns false for it, which is fine.
+  // For English variants (en-GB, en-SG) loadLocale returns false (no separate
+  // bundle), which is fine — they share the bundled en-US translations.
   const loaded = await loadLocale(locale);
 
   // Switch the language only after the bundle is ready.

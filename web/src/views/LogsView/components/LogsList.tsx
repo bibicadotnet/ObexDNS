@@ -54,8 +54,8 @@ export const LogsList: React.FC<LogsListProps> = ({
               ) : (
                 <DomainIcon domain={log.domain} />
               )}
-              <span className={clsx("font-bold text-sm truncate", { "italic text-gray-400 ": isEncryptedLocked })}>
-                {isEncryptedLocked ? t("logs.encryptedRecord") : log.domain}
+              <span className={clsx("font-bold text-sm truncate", { "italic text-gray-400": isEncryptedLocked })}>
+                {isEncryptedLocked ? t("logs.encryptedRecord", "[加密记录]") : log.domain}
               </span>
               {isEncryptedUnlocked && (
                 <Lock size={12} className="text-emerald-500 shrink-0 opacity-80" />
@@ -73,26 +73,26 @@ export const LogsList: React.FC<LogsListProps> = ({
                   ? Intent.NONE
                   : Intent.WARNING
               }
-              className="text-xs shrink-0"
+              className="text-[10px] shrink-0"
             >
               {log.action}
             </Tag>
           </div>
           <div className="flex justify-between items-center">
             <div className="flex gap-2 items-center">
-              <span className="text-xs font-mono opacity-50">
+              <span className="text-[10px] font-mono opacity-50">
                 {new Date(log.timestamp * 1000).toLocaleTimeString([], { hour12: false })}
               </span>
-              <span className="text-xs bg-gray-100 px-1 rounded opacity-60">
+              <span className="text-[10px] bg-gray-100 px-1 rounded opacity-60">
                 {log.record_type}
               </span>
               {log.access_point_name && (
-                <span className="text-xs opacity-50 truncate max-w-25">
+                <span className="text-[10px] opacity-50 truncate max-w-25">
                   {log.access_point_name}
                 </span>
               )}
             </div>
-            <div className="text-xs opacity-40 font-mono italic">
+            <div className="text-[10px] opacity-40 font-mono italic">
               {log.latency ? `${log.latency}ms` : ""}
             </div>
           </div>

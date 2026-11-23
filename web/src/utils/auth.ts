@@ -156,7 +156,7 @@ export function formatApiErrorMessage(err: any, t: (key: string, options?: any) 
     const rayIdSuffix = cfError.rayId ? ` (Ray ID: ${cfError.rayId})` : "";
     if (cfError.errorCode && cfError.errorDesc) {
       return t("auth.cfErrorWithDetails", {
-        defaultValue: `Cloudflare edge error (code ${cfError.errorCode}: ${cfError.errorDesc}). The service is temporarily unavailable. Please try again later.${rayIdSuffix}`,
+        defaultValue: `Cloudflare 边缘节点异常 (错误代码 ${cfError.errorCode}: ${cfError.errorDesc})。服务暂时不可用，请稍后重试。${rayIdSuffix}`,
         code: cfError.errorCode,
         desc: cfError.errorDesc,
         rayId: rayIdSuffix
@@ -164,19 +164,19 @@ export function formatApiErrorMessage(err: any, t: (key: string, options?: any) 
     }
     if (cfError.errorCode) {
       return t("auth.cfErrorCodeOnly", {
-        defaultValue: `Cloudflare edge error (code ${cfError.errorCode}). The service is temporarily unavailable. Please try again later.${rayIdSuffix}`,
+        defaultValue: `Cloudflare 边缘服务异常 (错误代码 ${cfError.errorCode})。服务暂时不可用，请稍后重试。${rayIdSuffix}`,
         code: cfError.errorCode,
         rayId: rayIdSuffix
       });
     }
     if (cfError.isCf) {
       return t("auth.cfErrorGeneric", {
-        defaultValue: `Cloudflare edge error. The service is temporarily unavailable. Please try again later.${rayIdSuffix}`,
+        defaultValue: `Cloudflare 边缘服务异常，服务暂时不可用，请稍后重试。${rayIdSuffix}`,
         rayId: rayIdSuffix
       });
     }
     return t("auth.htmlErrorGeneric", {
-      defaultValue: `The server returned an unexpected web page (HTTP ${err.status || 500}). Please try again later.`,
+      defaultValue: `服务器返回异常网页响应 (HTTP ${err.status || 500})，请稍后重试。`,
       status: err.status || 500
     });
   }
@@ -188,13 +188,13 @@ export function formatApiErrorMessage(err: any, t: (key: string, options?: any) 
     bodyText === "rate_limited"
   ) {
     return t("auth.tooManyAttempts", {
-      defaultValue: "Too many requests or attempts. You are temporarily limited. Please try again later."
+      defaultValue: "请求过于频繁或尝试次数过多，已被临时限制，请稍后再试。"
     });
   }
 
   if (bodyText.includes("row read limit") || bodyText.includes("exceeded D1") || bodyText === "database_unavailable") {
     return t("auth.dbQuotaExceeded", {
-      defaultValue: "The daily free database read quota is used up. Wait for the daily reset or upgrade the quota."
+      defaultValue: "数据库每日免费读取配额已用尽，请等待次日自动重置或升级配额。"
     });
   }
 
@@ -202,7 +202,7 @@ export function formatApiErrorMessage(err: any, t: (key: string, options?: any) 
     bodyText === "no_users_registered" ||
     bodyText.includes("no_users_registered")
   ) {
-    return t("auth.noUsersRegistered");
+    return t("auth.noUsersRegistered", "系统尚无账号，请注册成为管理员。");
   }
 
   if (
@@ -211,7 +211,7 @@ export function formatApiErrorMessage(err: any, t: (key: string, options?: any) 
     bodyText.includes("SQLITE_ERROR")
   ) {
     return t("auth.dbNotInitialized", {
-      defaultValue: "The database is not initialized or tables are missing. Run 'npm run db:migrate:prod' in a terminal to apply migrations."
+      defaultValue: "数据库未初始化或缺少数据表，请在终端执行 'npm run db:migrate:prod' 应用数据库迁移。"
     });
   }
 
@@ -238,7 +238,7 @@ export function formatApiErrorMessage(err: any, t: (key: string, options?: any) 
     bodyText.includes("jwt_secret_preset") ||
     bodyText.includes("is a documentation placeholder")
   ) {
-    return t("auth.jwtSecretPreset");
+    return t("auth.jwtSecretPreset", "检测到正在使用预设的 JWT_SECRET，请在环境变量中修改并替换为自定义安全密钥后重新部署。");
   }
   if (
     bodyText === "jwt_secret_missing" ||
@@ -247,10 +247,10 @@ export function formatApiErrorMessage(err: any, t: (key: string, options?: any) 
     bodyText.includes("JWT_SECRET is missing") ||
     bodyText.includes("JWT_SECRET secret variable")
   ) {
-    return t("auth.jwtSecretMissing");
+    return t("auth.jwtSecretMissing", "缺少 JWT_SECRET，请在环境变量或 .dev.vars 中配置安全密钥。");
   }
   if (bodyText === "jwt_secret_invalid") {
-    return t("auth.jwtSecretInvalid");
+    return t("auth.jwtSecretInvalid", "JWT_SECRET 密钥格式无效，请检查配置。");
   }
 
   if (bodyText === "internal_server_error" || bodyText === "registration_failed") {

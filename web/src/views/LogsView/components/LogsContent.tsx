@@ -81,11 +81,11 @@ export const LogsContent: React.FC<LogsContentProps> = ({
   };
 
   return (
-    <div className="flex-1 relative overflow-hidden flex flex-col min-h-0">
+    <div className="w-full relative min-h-0">
       <div
         ref={scrollContainerRef}
         onScroll={checkScroll}
-        className={clsx("flex-1 overflow-y-auto overflow-x-hidden", showCards ? "px-3" : "px-0")}
+        className={clsx("w-full", showCards ? "px-1" : "px-0")}
       >
         <div ref={measureRef} className="w-full min-w-0">
         {logs.length === 0 && loading ? (
@@ -93,11 +93,11 @@ export const LogsContent: React.FC<LogsContentProps> = ({
             <Spinner />
           </div>
         ) : logs.length === 0 ? (
-          <div className="px-4 py-12 md:px-6 md:py-20">
+          <div className="py-20">
             <Callout
               title={
                 logRetentionDays === 0
-                  ? t("logs.loggingDisabledTitle")
+                  ? t("logs.loggingDisabledTitle", "日志记录已关闭")
                   : searchQuery
                   ? t("logs.noResults")
                   : t("logs.noRecords")
@@ -106,7 +106,7 @@ export const LogsContent: React.FC<LogsContentProps> = ({
               intent={logRetentionDays === 0 ? Intent.WARNING : Intent.NONE}
             >
               {logRetentionDays === 0
-                ? t("logs.loggingDisabledDesc")
+                ? t("logs.loggingDisabledDesc", "当前配置的日志留存已设置为“关闭”，系统不记录任何查询日志。如需查看，请在设置中启用日志留存。")
                 : searchQuery
                 ? t("logs.noResultsDesc", { query: searchQuery })
                 : t("logs.noRecordsDesc")}
@@ -138,10 +138,10 @@ export const LogsContent: React.FC<LogsContentProps> = ({
           {loadingMore ? (
             <Spinner size={16} />
           ) : realtimeRefresh ? (
-            logs.length > 0 && <span className="text-xs opacity-30 italic">{t("logs.realtimeLoadMoreTip")}</span>
+            logs.length > 0 && <span className="text-[10px] opacity-30 italic">{t("logs.realtimeLoadMoreTip")}</span>
           ) : (
             !hasMore &&
-            logs.length > 0 && <span className="text-xs opacity-30 italic">{t("logs.loadedAll", { count: logs.length })}</span>
+            logs.length > 0 && <span className="text-[10px] opacity-30 italic">{t("logs.loadedAll", { count: logs.length })}</span>
           )}
         </div>
       </div>
@@ -163,11 +163,11 @@ export const LogsContent: React.FC<LogsContentProps> = ({
           title={t("logs.scrollToTop")}
           className={clsx(
             "pointer-events-auto group inline-flex items-center gap-1.5 rounded-full select-none",
-            "backdrop-blur-md bg-white/70 hover:bg-white/90 ",
-            "border border-gray-200/80 hover:border-gray-300 ",
-            "text-gray-700 hover:text-gray-950 ",
+            "backdrop-blur-md bg-white/70 hover:bg-white/90",
+            "border border-gray-200/80 hover:border-gray-300",
+            "text-gray-700 hover:text-gray-950",
             "shadow-sm hover:shadow active:scale-95 transition-all duration-200 cursor-pointer",
-            isMobile ? "px-2.5 py-1.5 text-xs" : "px-3.5 py-2 text-xs"
+            isMobile ? "px-2.5 py-1.5 text-[11px]" : "px-3.5 py-2 text-xs"
           )}
         >
           <ArrowUp

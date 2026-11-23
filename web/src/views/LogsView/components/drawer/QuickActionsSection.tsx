@@ -21,7 +21,7 @@ export const QuickActionsSection: React.FC<QuickActionsSectionProps> = ({
       <SectionCard>
         {isEncryptedLocked ? (
           <p className="text-xs text-center text-gray-500 italic py-2 m-0">
-            {t("settings.e2eeUnlockPrompt")}
+            {t("settings.e2eeUnlockPrompt", "此记录已加密，请先解锁私钥后再进行操作。")}
           </p>
         ) : (
           <div className="flex flex-col gap-2">

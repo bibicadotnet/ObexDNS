@@ -3,6 +3,7 @@ import { ScheduledEvent } from '@cloudflare/workers-types';
 import { readCsrfCookie, createCsrfCookie, generateId } from './lib/auth';
 import { generateLinuxSetupScript } from './utils/linuxSetup';
 import { generateWindowsSetupScript } from './utils/windowsSetup';
+import { generateAppleMobileConfig, formatProfileLabel } from './utils/appleSetup';
 import { ACCESS_KEY_REGEX } from './utils/validator';
 
 // Middleware imports
@@ -13,7 +14,7 @@ import { handleAuthRequest } from './api/auth';
 import { handleProfilesRequest } from './api/profiles';
 import { handleAccountRequest } from './api/account';
 import { handleSystemRequest } from './api/system';
-import { handleDoHRequest } from './api/doh';
+import { handleDoHRequest, resolveProfileByKey } from './api/doh';
 import { handleScheduled } from './cron';
 import { handleMapDataRequest } from './api/mapData';
 import { isUsableJwtSecret } from './lib/jwt';
@@ -185,6 +186,56 @@ export default {
         return new Response(script, {
           headers: {
             'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      }
+
+      // Apple macOS / iOS / iPadOS / tvOS Setup Profile (.mobileconfig) Route
+      if (url.pathname === '/apple' || url.pathname === '/setup.mobileconfig' || url.pathname === '/apple.mobileconfig') {
+        const key = url.searchParams.get('key') || undefined;
+        if (key && !ACCESS_KEY_REGEX.test(key)) {
+          return new Response('Invalid key parameter', { status: 400 });
+        }
+        const appName = url.searchParams.get('appName') || env.APP_NAME || 'DNS Shield';
+        let profileName = url.searchParams.get('name') || undefined;
+        let accessPointName = url.searchParams.get('ap') || undefined;
+
+        if (key && (!profileName || !accessPointName)) {
+          try {
+            const matchedProfile = await resolveProfileByKey(key, env, ctx);
+            if (matchedProfile) {
+              profileName = profileName || matchedProfile.name;
+              accessPointName = accessPointName || matchedProfile.access_point_name || undefined;
+            }
+          } catch {
+            // ignore lookup error
+          }
+        }
+
+        const origin = url.searchParams.get('origin') || url.origin;
+        const xml = generateAppleMobileConfig({
+          origin,
+          key,
+          profileName,
+          accessPointName,
+          appName
+        });
+        const appPrefix = appName.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+        const domain = new URL(origin).hostname;
+        const label = formatProfileLabel(profileName, accessPointName, appName);
+        const fileTag = (label || domain)
+          .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '');
+        const filename = key
+          ? `${appPrefix}-${fileTag}-${key}.mobileconfig`
+          : `${appPrefix}-default.mobileconfig`;
+
+        return new Response(xml, {
+          headers: {
+            'Content-Type': 'application/x-apple-aspen-config; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${filename}"`,
             'Cache-Control': 'no-cache'
           }
         });

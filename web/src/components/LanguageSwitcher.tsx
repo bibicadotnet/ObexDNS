@@ -1,61 +1,45 @@
 import { useState } from "react";
-import { clsx } from "clsx";
+import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { updateLocale } from "../utils/locale";
-import { LOCALE, normalizeLocale } from "../config/locales";
+import { LOCALE } from "../config/locales";
 
-/**
- * LanguageSwitcher: a two-way switch between English and Vietnamese.
- * With only two languages a segmented control is faster than a menu:
- * both choices are visible and one tap switches.
- *
- * @param compact - Smaller control for tight spots (sidebar footer, headers).
- */
-export const LanguageSwitcher = ({
-  compact = false,
-  className,
-}: {
-  compact?: boolean;
-  className?: string;
+export const LanguageSwitcher = (_props?: {
+  minimal?: boolean;
+  size?: "small" | "regular";
 }) => {
-  const { i18n, t } = useTranslation();
-  const [loadingLocale, setLoadingLocale] = useState<string | null>(null);
-  const current = normalizeLocale(i18n.language);
+  const { i18n } = useTranslation();
+  const [loading, setLoading] = useState(false);
 
-  const choose = async (locale: string) => {
-    if (locale === current || loadingLocale !== null) return;
-    setLoadingLocale(locale);
+  const currentLang = LOCALE.find((l) => l.value === i18n.language) || LOCALE[0];
+  const otherLang = LOCALE.find((l) => l.value !== i18n.language) || LOCALE[1];
+
+  const handleToggle = async () => {
+    if (loading) return;
+    setLoading(true);
     try {
-      await updateLocale(locale);
+      await updateLocale(otherLang.value);
     } finally {
-      setLoadingLocale(null);
+      setLoading(false);
     }
   };
 
   return (
-    <div
-      className={clsx(
-        "segmented",
-        compact && "segmented-compact",
-        loadingLocale && "opacity-70",
-        className,
-      )}
-      role="group"
-      aria-label={t("common.language", "Language")}
+    <button
+      type="button"
+      onClick={handleToggle}
+      disabled={loading}
+      title={`Switch language (${otherLang.label})`}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold shadow-xs hover:border-gray-300 transition-all cursor-pointer disabled:opacity-50"
     >
-      {LOCALE.map((lang) => (
-        <button
-          key={lang.value}
-          type="button"
-          lang={lang.value}
-          title={lang.label}
-          aria-pressed={current === lang.value}
-          disabled={loadingLocale !== null}
-          onClick={() => choose(lang.value)}
-        >
-          {lang.short}
-        </button>
-      ))}
-    </div>
+      {loading ? (
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+      ) : (
+        <span className="text-sm leading-none">{currentLang.flag}</span>
+      )}
+      <span className="tracking-wide">
+        {currentLang.label === "English" ? "EN" : "VI"}
+      </span>
+    </button>
   );
 };

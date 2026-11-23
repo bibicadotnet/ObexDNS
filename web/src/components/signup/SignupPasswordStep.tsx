@@ -1,146 +1,117 @@
-import React from "react";
-import {
-  Button,
-  FormGroup,
-  InputGroup,
-  Tooltip,
-  Position,
-  Intent
-} from "@blueprintjs/core";
+import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Lock, Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
 
-/**
- * Properties for the SignupPasswordStep component.
- */
 export interface SignupPasswordStepProps {
-  /** The current password value. */
   password: string;
-  /** Callback to update the password value. */
   setPassword: (val: string) => void;
-  /** State indicating if password input field has focus. */
   passwordFocused: boolean;
-  /** Callback to set focus state of password input. */
   setPasswordFocused: (focused: boolean) => void;
-  /** Indicates if signup submission is loading. */
   loading: boolean;
-  /** Callback to handle form submission. */
   onSubmit: (e: React.FormEvent) => void;
-  /** Flag showing if Turnstile verification is enabled. */
   isTurnstileEnabled: boolean | undefined;
-  /** Ref pointing to the Turnstile container div. */
   turnstileRef: React.RefObject<HTMLDivElement | null>;
-  /** Indicates if Turnstile has rendered a visible widget (managed/challenge). */
   hasVisibleWidget?: boolean;
-  /** The current state of Turnstile verification. */
   turnstileStatus: "idle" | "verifying" | "success" | "error";
 }
 
-/**
- * SignupPasswordStep is the second step of the signup wizard.
- * It handles password complexity validation and registration submission.
- *
- * @param props - Component props.
- * @returns React element representing password step.
- */
 export const SignupPasswordStep: React.FC<SignupPasswordStepProps> = ({
   password,
   setPassword,
-  passwordFocused,
+  passwordFocused: _passwordFocused,
   setPasswordFocused,
   loading,
   onSubmit,
   isTurnstileEnabled,
   turnstileRef,
   hasVisibleWidget,
-  turnstileStatus
+  turnstileStatus,
 }) => {
-  const [showPassword, setShowPassword] = React.useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { t } = useTranslation();
 
-  /**
-   * Renders the right elements (clear and/or show/hide password buttons) inside the password input group.
-   *
-   * @returns React element.
-   */
-  const renderPasswordRightElement = (): React.JSX.Element => {
-    return (
-      <div className="flex items-center">
-        {password && (
-          <Button
-            minimal={true}
-            icon="cross"
-            onClick={() => setPassword("")}
-          />
-        )}
-        <Button
-          minimal={true}
-          icon={showPassword ? "eye-open" : "eye-off"}
-          onClick={() => setShowPassword(!showPassword)}
-          title={showPassword ? t("auth.hidePassword", "Hide password") : t("auth.showPassword", "Show password")}
-        />
-      </div>
-    );
-  };
+  const hasLength = password.length >= 8;
+  const hasLetter = /[a-zA-Z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <FormGroup label={t("auth.password")} labelFor="password">
-        <Tooltip
-          content={t("auth.formatTipPassword")}
-          isOpen={passwordFocused}
-          position={Position.TOP}
-          intent={Intent.PRIMARY}
-          className="w-full"
+      <div>
+        <label
+          htmlFor="password"
+          className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1.5"
         >
-          <div className="w-full block">
-            <InputGroup
-              id="password"
-              leftIcon="lock"
-              placeholder={t("auth.passwordPlaceholder")}
-              type={showPassword ? "text" : "password"}
-              size="large"
-              className="rounded-xl w-full"
-              value={password}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setPassword(e.target.value)
-              }
-              onFocus={() => setPasswordFocused(true)}
-              onBlur={() => setPasswordFocused(false)}
-              rightElement={renderPasswordRightElement()}
-              required
-              autoFocus
-            />
+          {t("auth.password", "Mật khẩu")}
+        </label>
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+            <Lock className="w-4 h-4" />
           </div>
-        </Tooltip>
-      </FormGroup>
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            placeholder={t("auth.passwordPlaceholder", "Nhập mật khẩu an toàn")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onFocus={() => setPasswordFocused(true)}
+            onBlur={() => setPasswordFocused(false)}
+            autoFocus
+            required
+            className="w-full pl-10 pr-10 py-2.5 text-sm bg-white border border-gray-300 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+            tabIndex={-1}
+          >
+            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {/* Real-time Password Strength Check */}
+        <div className="mt-2.5 grid grid-cols-3 gap-1.5 text-[11px] font-medium">
+          <div className={`flex items-center gap-1 ${hasLength ? "text-emerald-600" : "text-gray-400"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${hasLength ? "bg-emerald-500" : "bg-gray-300"}`} />
+            <span>Tối thiểu 8 ký tự</span>
+          </div>
+          <div className={`flex items-center gap-1 ${hasLetter ? "text-emerald-600" : "text-gray-400"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${hasLetter ? "bg-emerald-500" : "bg-gray-300"}`} />
+            <span>Chứa chữ cái</span>
+          </div>
+          <div className={`flex items-center gap-1 ${hasNumber ? "text-emerald-600" : "text-gray-400"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${hasNumber ? "bg-emerald-500" : "bg-gray-300"}`} />
+            <span>Chứa số</span>
+          </div>
+        </div>
+      </div>
 
       {isTurnstileEnabled && (
         <div
-          className={`flex justify-center transition-all duration-200 ${
-            hasVisibleWidget
-              ? "py-2 min-h-16.25"
-              : "h-0 overflow-hidden [&:has(iframe:not([style*='height: 0px']))]:py-2 [&:has(iframe:not([style*='height: 0px']))]:min-h-16.25"
+          ref={turnstileRef}
+          className={`flex justify-center transition-all duration-300 ${
+            hasVisibleWidget ? "opacity-100 min-h-[65px] my-3" : "opacity-0 h-0 overflow-hidden"
           }`}
-        >
-          <div ref={turnstileRef} />
-        </div>
+        />
       )}
 
-      <Button
-        fill
-        size="large"
-        intent={Intent.PRIMARY}
+      <button
         type="submit"
-        loading={loading || turnstileStatus === "verifying"}
-        disabled={
-          !!isTurnstileEnabled && turnstileStatus !== "success"
-        }
-        className="mt-6 font-bold py-6 rounded-xl shadow-lg shadow-blue-500/20"
+        disabled={loading || !hasLength || (isTurnstileEnabled && turnstileStatus !== "success")}
+        className="w-full mt-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-xs hover:shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
       >
-        {turnstileStatus === "verifying"
-          ? t("auth.verifying")
-          : t("auth.signupBtn")}
-      </Button>
+        {loading ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>{t("common.loading", "Đang tạo tài khoản...")}</span>
+          </>
+        ) : (
+          <>
+            <ShieldCheck className="w-4 h-4" />
+            <span>{t("auth.signupBtn", "Hoàn tất đăng ký")}</span>
+          </>
+        )}
+      </button>
     </form>
   );
 };

@@ -50,7 +50,7 @@ export const SignupRecoveryStep: React.FC<SignupRecoveryStepProps> = ({
         {totpRecoveryKeys.map((key: string, i: number) => (
           <code
             key={i}
-            className="block font-mono text-sm sm:text-base font-semibold bg-gray-100 text-blue-600 px-4 py-3 rounded-xl text-center break-all select-all border border-gray-200 "
+            className="block font-mono text-sm sm:text-base font-semibold bg-gray-100 text-blue-600 px-4 py-3 rounded-xl text-center tracking-widest break-all select-all border border-gray-200"
           >
             {key}
           </code>

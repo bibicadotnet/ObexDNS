@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Button, Intent, Callout } from "@blueprintjs/core";
+import { Button, Intent, Callout, ButtonGroup } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
-import { ProtectionHeader } from "../../components/ProtectionHeader";
+import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { PageHeader } from "../../components/PageHeader";
 
 import type {  FilteringViewProps, FilterList  } from "./types";
 import { AddListCard } from "./components/AddListCard";
@@ -11,6 +13,8 @@ import { ListDetailsDialog } from "./components/ListDetailsDialog";
 import { getProfileLists, addCustomProfileList, deleteCustomProfileList, syncProfileLists, syncSingleProfileList, toggleProfileList, addProfileRule, getListLimits } from "../../services";
 
 export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toasterRef }) => {
+  const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [lists, setLists] = useState<FilterList[]>([]);
   const [newUrl, setNewUrl] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,7 +50,7 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toasterRef?.current?.show({
-      message: t("setup.copied"),
+      message: t("setup.copied", "已复制到剪贴板"),
       intent: Intent.SUCCESS,
       icon: "duplicate",
     });
@@ -130,7 +134,7 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
       const oldSyncTime = oldList?.last_synced_at;
       await syncSingleProfileList(profileId, listId);
       toasterRef?.current?.show({
-        message: t("filtering.singleSyncStarted"),
+        message: t("filtering.singleSyncStarted", "列表同步任务已开始"),
         intent: Intent.PRIMARY,
         icon: "cloud-download",
       });
@@ -166,7 +170,7 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
       setNewUrl("");
 
       toasterRef?.current?.show({
-        message: t("filtering.singleSyncStarted"),
+        message: t("filtering.singleSyncStarted", "列表同步任务已开始"),
         intent: Intent.PRIMARY,
         icon: "cloud-download",
       });
@@ -303,11 +307,28 @@ export const FilteringView: React.FC<FilteringViewProps> = ({ profileId, toaster
   }, [profileId]);
 
   return (
-    <div className="page">
-      <ProtectionHeader
-        profileId={profileId}
-        active="filter"
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8">
+      <PageHeader
+        title={t("filtering.title")}
         subtitle={t("filtering.subtitle")}
+        switcher={
+          isMobile ? (
+            <ButtonGroup minimal fill>
+              <Button
+                active={false}
+                onClick={() => navigate(`/dash/${profileId}/rules`)}
+                text={t("rules.title")}
+                large
+              />
+              <Button
+                active={true}
+                onClick={() => navigate(`/dash/${profileId}/filter`)}
+                text={t("filtering.title")}
+                large
+              />
+            </ButtonGroup>
+          ) : undefined
+        }
         actions={
           <Button
             icon={<RefreshCw size={16} />}

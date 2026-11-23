@@ -6,7 +6,7 @@ import { setSystemTimeZone } from "../../utils/date";
 import type { SetupViewProps, ClientInfo } from "./types";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { SetupHeader } from "./components/SetupHeader";
-import { ConnectionBanner, ConnectionDetails } from "./components/VerifyConnectionCard";
+import { VerifyConnectionCard } from "./components/VerifyConnectionCard";
 import { AccessPointCard } from "./components/AccessPointCard";
 import { DohUrlCard } from "./components/DohUrlCard";
 import { SetupTabs } from "./components/SetupTabs";
@@ -232,10 +232,22 @@ export const SetupView: React.FC<SetupViewProps> = ({ profileId, profileKey, pro
   }, [domainIps, clientInfo?.substituteDomain]);
 
   return (
-    <div className="page space-y-6">
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8 space-y-6 pb-24">
       <SetupHeader isMobile={isMobile} />
 
-      <ConnectionBanner isVerifying={isVerifying} verifyResult={verifyResult} handleVerify={handleVerify} />
+      <VerifyConnectionCard
+        isVerifying={isVerifying}
+        verifyResult={verifyResult}
+        handleVerify={handleVerify}
+        isMobile={isMobile}
+        clientInfo={clientInfo}
+        showIp={showIp}
+        setShowIp={setShowIp}
+        showLocation={showLocation}
+        setShowLocation={setShowLocation}
+        traceInfo={traceInfo}
+        edgeLocation={edgeLocation}
+      />
 
       <AccessPointCard
         accessPoints={accessPoints}
@@ -260,16 +272,6 @@ export const SetupView: React.FC<SetupViewProps> = ({ profileId, profileKey, pro
         accessPointName={activeName}
         currentIps={currentIps}
         dotDomain={clientInfo?.dotDomain}
-      />
-
-      <ConnectionDetails
-        clientInfo={clientInfo}
-        showIp={showIp}
-        setShowIp={setShowIp}
-        showLocation={showLocation}
-        setShowLocation={setShowLocation}
-        traceInfo={traceInfo}
-        edgeLocation={edgeLocation}
       />
 
       <AccessPointDrawer

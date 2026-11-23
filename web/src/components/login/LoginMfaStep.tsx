@@ -87,7 +87,7 @@ export const LoginMfaStep: React.FC<LoginMfaStepProps> = ({
       {/* ─── Mode: Passkey (Priority) ─── */}
       {mfaMethod === "passkey" && (
         <div className="space-y-5 text-center py-2">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 ">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
             <Key size={36} />
           </div>
 
@@ -132,7 +132,7 @@ export const LoginMfaStep: React.FC<LoginMfaStepProps> = ({
                 type="button"
                 disabled={passkeyLoading || loading}
                 onClick={() => handleSwitchMode("totp")}
-                className="font-medium text-blue-600 py-2.5 rounded-xl transition-colors hover:bg-blue-50 "
+                className="font-medium text-blue-600 py-2.5 rounded-xl transition-colors hover:bg-blue-50"
               >
                 {t("auth.otherOptions", "Other Options")}
               </Button>
@@ -199,7 +199,7 @@ export const LoginMfaStep: React.FC<LoginMfaStepProps> = ({
                 type="button"
                 disabled={loading}
                 onClick={() => handleSwitchMode("passkey")}
-                className="font-medium text-blue-600 py-2.5 rounded-xl transition-colors hover:bg-blue-50 "
+                className="font-medium text-blue-600 py-2.5 rounded-xl transition-colors hover:bg-blue-50"
               >
                 {t("auth.otherOptions", "Other Options")}
               </Button>

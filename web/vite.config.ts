@@ -117,8 +117,7 @@ export default defineConfig({
       manifest: {
         name: process.env.VITE_APP_NAME || process.env.APP_NAME || 'DNS Shield',
         short_name: process.env.VITE_APP_NAME || process.env.APP_NAME || 'DNS Shield',
-        theme_color: '#ffffff',
-        background_color: '#f5f7fa',
+        theme_color: '#f8fafc',
         icons: []
       },
       devOptions: {

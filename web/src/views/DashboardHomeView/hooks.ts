@@ -88,12 +88,12 @@ export const useImportProfile = (onRefresh?: () => void) => {
       try {
         data = JSON.parse(text) as ExportedProfileData;
       } catch {
-        alert(t("common.invalidFormat"));
+        alert(t("common.invalidFormat", "无效文件格式"));
         return;
       }
 
       if (!data || typeof data !== "object" || !data.settings || !data.name) {
-        alert(t("common.invalidFormat"));
+        alert(t("common.invalidFormat", "无效文件格式"));
         return;
       }
 
@@ -306,7 +306,7 @@ export const useImportProfile = (onRefresh?: () => void) => {
         }
       }
 
-      alert(t("common.importSuccess"));
+      alert(t("common.importSuccess", "配置成功导入"));
       onRefresh?.();
     } catch (e: unknown) {
       console.error("[ProfileImport]", e);
@@ -323,11 +323,11 @@ export const useImportProfile = (onRefresh?: () => void) => {
         const maxVal = match ? match[1] : "10";
         alert(t("common.profileLimitExceeded", { max: maxVal, defaultValue: `Profile limit exceeded (max ${maxVal})` }));
       } else if (rawMsg === "The profile name already exists") {
-        alert(t("common.profileNameExists"));
+        alert(t("common.profileNameExists", "该配置名称已存在"));
       } else if (rawMsg === "Invalid Profile Name format") {
-        alert(t("common.profileNameFormatError"));
+        alert(t("common.profileNameFormatError", "配置名称格式不正确"));
       } else {
-        alert(rawMsg ? `${t("common.importError")}: ${rawMsg}` : t("common.importError"));
+        alert(rawMsg ? `${t("common.importError", "配置导入失败")}: ${rawMsg}` : t("common.importError", "配置导入失败"));
       }
     } finally {
       setImporting(false);

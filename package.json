@@ -1,6 +1,6 @@
 {
   "name": "dns-worker",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "private": false,
   "description": "Privacy-first DNS & DoH Resolver with modern Web Dashboard, built for Cloudflare Workers & Node.js",
   "main": "./dist/serverfull.mjs",
@@ -24,7 +24,7 @@
     "start": "npm run build && wrangler dev",
     "start:serverfull": "npm run build:serverfull && node --enable-source-maps dist/serverfull.mjs",
     "serverfull": "npm run build:serverfull && node --enable-source-maps dist/serverfull.mjs",
-    "build:serverfull": "npm run db:generate-migrations && npm run ui:build && npx esbuild src/serverfull/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/serverfull.mjs --banner:js=\"#!/usr/bin/env node\" --external:node:sqlite --minify --sourcemap --tree-shaking=true --legal-comments=none",
+    "build:serverfull": "npm run db:generate-migrations && npm run ui:build && npx esbuild serverfull=src/serverfull/index.ts db-worker=src/serverfull/dbWorker.ts list-parse-worker=src/utils/sync/listParseWorker.ts --bundle --platform=node --target=node24 --format=esm --outdir=dist --out-extension:.js=.mjs --banner:js=\"#!/usr/bin/env node\" --external:node:sqlite --minify --sourcemap --tree-shaking=true --legal-comments=none",
     "prepublishOnly": "npm run build:serverfull",
     "service-create:linux": "tsx scripts/create-linux-service.ts",
     "docker:build": "tsx scripts/docker.ts build",
@@ -60,6 +60,8 @@
     "test:turso": "tsx test/test_turso.ts",
     "test:turnstile": "tsx test/test_turnstile.ts",
     "test:serverfull": "tsx test/test_serverfull.ts",
+    "test:dbworker": "tsx test/test_db_worker.ts",
+    "test:listworker": "tsx test/test_list_parse_worker.ts",
     "test:reset": "tsx test/test_serverfull_reset.ts",
     "lint": "oxlint",
     "ui:dev": "cd web && npm run dev",
@@ -86,13 +88,13 @@
     "url": "https://github.com/Obein/DNS-Worker/issues"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261119.1",
+    "@cloudflare/workers-types": "^5.20261121.1",
     "@types/node": "^26.6.6",
     "concurrently": "^10.0.7",
     "oxlint": "^1.94.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "wrangler": "^4.165.0"
+    "wrangler": "^4.166.0"
   },
   "overrides": {
     "esbuild": "^0.28.1",

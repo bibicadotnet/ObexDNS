@@ -77,7 +77,7 @@ export const TestTotpDialog: React.FC<TestTotpDialogProps> = ({
       icon={<KeyRound size={18} />}
     >
       <div className="p-6 space-y-4">
-        <p className="text-sm text-gray-600 ">
+        <p className="text-sm text-gray-600">
           {t(
             "account.totp.testDesc",
             "Enter the 6-digit verification code from your authenticator app to verify that it is generating valid codes."
@@ -119,7 +119,7 @@ export const TestTotpDialog: React.FC<TestTotpDialogProps> = ({
               autoFocus
               inputMode="numeric"
               autoComplete="one-time-code"
-              className="font-mono text-lg "
+              className="font-mono text-lg tracking-widest"
               disabled={loading}
             />
           </FormGroup>

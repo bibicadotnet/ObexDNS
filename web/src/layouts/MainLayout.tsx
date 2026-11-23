@@ -1,57 +1,41 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  Edit3,
+  BarChart3,
+  Clock,
+  Download,
+  ListFilter,
+} from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type { Profile, UserInfo } from "../types/auth";
-import { SavingPill } from "../components/SavingPill";
 import { DesktopSidebar } from "./DesktopSidebar";
+import { HeaderNavbar } from "./HeaderNavbar";
 import { MobileBottomNav } from "./MobileBottomNav";
-import { MobileMoreSheet } from "./MobileMoreSheet";
-import { MobileTopBar } from "./MobileTopBar";
-import { buildNavItems, getSection } from "./navItems";
 
-/**
- * Properties for the MainLayout component.
- */
 interface MainLayoutProps {
-  /** The child route views to render. */
   children: React.ReactNode;
-  /** True if the desktop sidebar shows labels (false = icon rail). */
   isSidebarOpen: boolean;
-  /** Callback to expand/collapse the desktop sidebar. */
   setIsSidebarOpen: (open: boolean) => void;
-  /** Selected Profile object. */
+  theme: "light" | "dark" | "system";
+  setTheme: (theme: "light" | "dark" | "system") => void;
   selectedProfile: Profile | null;
-  /** Available profiles list. */
   profiles: Profile[];
-  /** Callback to set selected Profile. */
   setSelectedProfile: (p: Profile) => void;
-  /** Router location object. */
   location: any;
-  /** Router navigation function. */
   navigate: (path: string) => void;
-  /** Callback to handle logouts. */
   handleLogout: () => void;
-  /** Current logged in user info. */
   currentUser: UserInfo | null;
-  /** True if a background saving operation is active. */
   isSaving?: boolean;
 }
 
-/**
- * MainLayout frames every signed-in page.
- *
- *  Tablet / desktop:  [ sidebar | page ]      sidebar = brand, profile, 5 places, me + language
- *  Phone:             [ top bar ]             profile + status
- *                     [ page ]
- *                     [ bottom tabs ]         Setup, Protection, Analytics, Logs, More
- *
- * One scroll area per page, so the sidebar and tab bar never move.
- */
 export const MainLayout = ({
   children,
   isSidebarOpen,
   setIsSidebarOpen,
+  theme,
+  setTheme,
   selectedProfile,
   profiles,
   setSelectedProfile,
@@ -64,98 +48,95 @@ export const MainLayout = ({
   const { profileId: urlProfileId } = useParams();
   const isMobile = useIsMobile();
   const { t } = useTranslation();
-  const [moreOpen, setMoreOpen] = useState(false);
-
   const activeId = urlProfileId || selectedProfile?.id;
   const isProfileActive = !!activeId;
-  const isAccountPage = location.pathname === "/account";
-  const section = getSection(location.pathname);
-  const isLogs = section === "logs";
 
   useEffect(() => {
-    if (urlProfileId && profiles.length > 0 && selectedProfile?.id !== urlProfileId) {
+    if (
+      urlProfileId &&
+      profiles.length > 0 &&
+      selectedProfile?.id !== urlProfileId
+    ) {
       const found = profiles.find((p: Profile) => p.id === urlProfileId);
       if (found) setSelectedProfile(found);
     }
   }, [urlProfileId, profiles, selectedProfile, setSelectedProfile]);
 
-  // Closing the sheet on navigation keeps it from sitting over the next page.
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [location.pathname]);
-
-  const { main, settings } = buildNavItems(t, activeId, location.pathname);
-
-  /** Switching profile keeps you on the same page (Logs stays Logs). */
-  const switchProfile = (p: Profile) => {
-    setSelectedProfile(p);
-    const keep = section && !isAccountPage ? section : "setup";
-    navigate(`/dash/${p.id}/${keep}`);
-  };
-
-  const backFromAccount = () => navigate(activeId ? `/dash/${activeId}/setup` : "/dash");
+  const navItems = [
+    {
+      id: "setup",
+      label: t("nav.setup"),
+      icon: <Download size={20} />,
+      path: `/dash/${activeId}/setup`,
+    },
+    {
+      id: "rules",
+      label: isMobile && location.pathname.includes("/filter") ? t("nav.filter") : t("nav.rules"),
+      icon: isMobile && location.pathname.includes("/filter") ? <ListFilter size={20} /> : <Edit3 size={20} />,
+      path: isMobile && location.pathname.includes("/filter")
+        ? `/dash/${activeId}/filter`
+        : `/dash/${activeId}/rules`,
+    },
+    {
+      id: "stats",
+      label: t("nav.stats"),
+      icon: <BarChart3 size={20} />,
+      path: `/dash/${activeId}/stats`,
+    },
+    {
+      id: "logs",
+      label: t("nav.logs"),
+      icon: <Clock size={20} />,
+      path: `/dash/${activeId}/logs`,
+    },
+  ];
 
   return (
-    <div className="h-app flex w-full overflow-hidden bg-(--canvas)">
+    <div className="flex h-screen w-full bg-[#f8fafc] overflow-hidden flex-col md:flex-row">
       {!isMobile && (
         <DesktopSidebar
           isSidebarOpen={isSidebarOpen}
           setIsSidebarOpen={setIsSidebarOpen}
           isProfileActive={isProfileActive}
-          profiles={profiles}
-          selectedProfile={selectedProfile}
-          onSwitchProfile={switchProfile}
-          onShowAllProfiles={() => navigate("/dash")}
+          activeId={activeId}
+          location={location}
+          navigate={navigate}
           handleLogout={handleLogout}
           currentUser={currentUser}
-          mainItems={main}
-          settingsItem={settings}
+          navItems={navItems}
         />
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        {isMobile && (
-          <MobileTopBar
-            profiles={profiles}
-            selectedProfile={selectedProfile}
-            onSwitchProfile={switchProfile}
-            onShowAllProfiles={() => navigate("/dash")}
-            isAccountPage={isAccountPage}
-            onBack={backFromAccount}
-            isSaving={isSaving}
-            currentUser={currentUser}
-          />
-        )}
+      <main className="flex-1 min-w-0 h-full relative bg-[#f8fafc] flex flex-col overflow-hidden">
+        <HeaderNavbar
+          theme={theme}
+          setTheme={setTheme}
+          selectedProfile={selectedProfile}
+          profiles={profiles}
+          setSelectedProfile={setSelectedProfile}
+          isProfileActive={isProfileActive}
+          location={location}
+          navigate={navigate}
+          isSaving={isSaving}
+          currentUser={currentUser}
+          handleLogout={handleLogout}
+        />
 
-        <main id="app-scroll" className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-          {!isMobile && isSaving && <SavingPill className="fixed right-5 top-4 z-30 shadow-sm" />}
-          {isLogs ? (
-            // Logs manage their own scrolling (filters stay put, the list scrolls).
-            <div className="flex h-full min-w-0 flex-col overflow-hidden">{children}</div>
-          ) : (
-            <div className="page-pad min-w-0">{children}</div>
-          )}
-        </main>
+        <div className="flex-1 min-h-0 flex flex-col relative z-0 isolate" style={{ isolation: "isolate" }}>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="p-3 md:p-6 pb-24 md:pb-8 min-w-0">{children}</div>
+          </div>
+        </div>
 
         {isMobile && (
           <MobileBottomNav
-            items={main.map((item) => ({ ...item, path: isProfileActive ? item.path : "/dash" }))}
-            moreActive={moreOpen || settings.active || isAccountPage}
-            onOpenMore={() => setMoreOpen(true)}
+            isProfileActive={isProfileActive}
+            navItems={navItems}
+            location={location}
+            navigate={navigate}
           />
         )}
-      </div>
-
-      {isMobile && (
-        <MobileMoreSheet
-          isOpen={moreOpen}
-          onClose={() => setMoreOpen(false)}
-          currentUser={currentUser}
-          handleLogout={handleLogout}
-          settingsPath={isProfileActive ? settings.path : undefined}
-          settingsActive={settings.active}
-        />
-      )}
+      </main>
     </div>
   );
 };

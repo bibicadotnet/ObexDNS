@@ -33,7 +33,7 @@ const RankTableImpl: React.FC<RankTableProps> = ({ title, data, intent }) => {
           return (
             <span className="inline-flex items-center gap-1.5 text-gray-400 italic font-normal">
               <Lock size={14} className="text-amber-500 shrink-0" />
-              <span>{t("logs.encryptedRecord")}</span>
+              <span>{t("logs.encryptedRecord", "[加密记录]")}</span>
             </span>
           );
         }
@@ -41,7 +41,7 @@ const RankTableImpl: React.FC<RankTableProps> = ({ title, data, intent }) => {
           return (
             <span className="inline-flex items-center gap-1.5 text-red-400 italic font-normal">
               <Lock size={14} className="text-red-500 shrink-0" />
-              <span>{t("logs.decryptionFailed")}</span>
+              <span>{t("logs.decryptionFailed", "[解密失败]")}</span>
             </span>
           );
         }

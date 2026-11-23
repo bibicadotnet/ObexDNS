@@ -52,15 +52,15 @@ export const EditRuleDialog: React.FC<EditRuleDialogProps> = ({
               </FormGroup>
             </div>
 
-            <div className="text-xs text-gray-500 ">
+            <div className="text-xs text-gray-500">
               {t("rules.wildcardDisclaimer")}
             </div>
 
             {editRule.type === "REDIRECT" && (
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 ">
-                <div className="flex items-center gap-2 mb-4 text-blue-600 ">
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <div className="flex items-center gap-2 mb-4 text-blue-600">
                   <Globe size={14} />
-                  <span className="text-xs font-bold ">{t("rules.redirectSettings")}</span>
+                  <span className="text-xs font-bold uppercase tracking-wider">{t("rules.redirectSettings")}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <FormGroup label={t("rules.aRecord")} className="mb-0">

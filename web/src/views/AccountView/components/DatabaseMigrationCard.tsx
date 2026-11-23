@@ -72,11 +72,11 @@ export const DatabaseMigrationCard: React.FC<DatabaseMigrationCardProps> = ({
   };
 
   return (
-    <>
-      <div className="flex items-center justify-between">
+    <Card elevation={Elevation.ONE} className="p-5 sm:p-6 rounded-2xl bg-white border border-[#d0d7de] shadow-xs space-y-5">
+      <div className="flex items-center justify-between pb-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <Database size={20} className="text-gray-500" />
-          <H4 className="section-title">{t("account.databaseSettings")}</H4>
+          <H4 className="section-title m-0">{t("account.databaseSettings", "Cơ sở dữ liệu (Quản trị viên)")}</H4>
         </div>
         {migrations ? (
           <Tag
@@ -86,22 +86,21 @@ export const DatabaseMigrationCard: React.FC<DatabaseMigrationCardProps> = ({
             icon={isCompleted ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
           >
             {isCompleted
-              ? t("account.migrationCompleted")
-              : t("account.migrationPending")}
+              ? t("account.migrationCompleted", "迁移已完成")
+              : t("account.migrationPending", "有待执行迁移")}
           </Tag>
         ) : (
           <Tag large round intent={Intent.NONE}>
-            {t("common.loading")}
+            {t("common.loading", "加载中...")}
           </Tag>
         )}
       </div>
 
-      <Card elevation={Elevation.ONE}>
-        <div className="space-y-5">
+      <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <span className="text-xs font-semibold text-gray-500 ">
-                {t("account.databaseEngine")}
+              <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">
+                {t("account.databaseEngine", "数据库服务")}
               </span>
               <div className="text-sm font-medium mt-1">
                 {formatDatabaseEngine(status?.databaseService)}
@@ -109,18 +108,18 @@ export const DatabaseMigrationCard: React.FC<DatabaseMigrationCardProps> = ({
             </div>
 
             <div>
-              <span className="text-xs font-semibold text-gray-500 ">
-                {t("account.lastAppliedMigration")}
+              <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">
+                {t("account.lastAppliedMigration", "最近应用版本")}
               </span>
               <div className="text-sm font-medium font-mono text-gray-700 mt-1 truncate">
-                {migrations?.lastApplied || t("account.noMigrationsApplied")}
+                {migrations?.lastApplied || t("account.noMigrationsApplied", "无")}
               </div>
             </div>
           </div>
 
           <div>
-            <span className="text-xs font-semibold text-gray-500 ">
-              {t("account.migrationStatus")}
+            <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">
+              {t("account.migrationStatus", "架构状态")}
             </span>
             <p className="text-sm text-gray-600 mt-1">
               {migrations
@@ -133,14 +132,14 @@ export const DatabaseMigrationCard: React.FC<DatabaseMigrationCardProps> = ({
                       total: migrations?.totalAvailable || 0,
                       pending: migrations?.pendingCount || 0,
                     })
-                : t("common.loading")}
+                : t("common.loading", "加载中...")}
             </p>
           </div>
 
           {!isCompleted && migrations && migrations.pendingFiles.length > 0 && (
             <Callout intent={Intent.WARNING} icon={<AlertCircle size={16} />}>
               <div className="text-xs font-semibold mb-1">
-                {t("account.pendingMigrationsList")}
+                {t("account.pendingMigrationsList", "待应用的架构迁移文件：")}
               </div>
               <ul className="list-disc list-inside text-xs font-mono space-y-0.5 text-gray-700 max-h-32 overflow-y-auto">
                 {migrations.pendingFiles.map((file) => (
@@ -150,11 +149,11 @@ export const DatabaseMigrationCard: React.FC<DatabaseMigrationCardProps> = ({
             </Callout>
           )}
 
-          <div className="flex items-center justify-between pt-2 border-t border-gray-100 ">
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
             <Button
               minimal
               icon={<RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />}
-              text={t("account.checkMigration")}
+              text={t("account.checkMigration", "刷新状态")}
               onClick={handleRefresh}
               disabled={migrating || refreshing}
             />
@@ -164,8 +163,8 @@ export const DatabaseMigrationCard: React.FC<DatabaseMigrationCardProps> = ({
               icon={<Play size={14} />}
               text={
                 migrating
-                  ? t("account.runningMigration")
-                  : t("account.runMigration")
+                  ? t("account.runningMigration", "正在迁移...")
+                  : t("account.runMigration", "执行迁移")
               }
               loading={migrating}
               disabled={isCompleted || migrating}
@@ -173,7 +172,6 @@ export const DatabaseMigrationCard: React.FC<DatabaseMigrationCardProps> = ({
             />
           </div>
         </div>
-      </Card>
-    </>
+    </Card>
   );
 };

@@ -17,9 +17,9 @@ const ClientActivitySectionImpl: React.FC<ClientActivitySectionProps> = ({ clien
       <HTMLTable striped className="w-full mt-2">
         <thead>
           <tr>
-            <th className="text-xs opacity-60">{t("analytics.ipAddress")}</th>
-            <th className="text-xs opacity-60">{t("analytics.location")}</th>
-            <th className="text-xs opacity-60 text-right">{t("analytics.queries")}</th>
+            <th className="text-xs uppercase opacity-60">{t("analytics.ipAddress")}</th>
+            <th className="text-xs uppercase opacity-60">{t("analytics.location")}</th>
+            <th className="text-xs uppercase opacity-60 text-right">{t("analytics.queries")}</th>
           </tr>
         </thead>
         <tbody>
@@ -29,12 +29,12 @@ const ClientActivitySectionImpl: React.FC<ClientActivitySectionProps> = ({ clien
                 {c.client_ip === "[Encrypted]" ? (
                   <span className="inline-flex items-center gap-1.5 text-gray-400 italic">
                     <Lock size={12} className="text-amber-500 shrink-0" />
-                    <span>{t("logs.encryptedRecord")}</span>
+                    <span>{t("logs.encryptedRecord", "[加密记录]")}</span>
                   </span>
                 ) : c.client_ip === "[Decryption Failed]" ? (
                   <span className="inline-flex items-center gap-1.5 text-red-400 italic">
                     <Lock size={12} className="text-red-500 shrink-0" />
-                    <span>{t("logs.decryptionFailed")}</span>
+                    <span>{t("logs.decryptionFailed", "[解密失败]")}</span>
                   </span>
                 ) : (
                   c.client_ip || "-"

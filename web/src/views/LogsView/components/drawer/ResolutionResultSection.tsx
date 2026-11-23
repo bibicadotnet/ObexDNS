@@ -29,7 +29,7 @@ export const ResolutionResultSection: React.FC<ResolutionResultSectionProps> = (
           <span>{t("logs.resolutionResult")}</span>
           {isRewritten && (
             <Tag minimal intent={Intent.PRIMARY} className="text-xs">
-              {t("logs.rewritten")}
+              {t("logs.rewritten", "已重写")}
             </Tag>
           )}
         </div>
@@ -63,13 +63,13 @@ export const ResolutionResultSection: React.FC<ResolutionResultSectionProps> = (
                     return (
                       <div
                         key={idx}
-                        className="bg-white p-2.5 rounded-md space-y-2 border border-gray-200 "
+                        className="bg-white p-2.5 rounded-md space-y-2 border border-gray-200"
                       >
                         <div className="flex items-center gap-2 text-xs">
                           <Tag minimal intent={Intent.PRIMARY}>
                             Priority {priority}
                           </Tag>
-                          <span className="font-semibold text-gray-700 ">
+                          <span className="font-semibold text-gray-700">
                             Target: {target}
                           </span>
                         </div>

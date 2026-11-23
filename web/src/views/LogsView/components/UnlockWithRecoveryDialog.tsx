@@ -38,14 +38,17 @@ export const UnlockWithRecoveryDialog: React.FC<UnlockWithRecoveryDialogProps> =
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title={t("account.e2ee.unlockWithRecoveryTitle")}
+      title={t("account.e2ee.unlockWithRecoveryTitle", "使用恢复密钥解锁")}
       icon="key"
       className=""
     >
       <form onSubmit={onSubmit} autoComplete="off">
         <div className={Classes.DIALOG_BODY}>
           <p className="text-xs text-gray-500 mb-3">
-            {t("account.e2ee.unlockWithRecoveryDesc")}
+            {t(
+              "account.e2ee.unlockWithRecoveryDesc",
+              "请输入 30 位紧急恢复密钥。注意：根据单次使用规则，恢复密钥验证成功后将立即自动轮换。"
+            )}
           </p>
           {recoveryError && (
             <Callout intent={Intent.DANGER} className="mb-3 text-xs">
@@ -53,7 +56,7 @@ export const UnlockWithRecoveryDialog: React.FC<UnlockWithRecoveryDialogProps> =
             </Callout>
           )}
           <FormGroup
-            label={t("account.e2ee.recoveryKeyInputLabel")}
+            label={t("account.e2ee.recoveryKeyInputLabel", "恢复密钥")}
             labelFor="recovery-key-input-logs"
           >
             <InputGroup
@@ -77,13 +80,13 @@ export const UnlockWithRecoveryDialog: React.FC<UnlockWithRecoveryDialogProps> =
         </div>
         <div className={Classes.DIALOG_FOOTER}>
           <div className={Classes.DIALOG_FOOTER_ACTIONS}>
-            <Button onClick={onClose} text={t("common.cancel")} />
+            <Button onClick={onClose} text={t("common.cancel", "取消")} />
             <Button
               type="submit"
               intent={Intent.PRIMARY}
               loading={unlocking}
               disabled={!recoveryKeyInput.trim()}
-              text={t("account.e2ee.unlockConfirm")}
+              text={t("account.e2ee.unlockConfirm", "解锁日志")}
             />
           </div>
         </div>

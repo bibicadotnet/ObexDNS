@@ -1,59 +1,67 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { MoreHorizontal } from "lucide-react";
-import { clsx } from "clsx";
+import { User as UserIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { NavItem } from "./navItems";
+import { clsx } from "clsx";
 
 interface MobileBottomNavProps {
-  items: NavItem[];
-  /** True while Settings, Account or the More sheet itself is open. */
-  moreActive: boolean;
-  onOpenMore: () => void;
+  isProfileActive: boolean;
+  navItems: Array<{ id: string; label: string; icon: React.ReactNode; path: string }>;
+  location: any;
+  navigate: (path: string) => void;
 }
 
-const tabClass = (active: boolean) =>
-  clsx(
-    "group flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-semibold leading-tight transition-colors",
-    active ? "text-blue-700" : "text-gray-500",
-  );
-
-const pillClass = (active: boolean) =>
-  clsx(
-    "inline-flex h-8 w-14 items-center justify-center rounded-full transition-colors",
-    active ? "bg-blue-100" : "group-active:bg-gray-100",
-  );
-
-/**
- * Bottom tab bar for phones: the four places you use all day, plus "More".
- * Thumbs reach the bottom edge easily, so the most frequent actions live here.
- */
-export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ items, moreActive, onOpenMore }) => {
+export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
+  isProfileActive,
+  navItems,
+  location,
+  navigate,
+}) => {
   const { t } = useTranslation();
 
+  if (!isProfileActive) return null;
+
   return (
-    <nav
-      className="pb-safe z-30 shrink-0 border-t border-gray-200 bg-white"
-      aria-label={t("nav.primary", "Main navigation")}
-    >
-      <ul className="m-0 flex h-16 list-none items-stretch p-0 px-1">
-        {items.map((item) => (
-          <li key={item.id} className="flex min-w-0 flex-1">
-            <Link to={item.path} className={tabClass(item.active)} aria-current={item.active ? "page" : undefined}>
-              <span className={pillClass(item.active)}>{item.icon}</span>
-              <span className="max-w-full truncate px-1">{item.label}</span>
-            </Link>
-          </li>
-        ))}
-        <li className="flex min-w-0 flex-1">
-          <button type="button" onClick={onOpenMore} className={tabClass(moreActive)} aria-haspopup="dialog">
-            <span className={pillClass(moreActive)}>
-              <MoreHorizontal size={20} strokeWidth={2} />
-            </span>
-            <span className="max-w-full truncate px-1">{t("nav.more", "More")}</span>
+    <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-[#e2e8f0] shadow-[0_-1px_3px_rgba(0,0,0,0.05)] flex items-center justify-around px-2 z-50 pb-safe">
+      {navItems.map((item) => {
+        const isActive = item.id === "rules"
+          ? (location.pathname.includes("/rules") || location.pathname.includes("/filter"))
+          : location.pathname.includes(
+              item.id === "stats" ? "/stats" : `/${item.id}`,
+            );
+        return (
+          <button
+            key={item.id}
+            onClick={() => navigate(item.path)}
+            className={clsx(
+              "flex flex-col items-center justify-center gap-1 w-16 h-full transition-colors relative",
+              isActive ? "text-blue-600" : "text-gray-400 hover:text-gray-500",
+            )}
+          >
+            {isActive && (
+              <span className="absolute top-1 w-5 h-0.5 rounded-full bg-blue-600" />
+            )}
+            {item.icon}
+            <span className="text-[10px] font-medium">{item.label}</span>
           </button>
-        </li>
-      </ul>
-    </nav>
+        );
+      })}
+      <button
+        onClick={() => navigate("/account")}
+        className={clsx(
+          "flex flex-col items-center justify-center gap-1 w-16 h-full transition-colors relative",
+          location.pathname === "/account"
+            ? "text-blue-600"
+            : "text-gray-400 hover:text-gray-500",
+        )}
+      >
+        {location.pathname === "/account" && (
+          <span className="absolute top-1 w-5 h-0.5 rounded-full bg-blue-600" />
+        )}
+        <UserIcon size={20} />
+        <span className="text-[10px] font-medium">
+          {t("common.account")}
+        </span>
+      </button>
+    </div>
   );
 };

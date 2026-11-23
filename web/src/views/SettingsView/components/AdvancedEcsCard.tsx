@@ -81,7 +81,7 @@ export const AdvancedEcsCard: React.FC<AdvancedEcsCardProps> = ({ settings, setS
   };
 
   return (
-    <Card elevation={Elevation.ONE} className="h-full min-w-0 ">
+    <Card elevation={Elevation.ONE} className="h-full min-w-0">
       <div className="flex items-center justify-between min-h-[30px] mb-4">
         <H5 className="section-title flex items-center gap-2 m-0">
           <Globe size={18} className="text-orange-500" /> {t("settings.ecsTitle")}
@@ -109,7 +109,7 @@ export const AdvancedEcsCard: React.FC<AdvancedEcsCardProps> = ({ settings, setS
           />
         </div>
 
-        <div className="space-y-3 pt-2 border-t border-gray-100 ">
+        <div className="space-y-3 pt-2 border-t border-gray-100">
           <FormGroup
             label={t("settings.customIpv4")}
             labelInfo={t("settings.ipv4Hint")}

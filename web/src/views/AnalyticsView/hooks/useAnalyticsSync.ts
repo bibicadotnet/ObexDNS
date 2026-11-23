@@ -76,7 +76,7 @@ export function useAnalyticsSync({
     // records are guaranteed up to date without redundant execution.
     if (isSameRange && now - lastSync.completedAt < 30) {
       toasterRef?.current?.show({
-        message: t("analytics.syncAlreadyUpToDate"),
+        message: t("analytics.syncAlreadyUpToDate", "本地记录已是最新"),
         intent: Intent.PRIMARY,
         icon: "tick"
       });
@@ -120,7 +120,7 @@ export function useAnalyticsSync({
 
         if (inserted === 0) {
           toasterRef?.current?.show({
-            message: t("analytics.syncAlreadyUpToDate"),
+            message: t("analytics.syncAlreadyUpToDate", "本地记录已是最新"),
             intent: Intent.PRIMARY,
             icon: "tick"
           });
@@ -128,7 +128,7 @@ export function useAnalyticsSync({
           setSyncProgress(1);
           await onRefreshLocal(interval);
           toasterRef?.current?.show({
-            message: t("analytics.syncSuccess"),
+            message: t("analytics.syncSuccess", "本地记录同步完成"),
             intent: Intent.SUCCESS,
             icon: "tick"
           });
@@ -139,7 +139,7 @@ export function useAnalyticsSync({
       if ((err as Error)?.name !== "AbortError" && !signal.aborted) {
         console.error("[useAnalyticsSync] Manual sync error:", err);
         toasterRef?.current?.show({
-          message: t("analytics.syncFailed"),
+          message: t("analytics.syncFailed", "本地记录同步失败"),
           intent: Intent.DANGER,
           icon: "error"
         });
@@ -158,7 +158,7 @@ export function useAnalyticsSync({
     setSyncing(false);
     setSyncProgress(0);
     toasterRef?.current?.show({
-      message: t("analytics.syncStopped"),
+      message: t("analytics.syncStopped", "同步已停止"),
       intent: Intent.WARNING,
       icon: "stop"
     });

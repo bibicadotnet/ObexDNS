@@ -1,18 +1,12 @@
 import React from "react";
-import { H3, Intent, Callout } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft } from "lucide-react";
-import LogoIcon from "../assets/obex_cat_eye_logo-256.webp";
-import { useBranding } from "../hooks/useBranding";
+import { ArrowLeft, AlertCircle, Lock } from "lucide-react";
 import { SignupUsernameStep } from "./signup/SignupUsernameStep";
 import { SignupPasswordStep } from "./signup/SignupPasswordStep";
 import { SignupMfaStep } from "./signup/SignupMfaStep";
 import { SignupRecoveryStep } from "./signup/SignupRecoveryStep";
 import { useSignupWizard } from "./signup/useSignupWizard";
 
-/**
- * Authentication configuration settings fetched from server.
- */
 interface AuthConfig {
   turnstile_site_key: string;
   turnstile_enabled_signup: boolean;
@@ -22,35 +16,18 @@ interface AuthConfig {
   registration_enabled?: boolean;
 }
 
-/**
- * Properties for the SignupWizard component.
- */
 interface SignupWizardProps {
-  /** Authentication configuration containing site keys and toggles. */
   authConfig: AuthConfig | null;
-  /** True if Turnstile library has loaded globally. */
   turnstileReady: boolean;
-  /** Callback triggered on successful completion or skip of the registration flow. */
   onSuccess: () => void;
-  /** Callback to toggle page mode back to login. */
   onToggleMode: () => void;
 }
 
-/**
- * SignupWizard component guides the user through registration:
- * - Step 1: Input & check username availability, solve Turnstile.
- * - Step 2: Input & validate password complexity, create account.
- * - Step 3: View QR code and confirm TOTP 2FA.
- * - Step 4: Show recovery keys.
- *
- * @param props - Component props containing authConfig, turnstileReady, and callbacks.
- * @returns React elements representing the registration steps and forms.
- */
 export const SignupWizard: React.FC<SignupWizardProps> = ({
   authConfig,
   turnstileReady,
   onSuccess,
-  onToggleMode
+  onToggleMode,
 }) => {
   const { t } = useTranslation();
 
@@ -89,93 +66,96 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     handleSignupUsernameSubmit,
     handleSignupTotpConfirm,
     handleCopySignupRecoveryKeys,
-    handleSignupSubmit
+    handleSignupSubmit,
   } = useSignupWizard({ authConfig, turnstileReady, onSuccess });
-
-  const { appName, appLogoUrl } = useBranding();
 
   if (authConfig && authConfig.has_users !== false && authConfig.registration_enabled === false) {
     return (
-      <div className="space-y-6 text-center">
-        <div className="flex flex-col items-center">
-          <img
-            src={appLogoUrl || LogoIcon}
-            alt={`${appName} Logo`}
-            className="w-20 h-20 object-contain"
-          />
-          <H3 className="font-bold tracking-tight text-2xl mt-4">
-            {t("auth.signup")}
-          </H3>
+      <div className="space-y-4 text-center py-4">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+          <Lock className="w-6 h-6" />
         </div>
-        <Callout intent={Intent.WARNING} icon="lock" title={t("auth.registrationDisabledTitle")}>
-          {t("auth.registrationDisabledDesc")}
-        </Callout>
-        <div className="pt-4 border-t border-gray-100 flex justify-center items-center text-sm">
-          <button
-            onClick={onToggleMode}
-            className="text-blue-600 font-semibold hover:underline bg-transparent border-none cursor-pointer flex items-center gap-1"
-          >
-            <ArrowLeft size={16} />
-            {t("auth.backToLogin")}
-          </button>
+        <div>
+          <h3 className="text-base font-bold text-gray-900 m-0">
+            {t("auth.registrationDisabledTitle", "Đăng ký tạm đóng")}
+          </h3>
+          <p className="text-xs text-gray-500 mt-1.5 leading-relaxed max-w-xs mx-auto">
+            {t("auth.registrationDisabledDesc", "Hệ thống hiện không mở đăng ký tự do. Vui lòng liên hệ quản trị viên để được cấp tài khoản.")}
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={onToggleMode}
+          className="inline-flex items-center gap-1.5 text-xs text-blue-600 font-semibold hover:underline cursor-pointer pt-2"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>{t("auth.backToLogin", "Quay lại đăng nhập")}</span>
+        </button>
       </div>
     );
   }
 
+  const getStepTitle = (): string => {
+    if (signupStep === "username" || signupStep === "password") {
+      return authConfig?.has_users === false
+        ? t("auth.registerAdminTitle", "Đăng ký Quản trị viên")
+        : t("auth.signup", "Tạo tài khoản mới");
+    }
+    if (signupStep === "totp") {
+      return t("auth.mfaSetupTitle", "Bảo mật hai bước (MFA)");
+    }
+    return t("account.totp.recoveryKeysTitle", "Lưu khóa khôi phục");
+  };
+
+  const getStepSubtitle = (): string => {
+    if (signupStep === "password") return username;
+    if (signupStep === "username") {
+      return authConfig?.has_users === false
+        ? t("auth.registerAdminDesc", "Hệ thống chưa có tài khoản. Tài khoản đầu tiên đăng ký sẽ trở thành Quản trị viên cao nhất.")
+        : t("auth.protectInternet", "Bảo vệ truy cập internet an toàn cho bạn");
+    }
+    if (signupStep === "totp") {
+      return t("auth.mfaSetupDesc", "Bảo vệ tài khoản bằng Passkey hoặc ứng dụng Google Authenticator.");
+    }
+    return t("account.totp.recoveryKeysWarning", "Lưu giữ cẩn thận để khôi phục tài khoản khi mất thiết bị.");
+  };
+
   return (
     <>
-      <div className="flex flex-col items-center mb-8 relative">
-        {signupStep === "password" && (
-          <button
-            onClick={() => {
-              setSignupStep("username");
-              setError("");
-            }}
-            className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 bg-transparent border-none cursor-pointer"
-            title="Back to username"
-          >
-            <ArrowLeft size={24} />
-          </button>
-        )}
-        <img
-          src={appLogoUrl || LogoIcon}
-          alt={`${appName} Logo`}
-          className="w-20 h-20 object-contain"
-        />
-        <H3 className="font-bold tracking-tight text-2xl mt-4">
-          {signupStep === "username" || signupStep === "password"
-            ? authConfig?.has_users === false
-              ? t("auth.registerAdminTitle")
-              : t("auth.signup")
-            : signupStep === "totp"
-            ? t("auth.mfaSetupTitle")
-            : t("account.totp.recoveryKeysTitle", "Save Recovery Keys")}
-        </H3>
-        <p className="text-gray-500 mt-2 text-center text-sm leading-relaxed">
-          {signupStep === "username" || signupStep === "password"
-            ? signupStep === "password"
-              ? username
-              : authConfig?.has_users === false
-              ? t("auth.registerAdminDesc")
-              : t("auth.protectInternet")
-            : signupStep === "totp"
-            ? t("auth.mfaSetupDesc")
-            : t("account.totp.recoveryKeysWarning", "Store keys safely.")}
-        </p>
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-2">
+          {signupStep === "password" && (
+            <button
+              type="button"
+              onClick={() => {
+                setSignupStep("username");
+                setError("");
+              }}
+              className="p-1 -ml-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              title="Quay lại nhập tên"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-gray-900 m-0">
+              {getStepTitle()}
+            </h2>
+            <p className="text-xs text-gray-500 mt-1 font-medium leading-relaxed">
+              {getStepSubtitle()}
+            </p>
+          </div>
+        </div>
       </div>
 
       {error && (
-        <Callout
-          intent={Intent.DANGER}
-          className="mb-6 rounded-xl"
-          title={t("auth.error")}
-        >
-          {error}
-        </Callout>
+        <div className="mb-5 p-3 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2.5 text-xs text-red-800">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <div className="font-medium leading-relaxed">{error}</div>
+        </div>
       )}
 
-      {/* Signup Step 1 (Username) */}
+      {/* Step 1: Username */}
       {signupStep === "username" && (
         <SignupUsernameStep
           username={username}
@@ -185,13 +165,11 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
           checkUsernameDuplicate={checkUsernameDuplicate}
           loading={loading}
           onSubmit={handleSignupUsernameSubmit}
-          onClearError={() =>
-            setError((prev) => (prev === t("auth.usernameExists") ? "" : prev))
-          }
+          onClearError={() => setError("")}
         />
       )}
 
-      {/* Signup Step 2 (Password) */}
+      {/* Step 2: Password */}
       {signupStep === "password" && (
         <SignupPasswordStep
           password={password}
@@ -207,50 +185,33 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
         />
       )}
 
-      {/* Signup Step 3: MFA Setup (Passkey or TOTP) */}
+      {/* Step 3: MFA Setup */}
       {signupStep === "totp" && (
         <SignupMfaStep
           mfaChoice={mfaChoice}
           setMfaChoice={setMfaChoice}
-          onRegisterPasskey={handleRegisterPasskey}
           passkeyRegLoading={passkeyRegLoading}
           passkeyRegError={passkeyRegError}
+          onRegisterPasskey={handleRegisterPasskey}
           onStartTotp={handleChooseTotp}
+          totpSetupLoading={totpSetupLoading}
+          totpSetupError={totpSetupError}
           totpSetupData={totpSetupData}
           totpSetupToken={totpSetupToken}
           setTotpSetupToken={setTotpSetupToken}
-          totpSetupError={totpSetupError}
-          totpSetupLoading={totpSetupLoading}
           onTotpSubmit={handleSignupTotpConfirm}
-          onSkip={() => {
-            if (totpRecoveryKeys && totpRecoveryKeys.length > 0) {
-              setSignupStep("recovery");
-            } else {
-              onSuccess();
-            }
-          }}
+          onSkip={onSuccess}
         />
       )}
 
-      {/* Signup Step 4: TOTP Recovery Keys */}
-      {signupStep === "recovery" && totpRecoveryKeys && (
+      {/* Step 4: Recovery Keys */}
+      {signupStep === "recovery" && (
         <SignupRecoveryStep
-          totpRecoveryKeys={totpRecoveryKeys}
+          totpRecoveryKeys={totpRecoveryKeys || []}
           copiedRecovery={copiedRecovery}
           onCopy={handleCopySignupRecoveryKeys}
           onSuccess={onSuccess}
         />
-      )}
-
-      {signupStep === "username" && (
-        <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-          <button
-            onClick={onToggleMode}
-            className="text-blue-600 font-semibold hover:underline bg-transparent border-none cursor-pointer text-sm"
-          >
-            {t("auth.haveAccount")}
-          </button>
-        </div>
       )}
     </>
   );

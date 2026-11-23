@@ -1,6 +1,6 @@
 import React from "react";
 import { Dialog, DialogBody } from "@blueprintjs/core";
-import { ChevronRight, Code, Languages, LayoutGrid, Lock, LogOut, Settings, User as UserIcon } from "lucide-react";
+import { ChevronRight, Code, Languages, LayoutGrid, Lock, LogOut, Server, Settings, User as UserIcon } from "lucide-react";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -99,6 +99,9 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
             disabled={!settingsPath}
           />
           <Row icon={<UserIcon size={20} />} label={t("common.account")} onClick={() => go("/account")} />
+          {currentUser?.role === "admin" && (
+            <Row icon={<Server size={20} />} label={t("nav.system", "System")} onClick={() => go("/system")} />
+          )}
           <Row icon={<LayoutGrid size={20} />} label={t("common.allProfiles", "All profiles")} onClick={() => go("/dash")} />
 
           <div className="flex min-h-14 items-center gap-3 px-3">

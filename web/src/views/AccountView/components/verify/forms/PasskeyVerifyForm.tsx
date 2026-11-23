@@ -24,7 +24,7 @@ export const PasskeyVerifyForm: React.FC<PasskeyVerifyFormProps> = ({
           <Key size={48} />
         </div>
       </div>
-      <p className="text-sm text-gray-600 ">
+      <p className="text-sm text-gray-600">
         {t(
           "account.passkey.verifyPrompt",
           "Authenticate using your device's biometric sensor (Face ID, Touch ID, Windows Hello) or security key."

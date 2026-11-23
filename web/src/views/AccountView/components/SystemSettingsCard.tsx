@@ -6,7 +6,6 @@ import {
   FormGroup,
   InputGroup,
   Switch,
-  Divider,
   Button,
   Intent,
   type OverlayToaster
@@ -53,7 +52,7 @@ export const SystemSettingsCard: React.FC<SystemSettingsCardProps> = ({
         10000
       );
       toasterRef?.current?.show({
-        message: t("common.saveSuccess"),
+        message: t("common.saveSuccess", "Lưu thành công"),
         intent: Intent.SUCCESS,
         icon: "tick",
       });
@@ -63,7 +62,7 @@ export const SystemSettingsCard: React.FC<SystemSettingsCardProps> = ({
       // Revert to initialSettings on error or timeout
       setSysSettings(initialSettings);
       toasterRef?.current?.show({
-        message: e.message || t("common.saveFailed"),
+        message: e.message || t("common.saveFailed", "Lưu thất bại"),
         intent: Intent.DANGER,
         icon: "error",
       });
@@ -74,70 +73,71 @@ export const SystemSettingsCard: React.FC<SystemSettingsCardProps> = ({
   };
 
   return (
-    <>
+    <Card elevation={Elevation.ONE} className="p-5 sm:p-6 rounded-2xl bg-white border border-[#d0d7de] shadow-xs space-y-5">
       <div className="flex items-center gap-2">
         <Settings size={20} className="text-gray-500" />
-        <H4 className="section-title">{t("account.systemSettings", "System Settings")}</H4>
+        <H4 className="section-title m-0 text-base font-bold text-[#111827]">{t("account.systemSettings", "System Settings")}</H4>
       </div>
-      <Card elevation={Elevation.ONE}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-          <div className="space-y-4">
-            <H4 className="subsection-title opacity-70 text-blue-500">Cloudflare Turnstile</H4>
-            <FormGroup label="Site Key">
-              <InputGroup
-                value={sysSettings.turnstile_site_key || ""}
-                onChange={(e) => setSysSettings({ ...sysSettings, turnstile_site_key: e.target.value })}
-                placeholder="0x000..."
-              />
-            </FormGroup>
-            <FormGroup label="Secret Key">
-              <InputGroup
-                type={showTurnstileSecretKey ? "text" : "password"}
-                value={sysSettings.turnstile_secret_key || ""}
-                onChange={(e) => setSysSettings({ ...sysSettings, turnstile_secret_key: e.target.value })}
-                placeholder="0x000..."
-                rightElement={
-                  <Button
-                    minimal={true}
-                    icon={showTurnstileSecretKey ? "eye-open" : "eye-off"}
-                    onClick={() => setShowTurnstileSecretKey(!showTurnstileSecretKey)}
-                    title={showTurnstileSecretKey ? t("auth.hidePassword", "Hide password") : t("auth.showPassword", "Show password")}
-                  />
-                }
-              />
-            </FormGroup>
-          </div>
-          <div className="space-y-4">
-            <H4 className="subsection-title opacity-70 text-green-500">
-              {t("account.featureToggle", "Feature Toggle")}
-            </H4>
-            <Switch
-              label={t("account.enableTurnstileSignup", "Enable verification on Signup")}
-              checked={sysSettings.turnstile_enabled_signup === "true"}
-              onChange={(e) =>
-                setSysSettings({ ...sysSettings, turnstile_enabled_signup: String(e.currentTarget.checked) })
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+        <div className="space-y-4">
+          <H4 className="subsection-title opacity-70 text-blue-500">Cloudflare Turnstile</H4>
+          <FormGroup label="Site Key">
+            <InputGroup
+              value={sysSettings.turnstile_site_key || ""}
+              onChange={(e) => setSysSettings({ ...sysSettings, turnstile_site_key: e.target.value })}
+              placeholder="0x000..."
+            />
+          </FormGroup>
+          <FormGroup label="Secret Key">
+            <InputGroup
+              type={showTurnstileSecretKey ? "text" : "password"}
+              value={sysSettings.turnstile_secret_key || ""}
+              onChange={(e) => setSysSettings({ ...sysSettings, turnstile_secret_key: e.target.value })}
+              placeholder="0x000..."
+              rightElement={
+                <Button
+                  minimal={true}
+                  icon={showTurnstileSecretKey ? "eye-open" : "eye-off"}
+                  onClick={() => setShowTurnstileSecretKey(!showTurnstileSecretKey)}
+                  title={showTurnstileSecretKey ? t("auth.hidePassword", "Hide password") : t("auth.showPassword", "Show password")}
+                />
               }
             />
-            <Switch
-              label={t("account.enableTurnstileLogin", "Enable verification on Login")}
-              checked={sysSettings.turnstile_enabled_login === "true"}
-              onChange={(e) =>
-                setSysSettings({ ...sysSettings, turnstile_enabled_login: String(e.currentTarget.checked) })
-              }
-            />
-          </div>
+          </FormGroup>
         </div>
-        <Divider className="my-4" />
-        <div className="flex justify-end">
-          <Button
-            intent={Intent.PRIMARY}
-            icon="floppy-disk"
-            text={t("common.save", "Save")}
-            loading={sysLoading}
-            onClick={handleSaveSysSettings}
+
+        <div className="space-y-4">
+          <H4 className="subsection-title opacity-70 text-green-500">
+            {t("account.featureToggle", "Feature Toggle")}
+          </H4>
+          <Switch
+            label={t("account.enableTurnstileSignup", "Enable verification on Signup")}
+            checked={sysSettings.turnstile_enabled_signup === "true"}
+            onChange={(e) =>
+              setSysSettings({ ...sysSettings, turnstile_enabled_signup: String(e.currentTarget.checked) })
+            }
+          />
+          <Switch
+            label={t("account.enableTurnstileLogin", "Enable verification on Login")}
+            checked={sysSettings.turnstile_enabled_login === "true"}
+            onChange={(e) =>
+              setSysSettings({ ...sysSettings, turnstile_enabled_login: String(e.currentTarget.checked) })
+            }
           />
         </div>
-      </Card>
-    </>
+      </div>
+
+      <div className="flex justify-end pt-2">
+        <Button
+          intent={Intent.PRIMARY}
+          icon="floppy-disk"
+          text={t("common.save", "Save")}
+          loading={sysLoading}
+          onClick={handleSaveSysSettings}
+          className="rounded-lg! font-semibold"
+        />
+      </div>
+    </Card>
   );
 };

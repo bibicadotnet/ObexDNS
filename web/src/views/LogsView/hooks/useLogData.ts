@@ -96,7 +96,7 @@ export function useLogData({
             loadMore();
           }
         },
-        { root: scrollContainerRef.current, rootMargin: "100px" }
+        { root: null, rootMargin: "200px" }
       );
       if (node) observer.current.observe(node);
     },

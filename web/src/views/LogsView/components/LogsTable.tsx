@@ -80,7 +80,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
       key: "time",
       header: t("logs.tableTime"),
       headerClassName: "w-24 rounded-tl-xl",
-      cellClassName: "font-mono text-xs opacity-60",
+      cellClassName: "font-mono text-[11px] opacity-60",
       render: (log: LogEntry): React.ReactNode =>
         new Date(log.timestamp * 1000).toLocaleTimeString([], { hour12: false }),
     },
@@ -102,13 +102,13 @@ export const LogsTable: React.FC<LogsTableProps> = ({
             )}
             <span
               className={clsx("font-bold text-sm truncate", {
-                "italic text-gray-400 ": isEncryptedLocked,
+                "italic text-gray-400": isEncryptedLocked,
               })}
             >
-              {isEncryptedLocked ? t("logs.encryptedRecord") : log.domain}
+              {isEncryptedLocked ? t("logs.encryptedRecord", "[加密记录]") : log.domain}
             </span>
             {isEncryptedUnlocked && (
-              <span title={t("settings.e2eeEnabled")} className="inline-flex items-center">
+              <span title={t("settings.e2eeEnabled", "已加密")} className="inline-flex items-center">
                 <Lock size={12} className="text-emerald-500 shrink-0 opacity-80" />
               </span>
             )}
@@ -120,7 +120,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
       key: "answer",
       header: t("logs.tableAnswer"),
       headerClassName: "w-1/4",
-      cellClassName: "truncate font-mono text-xs opacity-70",
+      cellClassName: "truncate font-mono text-[11px] opacity-70",
       render: (log: LogEntry): React.ReactNode => log.answer || "-",
     },
     {
@@ -129,7 +129,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
       headerClassName: "w-32",
       render: (log: LogEntry): React.ReactNode => (
         <div className="flex items-center gap-2">
-          <Tag minimal className="font-mono text-xs" title={log.geo_country || "Unknown"}>
+          <Tag minimal className="font-mono text-[10px]" title={log.geo_country || "Unknown"}>
             {getFlagEmoji(log.geo_country)}
           </Tag>
           {log.access_point_name && (
@@ -145,7 +145,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
       header: t("logs.tableType"),
       headerClassName: "w-20",
       cellClassName: "text-center",
-      render: (log: LogEntry): React.ReactNode => <code className="text-xs">{log.record_type}</code>,
+      render: (log: LogEntry): React.ReactNode => <code className="text-[10px]">{log.record_type}</code>,
     },
     {
       key: "status",
@@ -196,7 +196,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
 
   return (
     <div className="w-full min-w-0 align-middle py-0">
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-visible">
+      <div className="bg-white rounded-xl border border-[#d0d7de] shadow-xs overflow-visible">
         <HTMLTable interactive striped className="w-full table-fixed">
           <thead className="sticky top-0 z-20 backdrop-blur-md">
             <tr>
@@ -204,7 +204,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
                 <th
                   key={col.key}
                   className={clsx(
-                    "px-4 py-3 text-xs font-bold text-gray-500 bg-white/80 border-b border-gray-100 ",
+                    "px-4 py-3 text-xs font-bold uppercase text-gray-500 bg-white/80 border-b border-gray-100",
                     col.headerClassName
                   )}
                 >
@@ -213,7 +213,7 @@ export const LogsTable: React.FC<LogsTableProps> = ({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 ">
+          <tbody className="divide-y divide-gray-100">
             {logs.map((log, idx) => (
               <LogRow
                 key={log.id}

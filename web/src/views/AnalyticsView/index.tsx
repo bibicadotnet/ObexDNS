@@ -116,7 +116,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toaster
   }
 
   return (
-    <div className="page-wide space-y-6">
+    <div className="w-full min-w-0 max-w-7xl mx-auto px-1 md:px-8 space-y-6">
       <PageHeader
         className="mb-0"
         title={t("analytics.title")}

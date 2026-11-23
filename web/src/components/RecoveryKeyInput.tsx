@@ -126,10 +126,10 @@ export const RecoveryKeyInput: React.FC<RecoveryKeyInputProps> = ({
             "border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20";
           if (isInvalid) {
             borderClass =
-              "border-red-500 ring-2 ring-red-500/30 bg-red-50/40 text-red-600 ";
+              "border-red-500 ring-2 ring-red-500/30 bg-red-50/40 text-red-600";
           } else if (isValid) {
             borderClass =
-              "border-green-500/80 bg-green-50/20 text-gray-900 ";
+              "border-green-500/80 bg-green-50/20 text-gray-900";
           }
 
           return (
@@ -154,11 +154,11 @@ export const RecoveryKeyInput: React.FC<RecoveryKeyInputProps> = ({
                 onChange={(e) => handleGroupChange(idx, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(idx, e)}
                 onPaste={(e) => handlePaste(idx, e)}
-                className={`w-full min-w-0 text-center font-mono text-xs sm:text-sm py-2 sm:py-2.5 px-1 rounded-lg border transition-all duration-150 outline-none ${borderClass}`}
+                className={`w-full min-w-0 text-center font-mono text-xs sm:text-sm tracking-wider py-2 sm:py-2.5 px-1 rounded-lg border transition-all duration-150 outline-none ${borderClass}`}
                 title={
                   isInvalid
                     ? t("auth.recoveryChecksumError", {
-                        defaultValue: "Check digit error: this group of 6 digits is not divisible by 11",
+                        defaultValue: "校验码错误：该组 6 位数无法被 11 整除",
                         group: idx + 1
                       })
                     : undefined
@@ -177,7 +177,7 @@ export const RecoveryKeyInput: React.FC<RecoveryKeyInputProps> = ({
       {invalidGroupIndices.length > 0 && (
         <p className="text-xs text-red-500 text-center font-medium mt-1">
           {t("auth.recoveryChecksumErrorDesc", {
-            defaultValue: "Group {{groups}} has a check digit error. Please check it and try again",
+            defaultValue: "第 {{groups}} 组校验码错误，请核对后重试",
             groups: invalidGroupIndices.map((i) => i + 1).join("、")
           })}
         </p>

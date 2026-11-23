@@ -1,17 +1,11 @@
 import React, { useState } from "react";
-import { H3, Intent, Callout, Dialog, Button, Classes } from "@blueprintjs/core";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Copy, Check, ShieldAlert } from "lucide-react";
-import LogoIcon from "../assets/obex_cat_eye_logo-256.webp";
-import { useBranding } from "../hooks/useBranding";
+import { ArrowLeft, Copy, Check, ShieldAlert, AlertCircle, Info } from "lucide-react";
 import { LoginUsernameStep } from "./login/LoginUsernameStep";
 import { LoginPasswordStep } from "./login/LoginPasswordStep";
 import { LoginMfaStep } from "./login/LoginMfaStep";
 import { useLoginForm } from "./login/useLoginForm";
 
-/**
- * Authentication configuration settings fetched from server.
- */
 interface AuthConfig {
   turnstile_site_key: string;
   turnstile_enabled_signup: boolean;
@@ -21,31 +15,18 @@ interface AuthConfig {
   registration_enabled?: boolean;
 }
 
-/**
- * Properties for the LoginForm component.
- */
 interface LoginFormProps {
-  /** Authentication configuration containing site keys and toggles. */
   authConfig: AuthConfig | null;
-  /** True if Turnstile library has loaded globally. */
   turnstileReady: boolean;
-  /** Callback triggered on successful authentication. */
   onSuccess: () => void;
-  /** Callback to toggle page mode to registration (signup). */
   onToggleMode: () => void;
 }
 
-/**
- * LoginForm processes login in distinct, decoupled steps:
- * 1. Username input & Turnstile verification
- * 2. Password input (if required, with "Other options" switch to MFA)
- * 3. MFA verification (Passkey prioritized, with "Other options" switch to TOTP / Recovery)
- */
 export const LoginForm: React.FC<LoginFormProps> = ({
   authConfig,
   turnstileReady,
   onSuccess,
-  onToggleMode
+  onToggleMode,
 }) => {
   const { t } = useTranslation();
 
@@ -80,7 +61,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     handlePasskeyLogin,
     handleBack,
     rotatedRecoveryKey,
-    handleAcknowledgeRotatedKey
+    handleAcknowledgeRotatedKey,
   } = useLoginForm({ authConfig, turnstileReady, onSuccess });
 
   const [copiedRotatedKey, setCopiedRotatedKey] = useState(false);
@@ -94,71 +75,64 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const getStepTitle = (): string => {
     switch (loginStep) {
       case 1:
-        return t("auth.login");
+        return t("auth.login", "Đăng nhập");
       case 2:
-        return t("auth.password");
+        return t("auth.password", "Nhập mật khẩu");
       case 3:
-        return t("auth.mfaVerification");
+        return t("auth.mfaVerification", "Xác thực hai bước (MFA)");
+      default:
+        return t("auth.login", "Đăng nhập");
     }
   };
 
-  const { appName, appLogoUrl } = useBranding();
-
   return (
     <>
-      <div className="flex flex-col items-center mb-8 relative">
-        {loginStep !== 1 && (
-          <button
-            type="button"
-            onClick={handleBack}
-            className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 bg-transparent border-none cursor-pointer p-1 rounded-lg transition-colors"
-            title={t("common.back")}
-          >
-            <ArrowLeft size={24} />
-          </button>
-        )}
-        <img
-          src={appLogoUrl || LogoIcon}
-          alt={`${appName} Logo`}
-          className="w-20 h-20 object-contain"
-        />
-        <H3 className="font-bold tracking-tight text-2xl mt-4">
-          {getStepTitle()}
-        </H3>
-        <p className="text-gray-500 mt-2 text-center text-sm leading-relaxed">
-          {loginStep === 1 ? t("auth.protectInternet") : username}
-        </p>
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-2">
+          {loginStep !== 1 && (
+            <button
+              type="button"
+              onClick={handleBack}
+              className="p-1 -ml-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              title={t("common.back", "Quay lại")}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-gray-900 m-0">
+              {getStepTitle()}
+            </h2>
+            <p className="text-xs text-gray-500 mt-1 font-medium">
+              {loginStep === 1
+                ? t("auth.protectInternet", "Bảo vệ truy cập internet an toàn cho bạn")
+                : username}
+            </p>
+          </div>
+        </div>
       </div>
 
       {authConfig?.has_users === false && (
-        <Callout
-          intent={Intent.PRIMARY}
-          icon="info-sign"
-          className="mb-6 rounded-xl"
-        >
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <span className="text-sm font-medium">
-              {t("auth.noUsersRegistered")}
-            </span>
-            <button
-              type="button"
-              onClick={onToggleMode}
-              className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-3 rounded-lg border-none cursor-pointer whitespace-nowrap transition-colors"
-            >
-              {t("auth.goToRegisterAdmin")}
-            </button>
+        <div className="mb-5 p-3.5 rounded-xl bg-blue-50/80 border border-blue-200/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-blue-900">
+          <div className="flex items-center gap-2 font-medium">
+            <Info className="w-4 h-4 text-blue-600 shrink-0" />
+            <span>{t("auth.noUsersRegistered", "Hệ thống chưa có tài khoản. Đăng ký làm quản trị viên.")}</span>
           </div>
-        </Callout>
+          <button
+            type="button"
+            onClick={onToggleMode}
+            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-all shrink-0 cursor-pointer shadow-xs"
+          >
+            {t("auth.goToRegisterAdmin", "Đăng ký quản trị")}
+          </button>
+        </div>
       )}
 
       {error && (
-        <Callout
-          intent={Intent.DANGER}
-          className="mb-6 rounded-xl"
-          title={t("auth.error")}
-        >
-          {error}
-        </Callout>
+        <div className="mb-5 p-3 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2.5 text-xs text-red-800">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <div className="font-medium leading-relaxed">{error}</div>
+        </div>
       )}
 
       {/* Step 1: Username & Turnstile */}
@@ -216,58 +190,47 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         />
       )}
 
-      {loginStep === 1 && (authConfig?.has_users === false || authConfig?.registration_enabled !== false) && (
-        <div className="mt-8 pt-6 border-t border-gray-100 flex justify-center items-center text-sm">
-          <button
-            onClick={onToggleMode}
-            className="text-blue-600 font-semibold hover:underline bg-transparent border-none cursor-pointer"
-          >
-            {t("auth.noAccount")}
-          </button>
-        </div>
-      )}
-
-      {/* Rotated Recovery Key Notification Modal on Login */}
-      <Dialog
-        isOpen={!!rotatedRecoveryKey}
-        onClose={handleAcknowledgeRotatedKey}
-        title={t("account.recoveryKey.autoRotatedTitle")}
-        icon="warning-sign"
-        isCloseButtonShown={false}
-        canOutsideClickClose={false}
-        className=""
-      >
-        <div className={Classes.DIALOG_BODY}>
-          <Callout intent={Intent.WARNING} icon={<ShieldAlert size={16} />} className="mb-4 text-xs">
-            {t("account.recoveryKey.autoRotatedNotice")}
-          </Callout>
-
-          {rotatedRecoveryKey && (
-            <div className="space-y-3">
-              <div className="p-3 bg-gray-100 rounded border border-gray-200 font-mono text-center text-lg font-bold select-all text-gray-900 ">
-                {rotatedRecoveryKey}
-              </div>
-              <div className="flex justify-center">
-                <Button
-                  intent={Intent.PRIMARY}
-                  icon={copiedRotatedKey ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
-                  text={copiedRotatedKey ? t("common.copied") : t("common.copyKey")}
-                  onClick={() => handleCopyRotatedKey(rotatedRecoveryKey)}
-                />
-              </div>
+      {/* Rotated Recovery Key Modal */}
+      {rotatedRecoveryKey && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-200 space-y-4">
+            <div className="flex items-center gap-2.5 text-amber-600 font-semibold text-base">
+              <ShieldAlert className="w-5 h-5 shrink-0" />
+              <span>{t("account.recoveryKey.autoRotatedTitle", "Khóa khôi phục đã được tự động làm mới")}</span>
             </div>
-          )}
-        </div>
-        <div className={Classes.DIALOG_FOOTER}>
-          <div className={Classes.DIALOG_FOOTER_ACTIONS}>
-            <Button
-              intent={Intent.SUCCESS}
-              onClick={handleAcknowledgeRotatedKey}
-              text={t("account.recoveryKey.savedAndContinue")}
-            />
+
+            <p className="text-xs text-gray-600 leading-relaxed">
+              {t(
+                "account.recoveryKey.autoRotatedNotice",
+                "Theo quy tắc sử dụng một lần, khóa cũ đã hết hiệu lực. Hãy sao lưu khóa khôi phục 30 ký tự mới này an toàn ngay lập tức!"
+              )}
+            </p>
+
+            <div className="p-3 bg-gray-100 rounded-xl border border-gray-200 font-mono text-center text-base font-bold tracking-wider select-all text-gray-900">
+              {rotatedRecoveryKey}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleCopyRotatedKey(rotatedRecoveryKey)}
+                className="flex-1 py-2 px-3 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                {copiedRotatedKey ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedRotatedKey ? t("common.copied", "Đã sao chép") : t("common.copyKey", "Sao chép khóa")}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAcknowledgeRotatedKey}
+                className="flex-1 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-all cursor-pointer"
+              >
+                {t("account.recoveryKey.savedAndContinue", "Đã lưu & Tiếp tục")}
+              </button>
+            </div>
           </div>
         </div>
-      </Dialog>
+      )}
     </>
   );
 };

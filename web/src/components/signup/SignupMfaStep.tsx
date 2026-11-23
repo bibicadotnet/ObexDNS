@@ -71,17 +71,20 @@ export const SignupMfaStep: React.FC<SignupMfaStepProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-bold text-gray-800 m-0">
-                      {t("account.passkey.title")}
+                      {t("account.passkey.title", "通行密钥 (Passkey)")}
                     </h4>
                     <Tag intent={Intent.PRIMARY} minimal round>
-                      {t("auth.mfaRecommended")}
+                      {t("auth.mfaRecommended", "推荐 · 无密码")}
                     </Tag>
                   </div>
                   <div className="text-xs text-blue-600 font-mono mt-0.5">
                     {window.location.hostname}
                   </div>
                   <p className="text-xs text-gray-500 mt-1 mb-0 leading-relaxed">
-                    {t("auth.passkeySignupDesc")}
+                    {t(
+                      "auth.passkeySignupDesc",
+                      "使用本设备生物识别 (Touch ID / Face ID / Windows Hello) 或硬件密钥 (YubiKey)，一键快捷且防钓鱼。"
+                    )}
                   </p>
                 </div>
               </div>
@@ -90,7 +93,7 @@ export const SignupMfaStep: React.FC<SignupMfaStepProps> = ({
               <Button
                 intent={Intent.PRIMARY}
                 loading={passkeyRegLoading}
-                text={t("auth.bindPasskeyNow")}
+                text={t("auth.bindPasskeyNow", "绑定通行密钥")}
                 className="rounded-lg font-medium"
               />
             </div>
@@ -110,14 +113,17 @@ export const SignupMfaStep: React.FC<SignupMfaStepProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="text-sm font-bold text-gray-800 m-0">
-                      {t("auth.mfaMethodTotp")}
+                      {t("auth.mfaMethodTotp", "数字验证器 (TOTP)")}
                     </h4>
                     <Tag intent={Intent.NONE} minimal round>
-                      {t("auth.mfaUniversal")}
+                      {t("auth.mfaUniversal", "通用应用")}
                     </Tag>
                   </div>
                   <p className="text-xs text-gray-500 mt-1 mb-0 leading-relaxed">
-                    {t("account.totp.setupDesc")}
+                    {t(
+                      "account.totp.setupDesc",
+                      "使用 Google Authenticator、1Password 等验证器应用扫码绑定 6 位动态验证码。"
+                    )}
                   </p>
                 </div>
               </div>
@@ -125,8 +131,8 @@ export const SignupMfaStep: React.FC<SignupMfaStepProps> = ({
             <div className="mt-3 text-right">
               <Button
                 minimal
-                text={t("auth.setupTotpBtn")}
-                className="rounded-lg font-medium text-gray-700 "
+                text={t("auth.setupTotpBtn", "扫码配置验证器")}
+                className="rounded-lg font-medium text-gray-700"
               />
             </div>
           </Card>
@@ -135,9 +141,9 @@ export const SignupMfaStep: React.FC<SignupMfaStepProps> = ({
         <div className="text-center pt-2">
           <Button
             minimal
-            text={t("auth.skipMfaSetup")}
+            text={t("auth.skipMfaSetup", "跳过多因素认证配置，直接进入系统")}
             onClick={onSkip}
-            className="text-xs text-gray-400 hover:text-gray-600 "
+            className="text-xs text-gray-400 hover:text-gray-600"
           />
         </div>
       </div>
@@ -154,7 +160,7 @@ export const SignupMfaStep: React.FC<SignupMfaStepProps> = ({
           className="text-xs text-blue-600 hover:underline flex items-center gap-1 bg-transparent border-none cursor-pointer p-0"
         >
           <ArrowLeft size={14} />
-          <span>{t("auth.backToMfaOptions")}</span>
+          <span>{t("auth.backToMfaOptions", "选择其他认证方式")}</span>
         </button>
       </div>
 

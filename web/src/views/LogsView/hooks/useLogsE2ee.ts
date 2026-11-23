@@ -117,7 +117,7 @@ export function useLogsE2ee({
         setIsE2eeUnlocked(true);
         await localDb.reDecryptLocalLogs(profileId);
         toasterRef?.current?.show({
-          message: t("settings.e2eeUnlockSuccess"),
+          message: t("settings.e2eeUnlockSuccess", "私钥已成功在此设备解锁"),
           intent: Intent.SUCCESS
         });
         await triggerPostUnlock();
@@ -127,7 +127,7 @@ export function useLogsE2ee({
       toasterRef?.current?.show({
         message:
           (err as Error).message ||
-          t("settings.e2eeUnlockError"),
+          t("settings.e2eeUnlockError", "验证 Passkey 解锁失败"),
         intent: Intent.DANGER
       });
     } finally {
@@ -159,7 +159,7 @@ export function useLogsE2ee({
       setRecoveryKeyInput("");
       await localDb.reDecryptLocalLogs(profileId);
       toasterRef?.current?.show({
-        message: t("settings.e2eeUnlockSuccess"),
+        message: t("settings.e2eeUnlockSuccess", "私钥已成功在此设备解锁"),
         intent: Intent.SUCCESS
       });
       await triggerPostUnlock();
@@ -167,7 +167,7 @@ export function useLogsE2ee({
       console.error("Failed to unlock E2EE via recovery key:", err);
       setRecoveryError(
         (err as Error).message ||
-          t("account.e2ee.recoveryUnlockFailed")
+          t("account.e2ee.recoveryUnlockFailed", "恢复密钥无效或解析失败")
       );
     } finally {
       setUnlocking(false);

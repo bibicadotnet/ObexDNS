@@ -20,9 +20,7 @@ export const MIME_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
-  '.wasm': 'application/wasm',
-  '.woff2': 'font/woff2',
-  '.woff': 'font/woff'
+  '.wasm': 'application/wasm'
 };
 
 /**

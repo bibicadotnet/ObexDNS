@@ -47,13 +47,6 @@ export const AddRuleCard: React.FC<AddRuleCardProps> = ({ newRule, setNewRule, a
               <InputGroup
                 id="rule-pattern"
                 size="large"
-                fill
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newRule.type !== "REDIRECT" && !loading) addRule();
-                }}
                 placeholder={t("rules.patternPlaceholder")}
                 value={newRule.pattern}
                 onChange={(e) => setNewRule({ ...newRule, pattern: e.target.value })}
@@ -61,11 +54,10 @@ export const AddRuleCard: React.FC<AddRuleCardProps> = ({ newRule, setNewRule, a
             </FormGroup>
           </div>
           {newRule.type !== "REDIRECT" && (
-            <FormGroup label="" labelFor="" className="mb-0 w-full lg:w-auto">
+            <FormGroup label="" labelFor="" className="mb-0">
               <Button
                 intent={Intent.PRIMARY}
                 size="large"
-                className="w-full lg:w-auto"
                 icon={<Plus size={18} />}
                 onClick={addRule}
                 loading={loading}
@@ -78,10 +70,10 @@ export const AddRuleCard: React.FC<AddRuleCardProps> = ({ newRule, setNewRule, a
         </div>
 
         {newRule.type === "REDIRECT" && (
-          <div className="bg-gray-50 p-4 sm:p-6 rounded-xl border border-gray-200 ">
-            <div className="flex items-center gap-2 mb-4 text-blue-600 ">
+          <div className="bg-gray-50 p-4 sm:p-6 rounded-xl border border-gray-200">
+            <div className="flex items-center gap-2 mb-4 text-blue-600">
               <Globe size={16} />
-              <span className="text-xs font-bold ">{t("rules.redirectSettings")}</span>
+              <span className="text-xs font-bold uppercase tracking-wider">{t("rules.redirectSettings")}</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">

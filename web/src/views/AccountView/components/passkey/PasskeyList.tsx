@@ -72,7 +72,7 @@ export const PasskeyList: React.FC<PasskeyListProps> = ({
               <KeyRound size={18} />
             </div>
             <div className="min-w-0">
-              <div className="font-semibold text-sm truncate text-gray-900 ">
+              <div className="font-semibold text-sm truncate text-gray-900">
                 {pk.name}
               </div>
               <div className="text-xs text-gray-500 flex flex-wrap gap-x-3 gap-y-1 mt-0.5">

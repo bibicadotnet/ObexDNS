@@ -150,7 +150,7 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
         )}
 
         {selectedList && (
-          <div className="text-base font-bold break-words">{getListDisplay(selectedList).name}</div>
+          <div className="text-base font-bold break-words">{getListDisplay(selectedList, t).name}</div>
         )}
 
         {selectedList?.description?.trim() && (
@@ -241,7 +241,7 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
                         {" "}
                         <Tag minimal className="font-mono">{result.matchedEntry}</Tag>{" "}
                         {result.matchedEntry.includes("*") || result.matchedEntry.startsWith("/")
-                          ? t("filtering.checkViaPattern")
+                          ? t("filtering.checkViaPattern", "(匹配到通配规则)")
                           : t("filtering.checkViaParent", "(matched a parent domain)")}
                       </>
                     )}
@@ -263,8 +263,8 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
                 </div>
               ) : result.whitelisted ? (
                 <div className="space-y-1">
-                  <div className="font-medium text-emerald-700 ">
-                    {t("filtering.checkWhitelisted")}
+                  <div className="font-medium text-emerald-700">
+                    {t("filtering.checkWhitelisted", "被该列表放行")}
                     {result.matchedEntry && (
                       <>
                         {" "}
@@ -273,7 +273,7 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
                     )}
                   </div>
                   <div className="opacity-75">
-                    {t("filtering.checkWhitelistedDesc")}
+                    {t("filtering.checkWhitelistedDesc", "命中该订阅列表中的白名单/例外规则 (@@)，即使被其他黑名单规则命中也会优先放行。")}
                   </div>
                 </div>
               ) : (
@@ -315,7 +315,7 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
           portalClassName="z-20000"
           content={
             <div className="p-3 space-y-3 max-w-xs">
-              <p className="text-xs font-semibold leading-relaxed m-0 text-gray-800 ">
+              <p className="text-xs font-semibold leading-relaxed m-0 text-gray-800">
                 {t("filtering.deleteConfirm", "Are you sure you want to delete this list? This action cannot be undone.")}
               </p>
               <div className="flex justify-end gap-2">
@@ -355,7 +355,7 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
               intent={Intent.PRIMARY}
               loading={syncingSingle}
               disabled={syncingSingle}
-              text={t("filtering.syncSingle")}
+              text={t("filtering.syncSingle", "同步此列表")}
               onClick={() => void handleSync()}
             />
           )}

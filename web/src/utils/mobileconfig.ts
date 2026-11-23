@@ -106,7 +106,7 @@ export function generateMobileConfig(
 
   const cleanOrigin = rawOrigin.trim();
   const domain = extractDomain(cleanOrigin);
-  const dohUrl = `${cleanOrigin}/${key}`;
+  const dohUrl = key ? `${cleanOrigin}/${key}` : `${cleanOrigin}/dns-query`;
   const brandName = (typeof profileKeyOrOptions === "object" && (profileKeyOrOptions as any)?.appName) ||
     (typeof window !== "undefined" ? window.DNS_WORKER_CONFIG?.appName : undefined) ||
     "DNS Shield";
@@ -117,6 +117,8 @@ export function generateMobileConfig(
   // Outer profile display name (visible in iOS Profiles / VPN & Management)
   const displayName = label
     ? `${brandName} - ${domain} (${label})`
+    : key
+    ? `${brandName} - ${domain} (${key})`
     : `${brandName} (${domain})`;
 
   // Inner DoH DNS Settings payload name (visible in iOS DNS provider selection)
@@ -165,7 +167,7 @@ export function generateMobileConfig(
     ],
     PayloadDescription: description,
     PayloadDisplayName: displayName,
-    PayloadIdentifier: `com.dnsworker.profile.${key}`,
+    PayloadIdentifier: `com.dnsworker.profile.${key || 'default'}`,
     PayloadName: displayName,
     PayloadRemovalDisallowed: false,
     // macOS 26 (Tahoe) refuses to install DNS profiles without an explicit scope
