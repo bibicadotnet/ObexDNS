@@ -18,13 +18,11 @@ import { handleResetCommand } from './reset';
 
 import { checkNodeVersion } from './commands/checkEnv';
 import { handleConfigCommand, isSafeConfigPathArg } from './commands/configCmd';
-import { handleEchCommand } from './commands/echCmd';
 import { handleSyncCommand } from './commands/syncCmd';
 import { printHelp } from './commands/helpCmd';
 
 export { checkNodeVersion } from './commands/checkEnv';
 export { handleConfigCommand, isSafeConfigPathArg } from './commands/configCmd';
-export { handleEchCommand } from './commands/echCmd';
 export { handleSyncCommand } from './commands/syncCmd';
 export { printHelp } from './commands/helpCmd';
 
@@ -103,11 +101,6 @@ export async function parseCli(): Promise<ServerfullCliArgs> {
         process.argv.includes('-f')
       );
       await handleSyncCommand({ force: isForce, cliArgs: values as ServerfullCliArgs });
-      process.exit(0);
-    }
-
-    if (positionals[0]?.toLowerCase() === 'ech') {
-      handleEchCommand(values as ServerfullCliArgs);
       process.exit(0);
     }
 

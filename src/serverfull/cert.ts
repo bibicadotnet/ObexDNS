@@ -193,7 +193,7 @@ export function getCertbotDiagnosticOptions(
   return {
     level: 'warning',
     title: 'Non-Wildcard TLS Certificate Detected (DoT Paused)',
-    message: 'The current certificate does not cover wildcard subdomains (*.domain). DoT (DNS over TLS / DoQ) is paused until a valid wildcard certificate is installed.',
+    message: 'The current certificate does not cover wildcard subdomains (*.domain). DoT (DNS over TLS) is paused until a valid wildcard certificate is installed.',
     details: [
       'DoT requires a wildcard certificate (*.domain) to securely route queries to specific profiles via TLS SNI (<profileKey>.your.domain).',
       'The policy allowing access to Default Profile without a wildcard certificate has been disabled.'

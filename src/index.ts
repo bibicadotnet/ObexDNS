@@ -18,12 +18,41 @@ import { handleDoHRequest, resolveProfileByKey } from './api/doh';
 import { handleScheduled } from './cron';
 import { handleMapDataRequest } from './api/mapData';
 import { isUsableJwtSecret } from './lib/jwt';
+import { SystemSettingsModel } from './models/systemSettings';
 import { isTursoConfigured, getTursoDatabase, getDatabaseService, ensureTursoMigrations } from './lib/turso';
 import { cacheUtils } from './utils/cache';
 import { migrateFilterFormatIfLegacy } from './utils/sync';
 import { isServerfullEnv } from './utils/serverfullEnv';
 
 let filterMigrationChecked = false;
+
+const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onloadTurnstileCallback';
+const TURNSTILE_HINT_TTL_MS = 60_000;
+let turnstileHintCache: { value: boolean; expiresAt: number } | null = null;
+
+/**
+ * Whether Turnstile is enabled for login or signup (admin setting stored in the DB).
+ * Only used as a loading hint (preconnect + early script download); the frontend still treats
+ * /api/auth/config as the source of truth, so a briefly stale value is harmless.
+ */
+async function isTurnstileConfigured(env: Env): Promise<boolean> {
+  const now = Date.now();
+  if (turnstileHintCache && turnstileHintCache.expiresAt > now) return turnstileHintCache.value;
+  let value = false;
+  try {
+    const settings = new SystemSettingsModel(env.DB);
+    const [siteKey, onLogin, onSignup] = await Promise.all([
+      settings.get('turnstile_site_key'),
+      settings.get('turnstile_enabled_login'),
+      settings.get('turnstile_enabled_signup')
+    ]);
+    value = !!siteKey && (onLogin === 'true' || onSignup === 'true');
+  } catch {
+    value = false;
+  }
+  turnstileHintCache = { value, expiresAt: now + TURNSTILE_HINT_TTL_MS };
+  return value;
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -386,10 +415,23 @@ export default {
              });
           } catch (e) { }
           
+          // Visitors without a session are about to see the login/signup form. If Turnstile is enabled,
+          // start connecting to and downloading it right away (in parallel with the app bundle) instead
+          // of waiting for the app to boot and fetch /api/auth/config first.
+          let turnstileHead = '';
+          if (!isDbMissing && !isJwtSecretMissing && !readCsrfCookie(request.headers.get('Cookie'))) {
+            if (await isTurnstileConfigured(env)) {
+              turnstileHead =
+                `<link rel="preconnect" href="https://challenges.cloudflare.com">` +
+                `<script nonce="${nonce}">window.onloadTurnstileCallback=function(){};</script>` +
+                `<script nonce="${nonce}" src="${TURNSTILE_SCRIPT_URL}" async defer></script>`;
+            }
+          }
+
           return new HTMLRewriter()
             .on('head', {
               element(element) {
-                element.prepend(`<script nonce="${nonce}">window.DNS_WORKER_CONFIG = ${configStr};</script>`, { html: true });
+                element.prepend(`<script nonce="${nonce}">window.DNS_WORKER_CONFIG = ${configStr};</script>${turnstileHead}`, { html: true });
               }
             })
             .transform(response);

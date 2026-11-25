@@ -29,10 +29,6 @@ export function applySecurityHeaders(response: Response, nonce: string, hostname
     );
   }
 
-  if (!newHeaders.has('Alt-Svc')) {
-    newHeaders.set('Alt-Svc', 'h3=":443"; ma=86400, h3-29=":443"; ma=86400');
-  }
-
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

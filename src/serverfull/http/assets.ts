@@ -1,11 +1,18 @@
 /**
  * @file assets.ts
  * @description Static asset file serving and MIME mapping for Web Dashboard in Serverfull mode.
+ *
+ * Performance notes:
+ * - All file I/O is asynchronous (fs.promises), so serving the dashboard never blocks the event loop that
+ *   also handles DNS (UDP/DoT/DoH) traffic.
+ * - Compression is NOT done at runtime. `scripts/precompress.mjs` (run by `build:serverfull`) writes
+ *   `<file>.br` / `<file>.gz` next to each compressible file at build time; this handler only picks the
+ *   right variant. If no pre-compressed variant exists the plain file is served.
+ * - Recently served files are kept in a small in-memory cache validated against mtime/size.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import zlib from 'node:zlib';
 import { Env } from '../../types';
 import { getPackageRoot } from '../config';
 
@@ -25,26 +32,29 @@ export const MIME_TYPES: Record<string, string> = {
 };
 
 /**
- * Extensions worth compressing. HTML is deliberately excluded: the worker rewrites it per request
- * (CSP nonce + runtime config), so it must reach the rewriter as plain bytes. Images are already compressed.
+ * Extensions that have pre-compressed variants (keep in sync with scripts/precompress.mjs).
+ * HTML is deliberately excluded: the worker rewrites it per request (CSP nonce + runtime config),
+ * so it must reach the rewriter as plain bytes. Images are already compressed.
  */
 const COMPRESSIBLE_EXTS = new Set(['.js', '.mjs', '.css', '.json', '.svg', '.wasm', '.webmanifest']);
 const MIN_COMPRESS_BYTES = 1024;
-const MAX_COMPRESS_CACHE_BYTES = 64 * 1024 * 1024;
+const MAX_FILE_CACHE_BYTES = 64 * 1024 * 1024;
 
-interface CompressedEntry {
+type Encoding = 'br' | 'gzip';
+const ENCODING_SUFFIX: Record<Encoding, string> = { br: '.br', gzip: '.gz' };
+
+interface FileEntry {
   mtimeMs: number;
   size: number;
-  body: Promise<Buffer>;
-  bytes: number;
+  body: Buffer;
 }
 
-const compressedCache = new Map<string, CompressedEntry>();
-let compressedCacheBytes = 0;
+const fileCache = new Map<string, FileEntry>();
+let fileCacheBytes = 0;
 
-/** Picks the best encoding the client accepts (br > gzip), or null for identity. */
-function pickEncoding(acceptEncoding: string | null): 'br' | 'gzip' | null {
-  if (!acceptEncoding) return null;
+/** Returns the encodings the client accepts, best first (br > gzip). Empty means identity only. */
+function acceptedEncodings(acceptEncoding: string | null): Encoding[] {
+  if (!acceptEncoding) return [];
   const accepted = new Set<string>();
   for (const part of acceptEncoding.split(',')) {
     const [name, ...params] = part.trim().toLowerCase().split(';');
@@ -52,52 +62,42 @@ function pickEncoding(acceptEncoding: string | null): 'br' | 'gzip' | null {
     if (q && Number(q.slice(2)) === 0) continue;
     accepted.add(name.trim());
   }
-  if (accepted.has('br')) return 'br';
-  if (accepted.has('gzip')) return 'gzip';
-  return null;
+  const out: Encoding[] = [];
+  if (accepted.has('br')) out.push('br');
+  if (accepted.has('gzip')) out.push('gzip');
+  return out;
 }
 
-function compress(raw: Buffer, encoding: 'br' | 'gzip'): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const cb = (err: Error | null, out: Buffer) => (err ? reject(err) : resolve(out));
-    if (encoding === 'br') {
-      zlib.brotliCompress(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9 } }, cb);
-    } else {
-      zlib.gzip(raw, { level: 9 }, cb);
-    }
-  });
+/** Async stat that resolves to the Stats of a regular file, or null if missing / not a file. */
+async function statFile(filePath: string): Promise<fs.Stats | null> {
+  try {
+    const st = await fs.promises.stat(filePath);
+    return st.isFile() ? st : null;
+  } catch {
+    return null;
+  }
 }
 
-/**
- * Returns the compressed bytes of a file. The cache is keyed by path + encoding and validated against the
- * file's mtime and size, so a redeployed file is recompressed automatically and an old copy is never served.
- * Compression runs on the libuv thread pool, so it does not block the event loop (DNS traffic).
- */
-function getCompressed(filePath: string, encoding: 'br' | 'gzip', raw: Buffer, mtimeMs: number, size: number): Promise<Buffer> {
-  const key = `${encoding}:${filePath}`;
-  const hit = compressedCache.get(key);
-  if (hit && hit.mtimeMs === mtimeMs && hit.size === size) return hit.body;
+/** Reads a file through the in-memory cache; entries are revalidated by mtime and size on every call. */
+async function readCached(filePath: string, st: fs.Stats): Promise<Buffer> {
+  const hit = fileCache.get(filePath);
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.body;
+
+  const body = await fs.promises.readFile(filePath);
 
   if (hit) {
-    compressedCacheBytes -= hit.bytes;
-    compressedCache.delete(key);
+    fileCacheBytes -= hit.body.length;
+    fileCache.delete(filePath);
   }
-  if (compressedCacheBytes > MAX_COMPRESS_CACHE_BYTES) {
-    compressedCache.clear();
-    compressedCacheBytes = 0;
-  }
-
-  const entry: CompressedEntry = { mtimeMs, size, bytes: size, body: compress(raw, encoding) };
-  compressedCache.set(key, entry);
-  compressedCacheBytes += entry.bytes;
-  // A failed compression must not stay cached.
-  entry.body.catch(() => {
-    if (compressedCache.get(key) === entry) {
-      compressedCache.delete(key);
-      compressedCacheBytes -= entry.bytes;
+  if (body.length <= MAX_FILE_CACHE_BYTES) {
+    if (fileCacheBytes + body.length > MAX_FILE_CACHE_BYTES) {
+      fileCache.clear();
+      fileCacheBytes = 0;
     }
-  });
-  return entry.body;
+    fileCache.set(filePath, { mtimeMs: st.mtimeMs, size: st.size, body });
+    fileCacheBytes += body.length;
+  }
+  return body;
 }
 
 /**
@@ -109,56 +109,61 @@ function getCompressed(filePath: string, encoding: 'br' | 'gzip', raw: Buffer, m
 export function attachStaticAssetHandler(env: Env, staticDir?: string): void {
   if (env.ASSETS) return;
 
-  const targetDir = staticDir || path.join(getPackageRoot(), 'static');
+  const targetDir = path.resolve(staticDir || path.join(getPackageRoot(), 'static'));
 
   env.ASSETS = {
     fetch: async (req: Request): Promise<Response> => {
       try {
         const url = new URL(req.url);
-        let pathname = decodeURIComponent(url.pathname);
+        let pathname: string;
+        try {
+          pathname = decodeURIComponent(url.pathname);
+        } catch {
+          return new Response('Bad Request', { status: 400 });
+        }
+        if (pathname.includes('\0')) {
+          return new Response('Bad Request', { status: 400 });
+        }
         if (pathname === '/' || pathname === '') {
           pathname = '/index.html';
         }
 
-        const safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
-        const filePath = path.join(targetDir, safePath);
-
-        if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-          const ext = path.extname(filePath).toLowerCase();
-          const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-          const stat = fs.statSync(filePath);
-          const fileContent = fs.readFileSync(filePath);
-
-          const headers: Record<string, string> = {
-            'Content-Type': contentType,
-            'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
-            'Cross-Origin-Opener-Policy': 'same-origin',
-            'Cross-Origin-Embedder-Policy': 'credentialless',
-            'Cross-Origin-Resource-Policy': 'same-origin'
-          };
-
-          let body: Buffer = fileContent;
-          if (COMPRESSIBLE_EXTS.has(ext) && fileContent.length >= MIN_COMPRESS_BYTES) {
-            // Same URL can answer with or without compression, so caches must key on Accept-Encoding.
-            headers['Vary'] = 'Accept-Encoding';
-            const encoding = pickEncoding(req.headers.get('Accept-Encoding'));
-            if (encoding) {
-              try {
-                const compressed = await getCompressed(filePath, encoding, fileContent, stat.mtimeMs, stat.size);
-                if (compressed.length < fileContent.length) {
-                  body = compressed;
-                  headers['Content-Encoding'] = encoding;
-                }
-              } catch {
-                // Fall back to the uncompressed file.
-              }
-            }
-          }
-
-          return new Response(body as unknown as BodyInit, { status: 200, headers });
+        const filePath = path.join(targetDir, path.normalize(pathname));
+        // Never serve anything outside the static directory.
+        if (filePath !== targetDir && !filePath.startsWith(targetDir + path.sep)) {
+          return new Response('Not Found', { status: 404 });
         }
 
-        return new Response('Not Found', { status: 404 });
+        const stat = await statFile(filePath);
+        if (!stat) {
+          return new Response('Not Found', { status: 404 });
+        }
+
+        const ext = path.extname(filePath).toLowerCase();
+        const headers: Record<string, string> = {
+          'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+          'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+          'Cross-Origin-Embedder-Policy': 'credentialless',
+          'Cross-Origin-Resource-Policy': 'same-origin'
+        };
+
+        if (COMPRESSIBLE_EXTS.has(ext) && stat.size >= MIN_COMPRESS_BYTES) {
+          // Same URL can answer with or without compression, so caches must key on Accept-Encoding.
+          headers['Vary'] = 'Accept-Encoding';
+          for (const encoding of acceptedEncodings(req.headers.get('Accept-Encoding'))) {
+            const variantPath = filePath + ENCODING_SUFFIX[encoding];
+            const variantStat = await statFile(variantPath);
+            // Ignore a variant older than the file it belongs to (stale after a redeploy).
+            if (!variantStat || variantStat.mtimeMs < stat.mtimeMs) continue;
+            const body = await readCached(variantPath, variantStat);
+            headers['Content-Encoding'] = encoding;
+            return new Response(body as unknown as BodyInit, { status: 200, headers });
+          }
+        }
+
+        const body = await readCached(filePath, stat);
+        return new Response(body as unknown as BodyInit, { status: 200, headers });
       } catch {
         return new Response('Asset Error', { status: 500 });
       }

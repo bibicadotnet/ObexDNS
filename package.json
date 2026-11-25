@@ -1,6 +1,6 @@
 {
   "name": "dns-worker",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "private": false,
   "description": "Privacy-first DNS & DoH Resolver with modern Web Dashboard, built for Cloudflare Workers & Node.js",
   "main": "./dist/serverfull.mjs",
@@ -24,7 +24,7 @@
     "start": "npm run build && wrangler dev",
     "start:serverfull": "npm run build:serverfull && node --enable-source-maps dist/serverfull.mjs",
     "serverfull": "npm run build:serverfull && node --enable-source-maps dist/serverfull.mjs",
-    "build:serverfull": "npm run db:generate-migrations && npm run ui:build && npx esbuild src/serverfull/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/serverfull.mjs --banner:js=\"#!/usr/bin/env node\" --external:node:sqlite --minify --sourcemap --tree-shaking=true --legal-comments=none",
+    "build:serverfull": "npm run db:generate-migrations && npm run ui:build && node scripts/precompress.mjs static && npx esbuild src/serverfull/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/serverfull.mjs --banner:js=\"#!/usr/bin/env node\" --external:node:sqlite --minify --sourcemap --tree-shaking=true --legal-comments=none",
     "prepublishOnly": "npm run build:serverfull",
     "service-create:linux": "tsx scripts/create-linux-service.ts",
     "docker:build": "tsx scripts/docker.ts build",

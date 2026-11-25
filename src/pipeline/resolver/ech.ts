@@ -72,7 +72,6 @@ export async function processBestEffortEch(
     const serverDomain = (context.env.SERVERFULL_DOT_DOMAIN || context.env.DOT_DOMAIN || "").toLowerCase().trim();
     const queryLower = query.name.toLowerCase().trim();
     const isDdrQuery = queryLower.startsWith("_dns.") || Boolean(serverDomain && (queryLower === `_dns.${serverDomain}` || queryLower.endsWith(`._dns.${serverDomain}`)));
-    const isServerDomainQuery = Boolean(serverDomain && (queryLower === serverDomain || queryLower.endsWith(`.${serverDomain}`)));
 
     // 1. Discovery of Designated Resolvers (RFC 9460 Section 8 DDR)
     if (isDdrQuery) {
@@ -81,35 +80,20 @@ export async function processBestEffortEch(
       const customEch = context.env.SERVERFULL_ECH_CONFIG?.trim();
 
       // Only advertise ECH in DDR if ECH is active AND a dedicated server ECH config is configured
-      let ddrSvcb = `1 . alpn=doq,dot port=${dotPort}`;
+      let ddrSvcb = `1 . alpn=dot port=${dotPort}`;
       if (isEchActive && customEch) {
         ddrSvcb += ` ech=${customEch}`;
       }
 
       answer = buildResponse(query.raw, targetType, ddrSvcb, 300, 0);
       parsedAnswers = parseDNSAnswer(answer);
-      effectiveReason = isEchActive && customEch ? "DDR SVCB (DoQ/DoT/ECH)" : "DDR SVCB (DoQ/DoT)";
+      effectiveReason = isEchActive && customEch ? "DDR SVCB (DoT/ECH)" : "DDR SVCB (DoT)";
       return { answer, parsedAnswers, effectiveReason };
     }
 
-    // 2. Server Base Domain (SERVERFULL_DOT_DOMAIN):
-    // Only synthesize an authoritative server HTTPS record if custom server ECH is explicitly configured.
-    // Never synthesize fake Cloudflare ECH for self-hosted server domains, which would cause
-    // ERR_ECH_FALLBACK_CERTIFICATE_INVALID in client browsers accessing the web dashboard.
-    if (isServerDomainQuery) {
-      const customEch = context.env.SERVERFULL_ECH_CONFIG?.trim();
-      if (isEchActive && customEch) {
-        const targetType = query.type === "SVCB" || query.type === "TYPE64" ? "SVCB" : "HTTPS";
-        const httpsPort = context.env.SERVERFULL_HTTPS_PORT || context.env.HTTPS_PORT || 10443;
-        const serverHttps = `1 . alpn=h3,h2 port=${httpsPort} ech=${customEch}`;
-        answer = buildResponse(query.raw, targetType, serverHttps, 300, 0);
-        parsedAnswers = parseDNSAnswer(answer);
-        effectiveReason = "Server HTTPS (H3/ECH)";
-        return { answer, parsedAnswers, effectiveReason };
-      }
-      // If ECH is not active or no custom ECH is configured, bypass synthetic interception
-      // and allow standard resolution (or Cloudflare ECH rewrite if the domain resolves to Cloudflare IPs).
-    }
+    // 2. Server Base Domain (SERVERFULL_DOT_DOMAIN): no synthetic HTTPS record is ever generated.
+    // The web dashboard (HTTP/2 server) cannot terminate ECH, so advertising ech= for it would break clients
+    // (ERR_ECH_FALLBACK_CERTIFICATE_INVALID). Such queries use standard resolution below.
 
     // 3. Best-Effort ECH Rewrite for Cloudflare-fronted domains
     if (isEchActive) {

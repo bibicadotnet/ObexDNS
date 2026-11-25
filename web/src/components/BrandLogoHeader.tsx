@@ -1,7 +1,6 @@
 import React from "react";
 import LogoIcon from "../assets/obex_cat_eye_logo-256.webp";
 import { useBranding } from "../hooks/useBranding";
-import { useUpstreamUpdate } from "../hooks/useUpstreamUpdate";
 
 interface BrandLogoHeaderProps {
   onClick?: () => void;
@@ -17,7 +16,8 @@ export const BrandLogoHeader: React.FC<BrandLogoHeaderProps> = ({
   className = "",
 }) => {
   const { appName, appLogoUrl } = useBranding();
-  const { hasUpdate, latestTag, appVersion, gitTag } = useUpstreamUpdate();
+  const gitTag = typeof __APP_GIT_TAG__ !== "undefined" ? __APP_GIT_TAG__ : "";
+  const appVersion = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "";
 
   return (
     <div
@@ -35,18 +35,6 @@ export const BrandLogoHeader: React.FC<BrandLogoHeaderProps> = ({
             <span className="font-bold text-[14px] tracking-tight text-[#111827] truncate leading-tight">
               {appName || "DNS Shield"}
             </span>
-            {hasUpdate && (
-              <a
-                href="https://github.com/Obein/DNS-Worker/releases"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200/60"
-                title={`Update: ${latestTag}`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                UP
-              </a>
-            )}
           </div>
           {showVersion && (
             <span className="text-[11px] text-[#6b7280] font-mono truncate mt-0.5 leading-none">

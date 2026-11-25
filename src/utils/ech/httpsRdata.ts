@@ -48,7 +48,7 @@ export function encodeHttpsRDataFromParams(options: {
   const {
     priority = 1,
     target = ".",
-    alpn = ["h3", "h2"],
+    alpn = ["h2"],
     port,
     ipv4hints = [],
     ipv6hints = [],
@@ -148,7 +148,7 @@ export function encodeHttpsRDataFromParams(options: {
 }
 
 /**
- * Encodes a standard textual HTTPS/SVCB presentation string (e.g. "1 . alpn=h3,h2 ipv4hint=... ech=...")
+ * Encodes a standard textual HTTPS/SVCB presentation string (e.g. "1 . alpn=h2 ipv4hint=... ech=...")
  * into RFC 9460 RDATA binary bytes.
  *
  * @param value - The textual presentation string.

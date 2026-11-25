@@ -185,9 +185,9 @@ async function runTests() {
 
   // ---------------------------------------------------------------------------
   // Test 4: SERVERFULL_DOT_DOMAIN with ECH Rewrite ON AND custom SERVERFULL_ECH_CONFIG provided
-  // Expected: Synthesizes HTTPS record with custom ech=
+  // Expected: still NOT synthesized (the dashboard server cannot terminate ECH)
   // ---------------------------------------------------------------------------
-  console.log("4. Testing SERVERFULL_DOT_DOMAIN with custom SERVERFULL_ECH_CONFIG...");
+  console.log("4. Testing SERVERFULL_DOT_DOMAIN with custom SERVERFULL_ECH_CONFIG (must not be synthesized)...");
   {
     const customEch = Buffer.from(new Uint8Array([0xfe, 0x0d, 0x00, 0x10, 0x01, 0x02, 0x03, 0x04])).toString("base64");
     const queryRaw = buildDNSQuery(serverDomain, "HTTPS");
@@ -216,15 +216,14 @@ async function runTests() {
     );
 
     const dataStr = res.parsedAnswers.map(a => a.data).join(" ");
-    assert.ok(dataStr.includes(`ech=${customEch}`), `Must contain custom ech=. Actual: ${dataStr}`);
-    assert.ok(dataStr.includes("alpn=h3,h2"), "Must advertise h3,h2 ALPN");
-    assert.strictEqual(res.effectiveReason, "Server HTTPS (H3/ECH)");
-    console.log("   ✓ Verified: Custom SERVERFULL_ECH_CONFIG properly synthesized.");
+    assert.ok(!dataStr.includes("ech="), `Must NOT synthesize ech= for the server domain. Actual: ${dataStr}`);
+    assert.strictEqual(res.answer, initialAnswer, "Must return initialAnswer for the server domain");
+    console.log("   ✓ Verified: No HTTPS/ECH record is synthesized for the server domain.");
   }
 
   // ---------------------------------------------------------------------------
   // Test 5: DDR query (_dns.user.example.com) with ECH OFF
-  // Expected: Advertises DoT/DoQ port WITHOUT ech=
+  // Expected: Advertises DoT port WITHOUT ech=
   // ---------------------------------------------------------------------------
   console.log("5. Testing DDR query (_dns.user.example.com) with ECH OFF...");
   {
@@ -253,10 +252,10 @@ async function runTests() {
     );
 
     const dataStr = res.parsedAnswers.map(a => a.data).join(" ");
-    assert.ok(dataStr.includes("alpn=doq,dot port=853"), `Must advertise doq,dot port 853. Actual: ${dataStr}`);
+    assert.ok(dataStr.includes("alpn=dot port=853"), `Must advertise dot port 853. Actual: ${dataStr}`);
     assert.ok(!dataStr.includes("ech="), `Must not contain ech= when ECH is OFF. Actual: ${dataStr}`);
-    assert.strictEqual(res.effectiveReason, "DDR SVCB (DoQ/DoT)");
-    console.log("   ✓ Verified: DDR advertises DoT/DoQ without ech= when ECH is OFF.");
+    assert.strictEqual(res.effectiveReason, "DDR SVCB (DoT)");
+    console.log("   ✓ Verified: DDR advertises DoT without ech= when ECH is OFF.");
   }
 
   // ---------------------------------------------------------------------------

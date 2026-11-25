@@ -190,11 +190,11 @@ export function createHttpRequestHandler(
         if (HOP_BY_HOP_HEADERS.has(lowerKey) || (req.httpVersion === '2.0' && lowerKey === 'upgrade')) {
           return;
         }
-        if (defaultProto === 'https' && lowerKey === 'alt-svc') {
-          res.setHeader('Alt-Svc', `h3=":${port}"; ma=86400, h3-29=":${port}"; ma=86400`);
-        } else {
-          res.setHeader(key, val);
+        // This server has no HTTP/3 (QUIC) listener, so never advertise h3 via Alt-Svc.
+        if (lowerKey === 'alt-svc') {
+          return;
         }
+        res.setHeader(key, val);
       });
 
       if (rawCookies.length > 0) {
@@ -205,10 +205,6 @@ export function createHttpRequestHandler(
           ? rawCookies.map((c) => c.replace(/;\s*Secure\b/gi, ''))
           : rawCookies;
         res.setHeader('Set-Cookie', adaptedCookies);
-      }
-
-      if (defaultProto === 'https' && !res.hasHeader('Alt-Svc')) {
-        res.setHeader('Alt-Svc', `h3=":${port}"; ma=86400, h3-29=":${port}"; ma=86400`);
       }
 
       if (response.body) {

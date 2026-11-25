@@ -19,7 +19,6 @@ export function printHelp(): void {
       'dns-worker [options]',
       'dns-worker status [options]',
       'dns-worker sync [--force]',
-      'dns-worker ech [options]',
       'dns-worker config [action]',
       'dns-worker reset [options]',
       'dns-worker service <action>',
@@ -28,7 +27,6 @@ export function printHelp(): void {
     commands: [
       { label: 'status', desc: 'Inspect service runtime status and database health' },
       { label: 'sync [--force]', desc: 'Synchronize all filter lists across all profiles (bypasses 304 with --force)' },
-      { label: 'ech', desc: 'Display active ECH configuration, outer SNI, and DNS RR records' },
       { label: 'config [action]', desc: 'Manage configuration (show, path, init, template)' },
       { label: 'reset', desc: 'Restore default .env configuration and wipe database (requires confirmation)' },
       { label: 'service <action>', desc: 'Manage background service (install, start, stop, restart, enable, disable, status, logs, uninstall)' }
@@ -77,7 +75,6 @@ export function printHelp(): void {
     ],
     tip: [
       "Run 'dns-worker status' to inspect active runtime status, port availability, and database health.",
-      "Run 'dns-worker ech' to view active ECH configuration, outer SNI, and RFC 9460 DNS records.",
       "Run 'dns-worker config init' to create an editable .env configuration file.",
       process.platform === 'win32'
         ? "Run 'dns-worker service install' (in Administrator terminal) to run as a persistent Windows background service."
