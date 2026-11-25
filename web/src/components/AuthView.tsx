@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Shield, SlidersHorizontal, BarChart3, Copy, Check, LogIn } from "lucide-react";
 import { AppleIcon } from "./icons/AppleIcon";
@@ -59,22 +60,40 @@ export const AuthView: React.FC<AuthViewProps> = ({
   // Not on the lock screen, where focusing the PIN box on purpose is wanted.
   useSuppressAutoScroll(!isLocked);
 
+  // First editable field of the account card (username, or the password /
+  // code field on later login steps).
+  const focusAuthInput = (preventScroll: boolean) => {
+    authCardRef.current
+      ?.querySelector<HTMLInputElement>(
+        "input:not([readonly]):not([type=checkbox]):not([type=radio])"
+      )
+      ?.focus({ preventScroll });
+  };
+
+  // Show the login form right now (flushSync so the inputs exist when we focus
+  // them). Focus has to happen synchronously inside the tap/click, otherwise
+  // iOS will not open the keyboard.
+  const showLoginForm = () => {
+    flushSync(() => setIsLogin(true));
+  };
+
+  // "Login" tab inside the card: switch to the form and put the cursor in it
+  // (the Sign Up form does the same through autoFocus).
+  const handleLoginTab = () => {
+    showLoginForm();
+    focusAuthInput(false);
+  };
+
   // Navbar "Login" button (shown below the lg breakpoint, where the account
-  // card sits further down the page): jump to the card.
+  // card sits further down the page): focus the form, then scroll to it.
   const scrollToAuthCard = () => {
     // With no accounts yet the card should stay on the sign-up form.
-    if (authConfig?.has_users !== false) setIsLogin(true);
+    if (authConfig?.has_users !== false) showLoginForm();
     const card = authCardRef.current;
     if (!card) return;
+    focusAuthInput(true); // preventScroll: we scroll ourselves, smoothly
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     card.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-    // On touch devices leave focus alone: focusing would pop the keyboard up
-    // while the page is still scrolling.
-    if (!window.matchMedia?.("(pointer: coarse)").matches) {
-      window.setTimeout(() => {
-        card.querySelector<HTMLInputElement>("input:not([readonly]):not([type=checkbox])")?.focus({ preventScroll: true });
-      }, 450);
-    }
   };
 
   const handleCopy = (key: string, text: string) => {
@@ -302,7 +321,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         e.preventDefault();
                         setIsLogin(true);
                       }}
-                      onClick={() => setIsLogin(true)}
+                      onClick={handleLoginTab}
                       className={`py-2 text-sm font-semibold rounded-lg transition-all cursor-pointer ${
                         isLogin
                           ? "bg-white text-[#111827] shadow-xs font-bold"
