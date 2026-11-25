@@ -41,6 +41,12 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Keep iOS from inflating text after rotation */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
 }
 
 @keyframes rowGlow {
@@ -472,4 +478,20 @@ a.apple-download-btn svg {
 .bp6-html-table.bp6-interactive tbody tr.table-group-header:hover td,
 .bp6-html-table.bp6-interactive tbody tr.table-group-header:hover {
   background-color: transparent !important;
+}
+
+/*
+ * iOS Safari (iPhone and iPad) zooms the whole page when an input with a
+ * font-size below 16px gets focus, and does not zoom back out afterwards,
+ * which makes the login card look larger than the screen. On touch devices
+ * the login / sign-up inputs therefore use 16px.
+ * Excluded: checkboxes/radios, and the single-digit OTP boxes (maxlength=1),
+ * which are already text-xl.
+ */
+@media (pointer: coarse) {
+  .auth-root input:not([type="checkbox"]):not([type="radio"]):not([maxlength="1"]),
+  .auth-root select,
+  .auth-root textarea {
+    font-size: 16px;
+  }
 }

@@ -116,7 +116,7 @@ export const RecoveryKeyInput: React.FC<RecoveryKeyInputProps> = ({
 
   return (
     <div className={`space-y-2 ${className}`}>
-      <div className="flex items-center justify-between gap-1 sm:gap-2">
+      <div className="flex items-center justify-between gap-1 sm:gap-2 pointer-coarse:grid pointer-coarse:grid-cols-3 pointer-coarse:gap-2">
         {groups.map((group, idx) => {
           const isComplete = group.length === 6;
           const isInvalid = isComplete && !validateRecoveryGroup(group);
@@ -165,7 +165,7 @@ export const RecoveryKeyInput: React.FC<RecoveryKeyInputProps> = ({
                 }
               />
               {idx < 4 && (
-                <span className="text-gray-400 font-bold select-none text-xs">
+                <span className="text-gray-400 font-bold select-none text-xs pointer-coarse:hidden">
                   -
                 </span>
               )}

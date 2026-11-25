@@ -25,6 +25,40 @@ export interface UseTurnstileReturn {
   hasVisibleWidget: boolean;
 }
 
+/** Native width of the "normal" Turnstile widget, in CSS px. */
+const TURNSTILE_NATIVE_WIDTH = 300;
+
+/**
+ * The Turnstile widget is a fixed 300px wide iframe. On very narrow containers
+ * (small phones, narrow cards) it would overflow and push the page sideways, so
+ * scale it down visually to fit. Returns a cleanup function.
+ */
+function fitToContainer(el: HTMLElement): () => void {
+  const fit = () => {
+    const available = el.clientWidth; // layout width, not affected by our own transform
+    const scale =
+      available > 0 && available < TURNSTILE_NATIVE_WIDTH
+        ? available / TURNSTILE_NATIVE_WIDTH
+        : 1;
+    el.style.transformOrigin = "top center";
+    el.style.transform = scale < 1 ? `scale(${scale})` : "";
+  };
+  fit();
+  if (typeof ResizeObserver === "undefined") {
+    window.addEventListener("resize", fit);
+    return () => {
+      window.removeEventListener("resize", fit);
+      el.style.transform = "";
+    };
+  }
+  const ro = new ResizeObserver(fit);
+  ro.observe(el);
+  return () => {
+    ro.disconnect();
+    el.style.transform = "";
+  };
+}
+
 /**
  * Hook to manage Cloudflare Turnstile widget rendering, token state, and teardown.
  * Prevents redundant re-renders and re-verifications when callbacks or parent state change.
@@ -153,6 +187,8 @@ export function useTurnstile({
       return;
     }
 
+    let stopFitting: (() => void) | undefined;
+
     try {
       setTurnstileStatus("verifying");
       turnstileRef.current.innerHTML = "";
@@ -187,12 +223,14 @@ export function useTurnstile({
       });
       widgetIdRef.current = widgetId;
       checkVisibility();
+      stopFitting = fitToContainer(turnstileRef.current);
     } catch (e) {
       console.error("Turnstile render error:", e);
       setTurnstileStatus("error");
     }
 
     return () => {
+      stopFitting?.();
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);

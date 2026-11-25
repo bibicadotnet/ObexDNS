@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Shield, SlidersHorizontal, BarChart3, Copy, Check } from "lucide-react";
+import { Shield, SlidersHorizontal, BarChart3, Copy, Check, LogIn } from "lucide-react";
 import { AppleIcon } from "./icons/AppleIcon";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LoginForm } from "./LoginForm";
@@ -52,6 +52,26 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const defaultDohUrl = `${origin}/dns-query`;
   const defaultDotHost = currentHostname;
 
+  const authCardRef = useRef<HTMLDivElement>(null);
+
+  // Navbar "Login" button (shown below the lg breakpoint, where the account
+  // card sits further down the page): jump to the card.
+  const scrollToAuthCard = () => {
+    // With no accounts yet the card should stay on the sign-up form.
+    if (authConfig?.has_users !== false) setIsLogin(true);
+    const card = authCardRef.current;
+    if (!card) return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    card.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    // On touch devices leave focus alone: focusing would pop the keyboard up
+    // while the page is still scrolling.
+    if (!window.matchMedia?.("(pointer: coarse)").matches) {
+      window.setTimeout(() => {
+        card.querySelector<HTMLInputElement>("input:not([readonly]):not([type=checkbox])")?.focus({ preventScroll: true });
+      }, 450);
+    }
+  };
+
   const handleCopy = (key: string, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
@@ -90,46 +110,71 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   }, [isTurnstileEnabled, authConfig]);
 
-  return (
-    <div className="min-h-screen bg-[#f8fafc] text-[#111827] flex flex-col font-sans antialiased">
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-[#d0d7de] px-4 sm:px-8 lg:px-12 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img
-            src={appLogoUrl || LogoIcon}
-            alt={appName || "DNS Shield"}
-            className="w-8 h-8 rounded-lg object-contain shadow-xs"
-          />
-          <span className="font-bold text-base tracking-tight text-[#111827] leading-none">
-            {appName || "DNS Shield"}
-          </span>
-        </div>
+  // ---- Layout notes -------------------------------------------------------
+  // DOM order is: hero -> instant connection -> account card -> features.
+  //  * < lg (phones, iPad portrait): single column in that order. The public
+  //    "Instant Connection" block comes first; the navbar "Login" button
+  //    scrolls straight to the account card.
+  //  * >= lg (iPad landscape, desktop): two columns. Hero, instant connection
+  //    and features stay in the left column, the account card spans all three
+  //    rows in the right column (so the navbar button is hidden there).
+  const gridClass = isLocked
+    ? "mx-auto w-full max-w-md"
+    : "grid grid-cols-1 items-start gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1fr)_25rem] lg:grid-rows-[auto_auto_1fr] lg:gap-x-10 lg:gap-y-8";
 
-        <div className="flex items-center gap-2">
-          <LanguageSwitcher />
+  return (
+    <div className="auth-root min-h-dvh overflow-x-clip bg-[#f8fafc] text-[#111827] flex flex-col font-sans antialiased">
+      {/* Top Navbar (inner wrapper shares the same max-width / gutters as <main>) */}
+      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-[#d0d7de]">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3.5 sm:px-8 xl:px-12">
+          <div className="flex min-w-0 items-center gap-3">
+            <img
+              src={appLogoUrl || LogoIcon}
+              alt={appName || "DNS Shield"}
+              className="w-8 h-8 shrink-0 rounded-lg object-contain shadow-xs"
+            />
+            <span className="truncate font-bold text-base tracking-tight text-[#111827] leading-none">
+              {appName || "DNS Shield"}
+            </span>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {!isLocked && (
+              <button
+                type="button"
+                onClick={scrollToAuthCard}
+                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-[#0969da] px-3 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-[#0854ad] active:bg-[#0747a0] lg:hidden"
+              >
+                <LogIn className="h-4 w-4" />
+                <span>{t("auth.loginBtn", "Login")}</span>
+              </button>
+            )}
+            <LanguageSwitcher />
+          </div>
         </div>
       </header>
 
-      {/* Main Container - Aligned to top, clean modern NextDNS spacing */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-8 lg:p-12 flex flex-col justify-start pt-6 sm:pt-8 pb-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
-          
-          {/* Left Column: Public Instant Connection & Core Features */}
-          {!isLocked && (
-            <div className="flex flex-col space-y-6 lg:col-span-7">
-              <div>
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-[#111827] leading-tight">
-                  <span>{t("auth.heroTitle1", "Private & Secure DNS.")}</span>{" "}
-                  <span className="text-[#0969da] block sm:inline mt-1 sm:mt-0">{t("auth.heroTitle2", "Customized for all devices.")}</span>
-                </h1>
-                <p className="mt-3 text-base sm:text-lg text-[#4b5563] leading-relaxed max-w-xl">
-                  {t("auth.heroSubtitle", "Supports DNS-over-HTTPS (DoH) and DNS-over-TLS (DoT). Connect instantly with default settings or sign in to manage your own blocklists, rules, and devices.")}
-                </p>
-              </div>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 sm:px-8 sm:pt-8 xl:px-12">
+        <div className={gridClass}>
 
-              {/* Instant Use DNS Card (Windows, Apple, DoH, DoT - Default Account) */}
+          {/* Hero */}
+          {!isLocked && (
+            <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+              <h1 className="text-2xl sm:text-3xl xl:text-4xl font-extrabold tracking-tight text-[#111827] leading-tight text-balance">
+                <span>{t("auth.heroTitle1", "Private & Secure DNS.")}</span>{" "}
+                <span className="text-[#0969da] block sm:inline lg:block mt-1 sm:mt-0 lg:mt-1">{t("auth.heroTitle2", "Customized for all devices.")}</span>
+              </h1>
+              <p className="mt-3 text-base sm:text-lg text-[#4b5563] leading-relaxed text-pretty">
+                {t("auth.heroSubtitle", "Supports DNS-over-HTTPS (DoH) and DNS-over-TLS (DoT). Connect instantly with default settings or sign in to manage your own blocklists, rules, and devices.")}
+              </p>
+            </div>
+          )}
+
+          {/* Instant connection (Windows, Apple, DoH, DoT - Default Account) */}
+          {!isLocked && (
+            <div className="min-w-0 lg:col-start-1 lg:row-start-2">
               <div className="p-5 sm:p-6 rounded-2xl bg-white border border-[#d0d7de] shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3">
                   <div className="flex items-center gap-2.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-xs font-bold uppercase tracking-wider text-[#111827]">
@@ -138,13 +183,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </div>
 
                   {/* Multi-platform Tab Switcher (DoH / DoT / Apple / Windows) */}
-                  <div className="inline-flex p-1 bg-gray-100 rounded-lg text-xs font-semibold border border-gray-200 overflow-x-auto max-w-full">
+                  <div className="flex w-full max-w-full overflow-x-auto p-1 bg-gray-100 rounded-lg text-xs font-semibold border border-gray-200 [scrollbar-width:none] sm:w-auto [&::-webkit-scrollbar]:hidden">
                     {(["doh", "dot", "apple", "windows"] as const).map((tab) => (
                       <button
                         key={tab}
                         type="button"
                         onClick={() => setActiveTab(tab)}
-                        className={`px-3 py-1 rounded-md transition-all cursor-pointer whitespace-nowrap ${
+                        className={`flex-1 px-2 sm:px-3 py-1 rounded-md transition-all cursor-pointer whitespace-nowrap sm:flex-none ${
                           activeTab === tab
                             ? "bg-white text-[#0969da] shadow-xs font-bold"
                             : "text-[#6b7280] hover:text-[#111827]"
@@ -178,7 +223,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       {activeTab === "apple" && "Safari / Apple TV URL (macOS / iOS / tvOS)"}
                       {activeTab === "windows" && "PowerShell (Windows 10 / 11)"}
                     </span>
-                    <code className="text-xs sm:text-sm font-mono text-[#0969da] font-semibold truncate select-all mt-0.5">
+                    {/* break-all (not truncate): long values such as the PowerShell command stay fully readable on narrow screens */}
+                    <code className="text-xs sm:text-sm font-mono text-[#0969da] font-semibold break-all select-all mt-0.5">
                       {activeTab === "doh" && defaultDohUrl}
                       {activeTab === "dot" && defaultDotHost}
                       {activeTab === "apple" && defaultAppleUrl}
@@ -217,57 +263,17 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </div>
                 </div>
               </div>
-
-              {/* 3 Real Feature Cards - Full Width, No Truncation, High Contrast */}
-              <div className="space-y-3 pt-1">
-                <div className="p-3.5 rounded-xl bg-white border border-[#d0d7de] shadow-xs flex items-center gap-3.5">
-                  <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
-                    <Shield className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-[#111827] m-0">
-                      {t("auth.featAdblock", "Ad & Malware Protection")}
-                    </h4>
-                    <p className="text-xs sm:text-sm text-[#4b5563] mt-0.5 m-0 leading-normal">
-                      {t("auth.featAdblockDesc", "Built-in filter lists to shield all your devices.")}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-white border border-[#d0d7de] shadow-xs flex items-center gap-3.5">
-                  <div className="p-2 rounded-lg bg-blue-50 text-[#0969da] shrink-0">
-                    <SlidersHorizontal className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-[#111827] m-0">
-                      {t("auth.featCustom", "Flexible Custom Rules")}
-                    </h4>
-                    <p className="text-xs sm:text-sm text-[#4b5563] mt-0.5 m-0 leading-normal">
-                      {t("auth.featCustomDesc", "Easily configure block rules, domain whitelists, or rewrites.")}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-white border border-[#d0d7de] shadow-xs flex items-center gap-3.5">
-                  <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
-                    <BarChart3 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-[#111827] m-0">
-                      {t("auth.featAnalytics", "Live Analytics & Domain Insights")}
-                    </h4>
-                    <p className="text-xs sm:text-sm text-[#4b5563] mt-0.5 m-0 leading-normal">
-                      {t("auth.featAnalyticsDesc", "Monitor real-time DNS queries, block ratios, and detect suspicious domains.")}
-                    </p>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
-          {/* Right Column: Custom Setup & Account Card */}
-          <div className={`w-full ${isLocked ? "max-w-md mx-auto" : "lg:col-span-5 max-w-md mx-auto lg:max-w-none"}`}>
-            <div className="bg-white rounded-2xl border border-[#d0d7de] shadow-sm p-6 sm:p-8">
+          {/* Account card (Login / Sign up / Lock screen) */}
+          <div
+            id="auth-card"
+            ref={authCardRef}
+            className={isLocked ? "w-full" : "w-full min-w-0 scroll-mt-20 lg:col-start-2 lg:row-start-1 lg:row-span-3"}
+          >
+            <div className="bg-white rounded-2xl border border-[#d0d7de] shadow-sm p-5 sm:p-8">
+              <div className="mx-auto w-full max-w-md lg:max-w-none">
               {isLocked ? (
                 <LockScreenForm
                   currentUser={currentUser}
@@ -335,8 +341,56 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   )}
                 </>
               )}
+              </div>
             </div>
           </div>
+
+          {/* 3 Real Feature Cards - Full Width, No Truncation, High Contrast */}
+          {!isLocked && (
+            <div className="min-w-0 space-y-3 lg:col-start-1 lg:row-start-3">
+              <div className="p-3.5 rounded-xl bg-white border border-[#d0d7de] shadow-xs flex items-center gap-3.5">
+                <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-bold text-[#111827] m-0">
+                    {t("auth.featAdblock", "Ad & Malware Protection")}
+                  </h4>
+                  <p className="text-xs sm:text-sm text-[#4b5563] mt-0.5 m-0 leading-normal">
+                    {t("auth.featAdblockDesc", "Built-in filter lists to shield all your devices.")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-white border border-[#d0d7de] shadow-xs flex items-center gap-3.5">
+                <div className="p-2 rounded-lg bg-blue-50 text-[#0969da] shrink-0">
+                  <SlidersHorizontal className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-bold text-[#111827] m-0">
+                    {t("auth.featCustom", "Flexible Custom Rules")}
+                  </h4>
+                  <p className="text-xs sm:text-sm text-[#4b5563] mt-0.5 m-0 leading-normal">
+                    {t("auth.featCustomDesc", "Easily configure block rules, domain whitelists, or rewrites.")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-white border border-[#d0d7de] shadow-xs flex items-center gap-3.5">
+                <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-bold text-[#111827] m-0">
+                    {t("auth.featAnalytics", "Live Analytics & Domain Insights")}
+                  </h4>
+                  <p className="text-xs sm:text-sm text-[#4b5563] mt-0.5 m-0 leading-normal">
+                    {t("auth.featAnalyticsDesc", "Monitor real-time DNS queries, block ratios, and detect suspicious domains.")}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </main>
