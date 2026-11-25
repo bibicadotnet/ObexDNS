@@ -70,6 +70,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
       ?.focus({ preventScroll });
   };
 
+  // Keep the keyboard / focus where it is when a tab button is pressed.
+  // IMPORTANT: this must only call preventDefault. Changing React state here
+  // re-renders the page between iOS's synthesized mousedown and click, and
+  // Safari then drops the click -> the first tap does nothing.
+  const keepInputFocus = (e: React.MouseEvent) => e.preventDefault();
+
   // Show the login form right now (flushSync so the inputs exist when we focus
   // them). Focus has to happen synchronously inside the tap/click, otherwise
   // iOS will not open the keyboard.
@@ -167,7 +173,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               <button
                 type="button"
                 onClick={scrollToAuthCard}
-                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-[#0969da] px-3 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-[#0854ad] active:bg-[#0747a0] lg:hidden"
+                className="inline-flex h-8 cursor-pointer touch-manipulation items-center gap-1.5 rounded-lg bg-[#0969da] px-3 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-[#0854ad] active:bg-[#0747a0] lg:hidden"
               >
                 <LogIn className="h-4 w-4" />
                 <span>{t("auth.loginBtn", "Login")}</span>
@@ -317,12 +323,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   <div className="grid grid-cols-2 p-1 bg-gray-100 rounded-xl mb-6 border border-gray-200">
                     <button
                       type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setIsLogin(true);
-                      }}
+                      onMouseDown={keepInputFocus}
                       onClick={handleLoginTab}
-                      className={`py-2 text-sm font-semibold rounded-lg transition-all cursor-pointer ${
+                      className={`py-2 text-sm font-semibold rounded-lg transition-colors cursor-pointer touch-manipulation ${
                         isLogin
                           ? "bg-white text-[#111827] shadow-xs font-bold"
                           : "text-[#6b7280] hover:text-[#111827]"
@@ -332,12 +335,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     </button>
                     <button
                       type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setIsLogin(false);
-                      }}
+                      onMouseDown={keepInputFocus}
                       onClick={() => setIsLogin(false)}
-                      className={`py-2 text-sm font-semibold rounded-lg transition-all cursor-pointer ${
+                      className={`py-2 text-sm font-semibold rounded-lg transition-colors cursor-pointer touch-manipulation ${
                         !isLogin
                           ? "bg-white text-[#111827] shadow-xs font-bold"
                           : "text-[#6b7280] hover:text-[#111827]"
