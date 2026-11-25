@@ -46,8 +46,9 @@ function applyFavicon(faviconUrl: string) {
   if (!faviconUrl || typeof document === "undefined") return;
   const icons = document.querySelectorAll("link[rel*='icon']");
   if (icons.length > 0) {
+    // Re-assigning an identical href makes some browsers fetch the icon again.
     icons.forEach((el) => {
-      (el as HTMLLinkElement).href = faviconUrl;
+      if (el.getAttribute("href") !== faviconUrl) el.setAttribute("href", faviconUrl);
     });
   } else {
     const link = document.createElement("link");

@@ -42,7 +42,7 @@ function App() {
 
   // Abstracted hooks for theme, page metadata/SEO, branding, and authentication & profile state
   const { theme, setTheme } = useTheme();
-  const { appFaviconUrl } = useBranding();
+  useBranding(); // keeps the tab icon (<link rel="icon">) in sync with the branding config
   const pageMeta = usePageMeta();
   const {
     isLoggedIn,
@@ -131,8 +131,6 @@ function App() {
           <title>{pageMeta.title}</title>
           <meta name="description" content={pageMeta.description} />
           <html lang={i18n.language} />
-          {appFaviconUrl && <link rel="icon" href={appFaviconUrl} />}
-          {appFaviconUrl && <link rel="shortcut icon" href={appFaviconUrl} />}
         </Helmet>
         <GitHubCorner />
         <OverlayToaster position="bottom" ref={toasterRef} />
@@ -153,8 +151,6 @@ function App() {
         <title>{pageMeta.title}</title>
         <meta name="description" content={pageMeta.description} />
         <html lang={i18n.language} />
-        {appFaviconUrl && <link rel="icon" href={appFaviconUrl} />}
-        {appFaviconUrl && <link rel="shortcut icon" href={appFaviconUrl} />}
       </Helmet>
       <GitHubCorner />
       <OverlayToaster position="bottom" ref={toasterRef} />
