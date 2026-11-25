@@ -10,6 +10,7 @@ import { loadTurnstileScript } from "../utils/auth";
 import { getAuthConfig } from "../services";
 import type { UserInfo } from "../services";
 import { useBranding } from "../hooks/useBranding";
+import { useSuppressAutoScroll } from "../hooks/useSuppressAutoScroll";
 import LogoIcon from "../assets/obex_cat_eye_logo-256.webp";
 
 export interface AuthConfig {
@@ -53,6 +54,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const defaultDotHost = currentHostname;
 
   const authCardRef = useRef<HTMLDivElement>(null);
+
+  // Touch devices: no scroll jump / focus grab (e.g. by Turnstile) before the first tap.
+  // Not on the lock screen, where focusing the PIN box on purpose is wanted.
+  useSuppressAutoScroll(!isLocked);
 
   // Navbar "Login" button (shown below the lg breakpoint, where the account
   // card sits further down the page): jump to the card.
