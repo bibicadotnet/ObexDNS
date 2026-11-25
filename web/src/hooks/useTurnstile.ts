@@ -60,6 +60,28 @@ function fitToContainer(el: HTMLElement): () => void {
 }
 
 /**
+ * Calls `onChange` whenever a child of `el` is added or changes size.
+ * Changes inside Turnstile's closed shadow root are invisible to a
+ * MutationObserver, but the size of its host element is not. Returns a
+ * cleanup function.
+ */
+function watchChildren(el: HTMLElement, onChange: () => void): () => void {
+  if (typeof ResizeObserver === "undefined") return () => {};
+  const resizeObserver = new ResizeObserver(onChange);
+  const observeChildren = () => {
+    Array.from(el.children).forEach((child) => resizeObserver.observe(child));
+    onChange();
+  };
+  const mutationObserver = new MutationObserver(observeChildren);
+  mutationObserver.observe(el, { childList: true });
+  observeChildren();
+  return () => {
+    mutationObserver.disconnect();
+    resizeObserver.disconnect();
+  };
+}
+
+/**
  * Hook to manage Cloudflare Turnstile widget rendering, token state, and teardown.
  * Prevents redundant re-renders and re-verifications when callbacks or parent state change.
  */
@@ -81,49 +103,21 @@ export function useTurnstile({
 
   const { t } = useTranslation();
 
-  // Decide whether the widget is actually visible (Managed / Non-interactive /
-  // interactive) or hidden (Invisible mode). The wrapper collapses to h-0 while
-  // this is false, so it must be generous: only report "hidden" when the widget
-  // is positively hidden, and never rely on a single signal.
-  // Debug: localStorage.setItem("debugTurnstile", "1") then reload.
+  // Is the widget actually shown (Managed / Non-interactive / interactive) or
+  // hidden (Invisible)? Turnstile draws its iframe inside a closed shadow root,
+  // so it cannot be queried; look at the size of the container's direct
+  // children instead (the shadow host takes the iframe's size).
   const checkVisibility = useCallback(() => {
-    const set = (visible: boolean, reason: string) => {
-      try {
-        if (window.localStorage.getItem("debugTurnstile")) {
-          console.debug("[turnstile] visible =", visible, "-", reason);
-        }
-      } catch {
-        /* ignore */
-      }
-      setHasVisibleWidget(visible);
-    };
-
     const container = turnstileRef.current;
-    if (!container) return set(false, "no container");
-
-    const iframe = container.querySelector("iframe");
-    if (iframe) {
-      const computed = window.getComputedStyle(iframe);
-      if (iframe.style.display === "none" || computed.display === "none") {
-        return set(false, "iframe display:none");
-      }
-      if (iframe.style.visibility === "hidden" || computed.visibility === "hidden") {
-        return set(false, "iframe visibility:hidden");
-      }
-      const rect = iframe.getBoundingClientRect();
-      const w = Math.max(rect.width, parseFloat(computed.width) || 0, parseFloat(iframe.style.width) || 0);
-      const h = Math.max(rect.height, parseFloat(computed.height) || 0, parseFloat(iframe.style.height) || 0);
-      if (w <= 1 && h <= 1) return set(false, `iframe ${w}x${h}`);
-      return set(true, `iframe ${w}x${h}`);
-    }
-
-    // No <iframe> in the light DOM (it can sit inside a shadow root): fall back
-    // to the size of the container's own children.
-    const hasContent = Array.from(container.children).some((c) => {
-      const r = c.getBoundingClientRect();
-      return r.width > 1 && r.height > 1;
-    });
-    return set(hasContent, "no iframe, children size");
+    const visible =
+      !!container &&
+      Array.from(container.children).some((child) => {
+        const style = window.getComputedStyle(child);
+        if (style.display === "none" || style.visibility === "hidden") return false;
+        const rect = child.getBoundingClientRect();
+        return rect.width > 1 && rect.height > 1;
+      });
+    setHasVisibleWidget(visible);
   }, []);
 
   // Store callbacks and t in refs so their identity changes never trigger widget re-mounts
@@ -163,7 +157,7 @@ export function useTurnstile({
     }
 
     let stopFitting: (() => void) | undefined;
-    let stopObserving: (() => void) | undefined;
+    let stopWatching: (() => void) | undefined;
 
     try {
       setTurnstileStatus("verifying");
@@ -174,7 +168,6 @@ export function useTurnstile({
           setTurnstileToken(token);
           setTurnstileStatus("success");
           onClearErrorRef.current?.();
-          checkVisibility();
         },
         "expired-callback": () => {
           setTurnstileToken(null);
@@ -199,32 +192,8 @@ export function useTurnstile({
         }
       });
       widgetIdRef.current = widgetId;
-      checkVisibility();
       stopFitting = fitToContainer(turnstileRef.current);
-
-      // Watch the container for the iframe appearing / being resized so the
-      // wrapper can be revealed (Managed / Non-interactive modes never fire
-      // before-interactive-callback). Must be attached HERE, once the container
-      // exists: it is only rendered after the auth config has loaded.
-      stopObserving = (() => {
-        const el = turnstileRef.current;
-        if (!el) return undefined;
-        const observer = new MutationObserver(() => checkVisibility());
-        observer.observe(el, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["style", "class", "width", "height"]
-        });
-        // Safety net: the iframe may already exist, or get its size late.
-        const retries = [100, 400, 1000, 2500].map((ms) =>
-          window.setTimeout(checkVisibility, ms)
-        );
-        return () => {
-          retries.forEach((id) => window.clearTimeout(id));
-          observer.disconnect();
-        };
-      })();
+      stopWatching = watchChildren(turnstileRef.current, checkVisibility);
     } catch (e) {
       console.error("Turnstile render error:", e);
       setTurnstileStatus("error");
@@ -232,7 +201,7 @@ export function useTurnstile({
 
     return () => {
       stopFitting?.();
-      stopObserving?.();
+      stopWatching?.();
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
@@ -255,7 +224,6 @@ export function useTurnstile({
     }
     setTurnstileToken(null);
     setTurnstileStatus("idle");
-    setHasVisibleWidget(false);
   }, []);
 
   return {
