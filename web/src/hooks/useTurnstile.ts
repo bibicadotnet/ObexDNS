@@ -130,27 +130,6 @@ export function useTurnstile({
     setHasVisibleWidget(true);
   }, []);
 
-  // Observe DOM changes inside turnstile container to detect when widget becomes visible or hidden
-  useEffect(() => {
-    const el = turnstileRef.current;
-    if (!el) return;
-
-    const observer = new MutationObserver(() => {
-      checkVisibility();
-    });
-
-    observer.observe(el, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["style", "class", "width", "height"]
-    });
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [checkVisibility]);
-
   // Store callbacks and t in refs so their identity changes never trigger widget re-mounts
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
@@ -188,6 +167,7 @@ export function useTurnstile({
     }
 
     let stopFitting: (() => void) | undefined;
+    let stopObserving: (() => void) | undefined;
 
     try {
       setTurnstileStatus("verifying");
@@ -224,6 +204,28 @@ export function useTurnstile({
       widgetIdRef.current = widgetId;
       checkVisibility();
       stopFitting = fitToContainer(turnstileRef.current);
+
+      // Watch the container for the iframe appearing / being resized so the
+      // wrapper can be revealed (Managed / Non-interactive modes never fire
+      // before-interactive-callback). Must be attached HERE, once the container
+      // exists: it is only rendered after the auth config has loaded.
+      stopObserving = (() => {
+        const el = turnstileRef.current;
+        if (!el) return undefined;
+        const observer = new MutationObserver(() => checkVisibility());
+        observer.observe(el, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["style", "class", "width", "height"]
+        });
+        // The iframe may already be there before the observer started.
+        const retry = window.setTimeout(checkVisibility, 150);
+        return () => {
+          window.clearTimeout(retry);
+          observer.disconnect();
+        };
+      })();
     } catch (e) {
       console.error("Turnstile render error:", e);
       setTurnstileStatus("error");
@@ -231,6 +233,7 @@ export function useTurnstile({
 
     return () => {
       stopFitting?.();
+      stopObserving?.();
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
