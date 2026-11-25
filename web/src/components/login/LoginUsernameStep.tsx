@@ -55,7 +55,7 @@ export const LoginUsernameStep: React.FC<LoginUsernameStepProps> = ({
       {isTurnstileEnabled && (
         <div
           ref={turnstileRef}
-          className={`flex justify-center transition-all duration-300 ${
+          className={`flex items-start justify-center transition-all duration-300 ${
             hasVisibleWidget ? "opacity-100 min-h-[65px] my-3" : "opacity-0 h-0 overflow-hidden"
           }`}
         />

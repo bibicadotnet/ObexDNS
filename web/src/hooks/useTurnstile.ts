@@ -81,53 +81,49 @@ export function useTurnstile({
 
   const { t } = useTranslation();
 
-  // Helper to dynamically check if the Turnstile iframe/container is actually visible
+  // Decide whether the widget is actually visible (Managed / Non-interactive /
+  // interactive) or hidden (Invisible mode). The wrapper collapses to h-0 while
+  // this is false, so it must be generous: only report "hidden" when the widget
+  // is positively hidden, and never rely on a single signal.
+  // Debug: localStorage.setItem("debugTurnstile", "1") then reload.
   const checkVisibility = useCallback(() => {
+    const set = (visible: boolean, reason: string) => {
+      try {
+        if (window.localStorage.getItem("debugTurnstile")) {
+          console.debug("[turnstile] visible =", visible, "-", reason);
+        }
+      } catch {
+        /* ignore */
+      }
+      setHasVisibleWidget(visible);
+    };
+
     const container = turnstileRef.current;
-    if (!container) {
-      setHasVisibleWidget(false);
-      return;
-    }
+    if (!container) return set(false, "no container");
 
     const iframe = container.querySelector("iframe");
-    if (!iframe) {
-      setHasVisibleWidget(false);
-      return;
+    if (iframe) {
+      const computed = window.getComputedStyle(iframe);
+      if (iframe.style.display === "none" || computed.display === "none") {
+        return set(false, "iframe display:none");
+      }
+      if (iframe.style.visibility === "hidden" || computed.visibility === "hidden") {
+        return set(false, "iframe visibility:hidden");
+      }
+      const rect = iframe.getBoundingClientRect();
+      const w = Math.max(rect.width, parseFloat(computed.width) || 0, parseFloat(iframe.style.width) || 0);
+      const h = Math.max(rect.height, parseFloat(computed.height) || 0, parseFloat(iframe.style.height) || 0);
+      if (w <= 1 && h <= 1) return set(false, `iframe ${w}x${h}`);
+      return set(true, `iframe ${w}x${h}`);
     }
 
-    const styleDisplay = iframe.style.display;
-    const styleVisibility = iframe.style.visibility;
-    if (styleDisplay === "none" || styleVisibility === "hidden") {
-      setHasVisibleWidget(false);
-      return;
-    }
-
-    const styleWidth = iframe.style.width;
-    const styleHeight = iframe.style.height;
-    if (
-      (styleWidth === "0px" || styleWidth === "0") &&
-      (styleHeight === "0px" || styleHeight === "0")
-    ) {
-      setHasVisibleWidget(false);
-      return;
-    }
-
-    const computed = window.getComputedStyle(iframe);
-    if (computed.display === "none" || computed.visibility === "hidden") {
-      setHasVisibleWidget(false);
-      return;
-    }
-
-    const rect = iframe.getBoundingClientRect();
-    const w = parseFloat(computed.width) || rect.width || parseFloat(styleWidth) || 0;
-    const h = parseFloat(computed.height) || rect.height || parseFloat(styleHeight) || 0;
-
-    if (w <= 1 && h <= 1) {
-      setHasVisibleWidget(false);
-      return;
-    }
-
-    setHasVisibleWidget(true);
+    // No <iframe> in the light DOM (it can sit inside a shadow root): fall back
+    // to the size of the container's own children.
+    const hasContent = Array.from(container.children).some((c) => {
+      const r = c.getBoundingClientRect();
+      return r.width > 1 && r.height > 1;
+    });
+    return set(hasContent, "no iframe, children size");
   }, []);
 
   // Store callbacks and t in refs so their identity changes never trigger widget re-mounts
@@ -178,6 +174,7 @@ export function useTurnstile({
           setTurnstileToken(token);
           setTurnstileStatus("success");
           onClearErrorRef.current?.();
+          checkVisibility();
         },
         "expired-callback": () => {
           setTurnstileToken(null);
@@ -219,10 +216,12 @@ export function useTurnstile({
           attributes: true,
           attributeFilter: ["style", "class", "width", "height"]
         });
-        // The iframe may already be there before the observer started.
-        const retry = window.setTimeout(checkVisibility, 150);
+        // Safety net: the iframe may already exist, or get its size late.
+        const retries = [100, 400, 1000, 2500].map((ms) =>
+          window.setTimeout(checkVisibility, ms)
+        );
         return () => {
-          window.clearTimeout(retry);
+          retries.forEach((id) => window.clearTimeout(id));
           observer.disconnect();
         };
       })();
