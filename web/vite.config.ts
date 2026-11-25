@@ -91,6 +91,28 @@ function sqliteWasmPlugin(): Plugin {
   }
 }
 
+/**
+ * Replaces @blueprintjs/icons' `allPaths` module with src/shims/blueprint-allPaths.ts.
+ *
+ * The real module statically imports the path data of EVERY 16px and 20px icon, which
+ * drags both icon chunks (~170 kB transferred) into the first page load. Blueprint imports
+ * it with a relative specifier ("./allPaths" from index.js, "../allPaths" from
+ * allPathsLoader.js), so a plain `resolve.alias` on the package path never matches; match
+ * on the importer instead. Icon data is then loaded on demand by the split-by-size loader.
+ */
+function blueprintAllPathsShim(): Plugin {
+  const shim = path.resolve(__dirname, 'src/shims/blueprint-allPaths.ts')
+  return {
+    name: 'blueprint-allpaths-shim',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (!importer || !/[\\/]@blueprintjs[\\/]icons[\\/]/.test(importer)) return null
+      if (!/^\.{1,2}\/allPaths(\.js)?$/.test(source)) return null
+      return shim
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   envDir: '../',
@@ -100,12 +122,8 @@ export default defineConfig({
     __APP_GIT_COMMIT__: JSON.stringify(gitCommit),
     __APP_VERSION__: JSON.stringify(appVersion),
   },
-  resolve: {
-    alias: {
-      '@blueprintjs/icons/lib/esm/allPaths.js': path.resolve(__dirname, 'src/shims/blueprint-allPaths.ts'),
-    },
-  },
   plugins: [
+    blueprintAllPathsShim(),
     sqliteWasmPlugin(),
     react(),
     VitePWA({
@@ -170,8 +188,11 @@ export default defineConfig({
           if (id.includes('node_modules')) {
             // 分割图标包，并继续分割 20px 和 16px 图标，减少编译后主包体积
             if (/[\\/]node_modules[\\/]@blueprintjs[\\/]icons/.test(id)) {
-              if (id.includes('20px')) return 'vendor-icons-20';
-              if (id.includes('16px')) return 'vendor-icons-16';
+              // Only the per-icon path data goes into the big lazy chunks. Other files under
+              // 16px/ and 20px/ (e.g. the icon-name enums) are needed right away and must not
+              // pull those chunks into the first page load.
+              if (/[\\/]20px[\\/]paths[\\/]/.test(id)) return 'vendor-icons-20';
+              if (/[\\/]16px[\\/]paths[\\/]/.test(id)) return 'vendor-icons-16';
               return 'vendor-icons-other';
             }
             if (id.includes('@blueprintjs/core')) {
