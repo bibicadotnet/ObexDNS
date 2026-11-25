@@ -1,0 +1,232 @@
+/**
+ * @file handler.ts
+ * @description HTTP/HTTPS request dispatch handler adapting Node.js requests to Web Fetch standard.
+ */
+
+import http from 'node:http';
+import { Buffer } from 'node:buffer';
+import worker from '../../index';
+import { Env, ExecutionContext } from '../../types';
+import { extractClientIp } from './clientIp';
+import { envNumber } from '../../utils/envNumber';
+
+/** RFC 8484: a DoH POST body is one DNS message, at most 65535 bytes. */
+const MAX_DOH_BODY_BYTES = 65535;
+const DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Reads the request body, giving up as soon as it exceeds `maxBytes`.
+ * Resolves to null when the limit is exceeded (the remaining data is drained and discarded).
+ */
+function readBodyWithLimit(req: http.IncomingMessage, maxBytes: number): Promise<Buffer | null> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const cleanup = () => {
+      req.off('data', onData);
+      req.off('end', onEnd);
+      req.off('error', onError);
+      req.off('aborted', onError);
+    };
+    const onData = (chunk: Buffer | string) => {
+      const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+      total += buf.length;
+      if (total > maxBytes) {
+        cleanup();
+        req.resume(); // discard whatever the client keeps sending
+        resolve(null);
+        return;
+      }
+      chunks.push(buf);
+    };
+    const onEnd = () => { cleanup(); resolve(Buffer.concat(chunks, total)); };
+    const onError = (err?: Error) => { cleanup(); reject(err ?? new Error('request aborted')); };
+    req.on('data', onData);
+    req.on('end', onEnd);
+    req.on('error', onError);
+    req.on('aborted', onError);
+  });
+}
+
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-connection',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'proxy-authenticate',
+  'proxy-authorization',
+]);
+
+/**
+ * Creates a shared request dispatch handler for Node.js http and https servers.
+ *
+ * @param env - Application Env bindings.
+ * @param defaultProto - Default protocol ('http' or 'https').
+ * @param host - Bound host address.
+ * @param port - Bound port number.
+ * @param httpsRedirect - Optional redirect settings to upgrade plain HTTP to HTTPS.
+ * @returns Request handler callback for http/https.createServer.
+ */
+export function createHttpRequestHandler(
+  env: Env,
+  defaultProto: 'http' | 'https',
+  host: string,
+  port: number,
+  httpsRedirect?: { enabled: boolean; httpsPort: number }
+): (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> {
+  return async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
+    try {
+      const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined)?.toLowerCase();
+      const proto = forwardedProto || defaultProto;
+
+      // When TLS certificates are configured and HTTPS is active, automatically redirect plain HTTP requests to HTTPS
+      if (defaultProto === 'http' && httpsRedirect?.enabled && forwardedProto !== 'https') {
+        const hostHeader = (req.headers.host || `${host}:${port}`).trim();
+        const hostname = hostHeader.replace(/:\d+$/, '');
+        const targetPort = (httpsRedirect.httpsPort === 443 || httpsRedirect.httpsPort === 0) ? '' : `:${httpsRedirect.httpsPort}`;
+        const targetUrl = `https://${hostname}${targetPort}${req.url || '/'}`;
+
+        res.statusCode = (req.method === 'GET' || req.method === 'HEAD') ? 301 : 307;
+        res.setHeader('Location', targetUrl);
+        res.setHeader('Connection', 'close');
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end(`Redirecting to ${targetUrl}`);
+        return;
+      }
+
+      const hostHeader = (req.headers[':authority'] as string) || req.headers.host || `${host}:${port}`;
+      const fullUrl = new URL(req.url || '/', `${proto}://${hostHeader}`);
+
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        // Skip HTTP/2 pseudo-headers (:path, :authority...) and hop-by-hop headers (RFC 9110 §7.6.1)
+        if (!v || k.startsWith(':')) continue;
+        const lowerKey = k.toLowerCase();
+        if (HOP_BY_HOP_HEADERS.has(lowerKey)) continue;
+        if (Array.isArray(v)) {
+          v.forEach((val) => headers.append(k, val));
+        } else {
+          headers.set(k, String(v));
+        }
+      }
+      headers.set('X-Http-Version', req.httpVersion);
+
+      // Populate remote client IP (supports direct connections, Cloudflare, Caddy, Nginx)
+      const clientIp = extractClientIp(headers, req.socket.remoteAddress, env.TRUSTED_PROXIES);
+      headers.set('CF-Connecting-IP', clientIp);
+
+      // Populate fallback geolocation coordinates for serverfull environments without Cloudflare edge proxy
+      const currentLatHeader = headers.get('CF-IPLatitude');
+      if (!currentLatHeader || currentLatHeader.trim() === '') {
+        headers.set('CF-IPLatitude', '0.0');
+      }
+      const currentLonHeader = headers.get('CF-IPLongitude');
+      if (!currentLonHeader || currentLonHeader.trim() === '') {
+        headers.set('CF-IPLongitude', '0.0');
+      }
+
+      let body: any = null;
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        const isDoh = (headers.get('content-type') || '').toLowerCase().includes('application/dns-message');
+        const maxBytes = isDoh
+          ? MAX_DOH_BODY_BYTES
+          : envNumber(env.MAX_BODY_SIZE_BYTES, DEFAULT_MAX_BODY_BYTES, { min: 1 });
+
+        const declared = Number(req.headers['content-length']);
+        const buffered = declared > maxBytes ? null : await readBodyWithLimit(req, maxBytes);
+        if (buffered === null) {
+          res.statusCode = 413;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          if (req.httpVersion !== '2.0') res.setHeader('Connection', 'close'); // forbidden header in HTTP/2
+          res.end('payload_too_large', () => req.destroy());
+          return;
+        }
+        body = buffered;
+      }
+
+      const request = new Request(fullUrl.toString(), {
+        method: req.method,
+        headers,
+        body,
+        // @ts-ignore
+        duplex: 'half'
+      });
+
+      const ctx: ExecutionContext = {
+        waitUntil(promise: Promise<any>) {
+          promise.catch((err) => console.error(`[${defaultProto.toUpperCase()} Background Task Error]:`, err));
+        },
+        passThroughOnException() {}
+      } as any;
+
+      const response = await worker.fetch(request, env, ctx);
+
+      res.statusCode = response.status;
+      if (req.httpVersion !== '2.0') {
+        res.statusMessage = response.statusText;
+      }
+
+      // Extract all Set-Cookie headers properly without Node.js res.setHeader overwriting
+      let rawCookies: string[] = typeof (response.headers as any).getSetCookie === 'function'
+        ? (response.headers as any).getSetCookie()
+        : [];
+
+      if (rawCookies.length === 0 && response.headers.has('set-cookie')) {
+        const singleCookie = response.headers.get('set-cookie');
+        if (singleCookie) {
+          rawCookies = [singleCookie];
+        }
+      }
+
+      response.headers.forEach((val, key) => {
+        const lowerKey = key.toLowerCase();
+        if (lowerKey === 'set-cookie') {
+          // Handled separately below to support multiple Set-Cookie headers
+          return;
+        }
+        // Do not forward hop-by-hop / connection-specific headers in responses (RFC 9110 §7.6.1 & RFC 9113 §8.2.2)
+        if (HOP_BY_HOP_HEADERS.has(lowerKey) || (req.httpVersion === '2.0' && lowerKey === 'upgrade')) {
+          return;
+        }
+        if (defaultProto === 'https' && lowerKey === 'alt-svc') {
+          res.setHeader('Alt-Svc', `h3=":${port}"; ma=86400, h3-29=":${port}"; ma=86400`);
+        } else {
+          res.setHeader(key, val);
+        }
+      });
+
+      if (rawCookies.length > 0) {
+        // Over plain HTTP (non-TLS), browsers reject cookies marked with 'Secure' (RFC 6265bis).
+        // Adapt outgoing cookies by stripping '; Secure' when accessed over plain http.
+        const isPlainHttp = proto === 'http';
+        const adaptedCookies = isPlainHttp
+          ? rawCookies.map((c) => c.replace(/;\s*Secure\b/gi, ''))
+          : rawCookies;
+        res.setHeader('Set-Cookie', adaptedCookies);
+      }
+
+      if (defaultProto === 'https' && !res.hasHeader('Alt-Svc')) {
+        res.setHeader('Alt-Svc', `h3=":${port}"; ma=86400, h3-29=":${port}"; ma=86400`);
+      }
+
+      if (response.body) {
+        const reader = response.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+      }
+      res.end();
+    } catch (err: any) {
+      console.error(`[${defaultProto.toUpperCase()} Server] Request processing failed:`, err);
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Internal Server Error' }));
+      }
+    }
+  };
+}

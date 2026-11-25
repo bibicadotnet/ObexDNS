@@ -1,0 +1,240 @@
+import React, { Suspense, lazy, useMemo } from "react";
+import {
+  Card,
+  Elevation,
+  H5,
+  Spinner,
+  Tag,
+  Intent,
+  Section,
+  OverlayToaster
+} from "@blueprintjs/core";
+import { MapPin } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { PageHeader } from "../../components/PageHeader";
+
+import { processTrendData } from "./utils";
+import { RankTable } from "./components/RankTable";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { useRefreshCooldown } from "../../hooks/useRefreshCooldown";
+import { useAnalyticsData } from "./hooks/useAnalyticsData";
+import { validateCustomRange } from "../../utils/customRange";
+import { AnalyticsRangeSelector } from "./components/AnalyticsRangeSelector";
+import { AnalyticsMetricCards } from "./components/AnalyticsMetricCards";
+import { AnalyticsWindowNotice } from "./components/AnalyticsWindowNotice";
+import { ClientActivitySection } from "./components/ClientActivitySection";
+import { E2eeUnlockBanner } from "../LogsView/components/E2eeUnlockBanner";
+import { UnlockWithRecoveryDialog } from "../LogsView/components/UnlockWithRecoveryDialog";
+import { RotatedKeyNotificationDialog } from "../LogsView/components/RotatedKeyNotificationDialog";
+import { useLogsE2ee } from "../LogsView/hooks/useLogsE2ee";
+
+// Lazy-load chart components so that recharts and react19-simple-maps
+// are only fetched when the Analytics page is actually rendered.
+const TrendChart = lazy(() =>
+  import("./components/TrendChart").then((m) => ({ default: m.TrendChart }))
+);
+const DestinationMap = lazy(() =>
+  import("./components/DestinationMap").then((m) => ({ default: m.DestinationMap }))
+);
+
+/** Minimal inline spinner used as fallback while lazy chunks load. */
+const ChartFallback = () => (
+  <div className="h-64 flex items-center justify-center">
+    <Spinner size={30} />
+  </div>
+);
+
+export interface AnalyticsViewProps {
+  profileId: string;
+  toasterRef?: React.RefObject<OverlayToaster | null>;
+}
+
+export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ profileId, toasterRef }) => {
+  const { t } = useTranslation();
+  const isMobile = useIsMobile();
+
+  const {
+    data,
+    loading,
+    range,
+    setRange,
+    customRange,
+    setCustomRange,
+    accessPointIdFilter,
+    setAccessPointIdFilter,
+    accessPoints,
+    logRetentionDays,
+    fetchData
+  } = useAnalyticsData(profileId, toasterRef);
+  // Refresh re-reads the aggregation past every cache: one use per pause (REFRESH_COOLDOWN_SEC).
+  const refreshCooldown = useRefreshCooldown(`analytics:${profileId}`);
+
+  const {
+    isE2eeEnabled,
+    isE2eeUnlocked,
+    unlocking,
+    recoveryDialogOpen,
+    setRecoveryDialogOpen,
+    recoveryKeyInput,
+    setRecoveryKeyInput,
+    recoveryError,
+    setRecoveryError,
+    rotatedKey,
+    setRotatedKey,
+    copiedKey,
+    handleCopyRotatedKey,
+    handleUnlockPasskey,
+    handleUnlockRecoveryKey
+  } = useLogsE2ee({
+    profileId,
+    range,
+    onUnlocked: () => {
+      fetchData(range, customRange.start, customRange.end, accessPointIdFilter);
+    },
+    toasterRef
+  });
+
+  const hasEncryptedData = Boolean(
+    data &&
+      (data.top_allowed?.some((d) => d.domain === "[Encrypted]") ||
+        data.top_blocked?.some((d) => d.domain === "[Encrypted]") ||
+        data.clients?.some((c) => c.client_ip === "[Encrypted]"))
+  );
+
+  // Re-bucketing the trend is only needed when the dataset or the range changes, not on every render.
+  const chartData = useMemo(
+    () => processTrendData(data, range, { start: customRange.start, end: customRange.end }),
+    [data, range, customRange.start, customRange.end]
+  );
+
+  if (loading && !data) {
+    return (
+      <div className="p-20 flex justify-center">
+        <Spinner size={50} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-1 md:px-8 space-y-6 pb-24">
+      <PageHeader
+        className="mb-0"
+        title={t("analytics.title")}
+        subtitle={t("analytics.subtitle")}
+        titleExtra={loading && data ? <Spinner size={18} /> : undefined}
+      />
+
+      {/* Time Range & Access Point Selector */}
+      <AnalyticsRangeSelector
+        range={range}
+        setRange={setRange}
+        customRange={customRange}
+        setCustomRange={setCustomRange}
+        logRetentionDays={logRetentionDays}
+        accessPoints={accessPoints}
+        accessPointIdFilter={accessPointIdFilter}
+        setAccessPointIdFilter={setAccessPointIdFilter}
+        loading={loading}
+        onRefresh={() => {
+          if (refreshCooldown.active) return;
+          refreshCooldown.start();
+          void fetchData(range, customRange.start, customRange.end, accessPointIdFilter, true);
+        }}
+        refreshWaitSec={refreshCooldown.remainingSec}
+        onApplyCustom={() => {
+          // Same rule as the selector (and the API): an impossible range is never sent.
+          if (!validateCustomRange(customRange.start, customRange.end, logRetentionDays).valid) return;
+          setRange("custom");
+          fetchData("custom", customRange.start, customRange.end, accessPointIdFilter);
+        }}
+      />
+
+      {/* The window the numbers really cover, when it differs from the requested one */}
+      <AnalyticsWindowNotice data={data} />
+
+      {/* E2EE Unlock Banner when records are encrypted and locked */}
+      {(isE2eeEnabled || hasEncryptedData) && !isE2eeUnlocked && (
+        <E2eeUnlockBanner
+          isMobile={isMobile}
+          unlocking={unlocking}
+          onUnlockPasskey={handleUnlockPasskey}
+          onOpenRecoveryDialog={() => {
+            setRecoveryError("");
+            setRecoveryKeyInput("");
+            setRecoveryDialogOpen(true);
+          }}
+        />
+      )}
+
+      {/* Metrics */}
+      <AnalyticsMetricCards data={data} />
+
+      {/* Trend Chart */}
+      <Card elevation={Elevation.ONE} className="relative">
+        <H5 className="section-title mb-4! flex items-center gap-2">
+          {t("analytics.queryTrend")}
+          <Tag minimal round>
+            {range === "custom" ? t("analytics.custom") : range.toUpperCase()}
+          </Tag>
+        </H5>
+        <Suspense fallback={<ChartFallback />}>
+          <TrendChart chartData={chartData} range={range} />
+        </Suspense>
+      </Card>
+
+      {/* Ranks */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <RankTable
+          title={t("analytics.topAllowed")}
+          data={data?.top_allowed || []}
+          intent={Intent.SUCCESS}
+        />
+        <RankTable
+          title={t("analytics.topBlocked")}
+          data={data?.top_blocked || []}
+          intent={Intent.DANGER}
+        />
+      </div>
+
+      {/* Geolocation & Destinations */}
+      <div className="grid gap-6 grid-cols-1">
+        <Section
+          title={t("analytics.destinationDistribution")}
+          icon={<MapPin size={16} />}
+        >
+          <Suspense fallback={<ChartFallback />}>
+            <DestinationMap
+              destinations={data?.destinations || []}
+              profileId={profileId || ""}
+              range={range}
+              customRange={customRange}
+              accessPointId={accessPointIdFilter || undefined}
+            />
+          </Suspense>
+        </Section>
+
+        {/* Client Activity */}
+        <ClientActivitySection clients={data?.clients} />
+      </div>
+
+      {/* Recovery Key Dialog */}
+      <UnlockWithRecoveryDialog
+        isOpen={recoveryDialogOpen}
+        onClose={() => setRecoveryDialogOpen(false)}
+        recoveryKeyInput={recoveryKeyInput}
+        setRecoveryKeyInput={setRecoveryKeyInput}
+        recoveryError={recoveryError}
+        unlocking={unlocking}
+        onSubmit={handleUnlockRecoveryKey}
+      />
+
+      {/* Rotated Key Notification Modal */}
+      <RotatedKeyNotificationDialog
+        rotatedKey={rotatedKey}
+        onClose={() => setRotatedKey(null)}
+        copiedKey={copiedKey}
+        onCopyKey={handleCopyRotatedKey}
+      />
+    </div>
+  );
+};

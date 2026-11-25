@@ -1,0 +1,20 @@
+node_modules
+static
+dist
+dist-*
+build
+.wrangler
+/web/stats.html
+.env
+.vscode
+data/
+*.sqlite*
+dev-dist
+.dev.vars
+temp_*
+.astro
+.vite-cache
+
+# Auto-generated embedded migrations (Source of truth: migrations/*.sql)
+src/lib/turso/embeddedMigrations.ts
+
