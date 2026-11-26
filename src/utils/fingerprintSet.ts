@@ -10,7 +10,9 @@
  * - Asynchronous chunked sorting (128K items per slice) to prevent event-loop blocking.
  * - Dedupe and prefix-index construction run slice by slice (FILTER_YIELD_CHUNK_ITEMS / FILTER_YIELD_SLEEP_MS)
  *   and read the 64-bit values through a Uint32 view instead of BigInt, so a list with millions of entries
- *   never blocks the event loop for more than one slice (the native sort() call stays a single step).
+ *   never blocks the event loop for more than one slice.
+ * - Large tables are sorted by bucketing on the top bits of the hash (histogram, scatter, then a native sort of
+ *   each small bucket), also slice by slice, instead of one native sort() over the whole table.
  *
  * Byte order: entries are stored as (low word, high word) Uint32 pairs, i.e. the table assumes a
  * little-endian host (x86-64, ARM64), exactly like FingerprintSetBuilder.add() always did.
@@ -237,6 +239,80 @@ function dedupeSortedSlice(words: Uint32Array, start: number, end: number, w: nu
     }
   }
   return w;
+}
+
+/**
+ * Sorts the entries of `blocks` (unsorted BigUint64Array pieces) into one new ascending BigUint64Array,
+ * slice by slice: histogram of the top hash bits, scatter into buckets, then a native sort of each bucket.
+ * Buckets partition the value range, so the concatenation of the sorted buckets is globally sorted.
+ * Each pass pauses `tuning.sleepMs` after every `tuning.chunkItems` entries.
+ * Internal helper (exported for tests); duplicates are kept, use FingerprintSetBuilder.build() for dedupe.
+ */
+export async function sortBlocksSliced(blocks: BigUint64Array[], tuning: FilterYieldTuning): Promise<BigUint64Array> {
+  const chunk = Math.max(1, tuning.chunkItems);
+  let sizeHint = 0;
+  for (const b of blocks) sizeHint += b.length;
+  // ~16K entries per bucket on average (16..4096 buckets): few buckets keep the scatter pass cache-friendly,
+  // and sorting one 16K-entry bucket takes about a millisecond
+  const bits = Math.max(4, Math.min(12, Math.floor(Math.log2(Math.max(1, sizeHint) / 16384))));
+  const bucketCount = 1 << bits;
+  const shift = 32 - bits;
+  const views = blocks.map((b) => new Uint32Array(b.buffer, b.byteOffset, b.length * 2));
+
+  let since = 0; // entries handled since the last pause
+
+  // Pass 1: histogram of the top `bits` bits (high word of each entry)
+  const starts = new Uint32Array(bucketCount + 1);
+  for (const w of views) {
+    const n = w.length >>> 1;
+    for (let s = 0; s < n; s += chunk) {
+      const e = Math.min(n, s + chunk);
+      for (let i = s; i < e; i++) starts[(w[2 * i + 1] >>> shift) + 1]++;
+      since += e - s;
+      if (since >= chunk) {
+        since = 0;
+        await pause(tuning.sleepMs);
+      }
+    }
+  }
+  for (let b = 0; b < bucketCount; b++) starts[b + 1] += starts[b];
+  const total = starts[bucketCount];
+
+  // Pass 2: scatter every entry into its bucket of the destination table
+  const out = new BigUint64Array(total);
+  const ow = new Uint32Array(out.buffer, out.byteOffset, total * 2);
+  const pos = starts.slice(0, bucketCount);
+  for (const w of views) {
+    const n = w.length >>> 1;
+    for (let s = 0; s < n; s += chunk) {
+      const e = Math.min(n, s + chunk);
+      for (let i = s; i < e; i++) {
+        const hi = w[2 * i + 1];
+        const p = pos[hi >>> shift]++;
+        ow[2 * p] = w[2 * i];
+        ow[2 * p + 1] = hi;
+      }
+      since += e - s;
+      if (since >= chunk) {
+        since = 0;
+        await pause(tuning.sleepMs);
+      }
+    }
+  }
+
+  // Pass 3: native sort of each bucket (a skewed bucket simply costs one longer step)
+  for (let b = 0; b < bucketCount; b++) {
+    const lo = starts[b];
+    const hi = starts[b + 1];
+    const len = hi - lo;
+    if (len > 1) out.subarray(lo, hi).sort();
+    since += len;
+    if (since >= chunk) {
+      since = 0;
+      await pause(tuning.sleepMs);
+    }
+  }
+  return out;
 }
 
 /**
@@ -689,21 +765,25 @@ export class FingerprintSetBuilder {
       return new FingerprintSet(unique === block.length ? block : block.subarray(0, unique));
     }
 
-    // Allocate single contiguous destination array for all blocks
-    const full = new BigUint64Array(this.totalCount);
-    let offset = 0;
-    for (const b of allBlocks) {
-      full.set(b, offset);
-      offset += b.length;
+    const entryCount = this.totalCount;
+    let full: BigUint64Array;
+    if (entryCount <= Math.max(1, tuning.chunkItems) * 2) {
+      // Small enough that one copy and one native sort are a short step
+      full = new BigUint64Array(entryCount);
+      let offset = 0;
+      for (const b of allBlocks) {
+        full.set(b, offset);
+        offset += b.length;
+      }
+      allBlocks.length = 0;
+      await yieldLoop();
+      full.sort();
+      await yieldLoop();
+    } else {
+      // Large table: bucket on the top bits and sort bucket by bucket, slice by slice (no whole-table sort())
+      full = await sortBlocksSliced(allBlocks, tuning);
+      allBlocks.length = 0;
     }
-    allBlocks.length = 0;
-
-    await yieldLoop();
-
-    // Fast in-place native sort (one call, cannot be sliced)
-    full.sort();
-
-    await yieldLoop();
 
     // Deduplicate in place, slice by slice, comparing the two 32-bit words instead of BigInt values
     const words = new Uint32Array(full.buffer, full.byteOffset, full.length * 2);

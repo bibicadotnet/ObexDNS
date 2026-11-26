@@ -5,6 +5,7 @@ import {
   getFilterYieldTuning,
   hashDomain,
   hashDomainWithPipePipe,
+  sortBlocksSliced,
   DEFAULT_FILTER_YIELD_CHUNK_ITEMS,
   DEFAULT_FILTER_YIELD_SLEEP_MS
 } from '../src/utils/fingerprintSet';
@@ -138,6 +139,57 @@ async function runTests() {
   assert.ok(ticks >= 10, `timers never ran during build (ticks=${ticks}): slices are not yielding`);
   assert.strictEqual(bigSet.test('big-777.bulk.test'), true);
   assert.strictEqual(bigSet.test('big-1100000.bulk.test'), false);
+
+  console.log('>>> sortBlocksSliced equals a native sort for random, skewed, boundary and duplicate-heavy inputs');
+  const rnd32 = (() => {
+    let x = 0x9e3779b9;
+    return () => {
+      x ^= x << 13; x >>>= 0;
+      x ^= x >>> 17;
+      x ^= x << 5; x >>>= 0;
+      return x >>> 0;
+    };
+  })();
+  /** Builds blocks of the given sizes; hiOf/loOf produce the two 32-bit words of each entry. */
+  function makeBlocks(sizes: number[], hiOf: (i: number) => number, loOf: (i: number) => number): BigUint64Array[] {
+    let n = 0;
+    return sizes.map((len) => {
+      const b = new BigUint64Array(len);
+      const w = new Uint32Array(b.buffer);
+      for (let i = 0; i < len; i++, n++) {
+        w[2 * i] = loOf(n) >>> 0;
+        w[2 * i + 1] = hiOf(n) >>> 0;
+      }
+      return b;
+    });
+  }
+  function nativeSorted(blocks: BigUint64Array[]): BigUint64Array {
+    let total = 0;
+    for (const b of blocks) total += b.length;
+    const all = new BigUint64Array(total);
+    let o = 0;
+    for (const b of blocks) { all.set(b, o); o += b.length; }
+    all.sort();
+    return all;
+  }
+  const cases: Array<[string, BigUint64Array[]]> = [
+    ['random, uneven blocks', makeBlocks([4096, 131072, 131072, 77777, 1, 50000], rnd32, rnd32)],
+    ['one bucket only (all high words equal)', makeBlocks([131072, 131072, 40000], () => 0xabcdef12, rnd32)],
+    ['two buckets (high bit only)', makeBlocks([131072, 100000], (i) => (i & 1 ? 0x80000000 : 0), rnd32)],
+    ['bucket edges 0 and 0xFFFFFFFF', makeBlocks([131072, 131072], (i) => (i % 3 === 0 ? 0 : i % 3 === 1 ? 0xffffffff : rnd32()), rnd32)],
+    ['all values identical', makeBlocks([131072, 131072], () => 0x12345678, () => 0x9abcdef0)],
+    ['descending order input', makeBlocks([131072, 131072], (i) => 0xffffffff - i * 8000, (i) => 0xffffffff - i)],
+    ['tiny table (below the usual 65536 index limit)', makeBlocks([4096, 900], rnd32, rnd32)],
+    ['few entries, many slices', makeBlocks([4096, 3, 4096], rnd32, rnd32)]
+  ];
+  for (const [name, blocks] of cases) {
+    const expected = nativeSorted(blocks);
+    for (const tuning of [{ chunkItems: 4096, sleepMs: 0 }, { chunkItems: 1 << 30, sleepMs: 0 }]) {
+      const got = await sortBlocksSliced(blocks, tuning);
+      assert.ok(sameArray(got, expected), `sortBlocksSliced differs from native sort: ${name} (chunk ${tuning.chunkItems})`);
+    }
+  }
+  assert.strictEqual((await sortBlocksSliced([], { chunkItems: 4096, sleepMs: 0 })).length, 0);
 
   console.log('All filter-yield tests passed.');
 }
