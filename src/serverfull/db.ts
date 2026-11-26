@@ -6,6 +6,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Buffer } from 'node:buffer';
+import { Worker } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { D1Database, D1PreparedStatement, D1Result, D1ExecResult, D1DatabaseSession } from '@cloudflare/workers-types';
 import { getPackageRoot } from './config';
@@ -18,7 +20,7 @@ export const WAL_SIZE_LIMIT_BYTES = 64 * 1024 * 1024;
  * Options for NodeD1Database.reclaimSpace().
  */
 export interface ReclaimSpaceOptions {
-  /** Pages released per incremental_vacuum step (default 1000, about 4 MB). */
+  /** Pages released per incremental_vacuum step (default 256, about 1 MB: a few ms even on a slow disk). */
   chunkPages?: number;
   /** Do nothing unless at least this many free pages exist (default 2048, about 8 MB). */
   minFreePages?: number;
@@ -324,6 +326,94 @@ export class NodeD1Database implements D1Database {
   /** True while a reclaimSpace() run is in progress, so two runs never overlap. */
   private reclaiming = false;
 
+  /** Worker thread that runs WAL checkpoints off the event loop, or null when not running. */
+  private checkpointWorker: Worker | null = null;
+
+  /** Default SQLite value, restored if the checkpoint worker is lost so the WAL can never grow unchecked. */
+  private static readonly DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
+
+  /**
+   * Moves WAL checkpointing off the main thread (call once, from the long-running server process only).
+   *
+   * The main connection gets wal_autocheckpoint = 0, so COMMIT no longer copies the WAL into the database file
+   * and fsyncs it on the event loop; a worker thread with its own connection does that with
+   * wal_checkpoint(PASSIVE) (see walWorker.mjs). If the worker file is missing or the worker dies, the default
+   * auto-checkpoint is restored and the server keeps running exactly as before.
+   *
+   * @returns true when the worker is running.
+   */
+  startBackgroundCheckpoint(pollMs = 2000): boolean {
+    if (this.checkpointWorker) return true;
+    if (!this.dbPath) return false;
+
+    let workerUrl: URL;
+    try {
+      workerUrl = new URL('./walWorker.mjs', import.meta.url);
+      if (!fs.existsSync(fileURLToPath(workerUrl))) {
+        console.warn('[SQLite D1] walWorker.mjs not found next to the server bundle; WAL checkpoints stay on the main thread.');
+        return false;
+      }
+    } catch (err: unknown) {
+      console.warn('[SQLite D1] Cannot locate the WAL checkpoint worker; checkpoints stay on the main thread:', err);
+      return false;
+    }
+
+    try {
+      this.rawDb.exec('PRAGMA wal_autocheckpoint = 0;');
+      const worker = new Worker(workerUrl, { workerData: { dbPath: this.dbPath, pollMs } });
+      this.checkpointWorker = worker;
+
+      const lost = (why: string, err?: unknown): void => {
+        if (this.checkpointWorker !== worker) return; // already stopped on purpose
+        this.checkpointWorker = null;
+        try {
+          this.rawDb.exec(`PRAGMA wal_autocheckpoint = ${NodeD1Database.DEFAULT_AUTOCHECKPOINT_PAGES};`);
+        } catch {
+          /* connection already closed */
+        }
+        console.warn(`[SQLite D1] WAL checkpoint worker ${why}; auto-checkpoint on the main thread restored.`, err ?? '');
+      };
+      worker.on('error', (err: unknown) => lost('crashed', err));
+      worker.on('exit', () => lost('exited'));
+      worker.on('message', (msg: { type?: string; message?: string }) => {
+        if (msg?.type === 'error') console.warn('[SQLite D1] WAL checkpoint failed:', msg.message);
+      });
+      worker.unref();
+      return true;
+    } catch (err: unknown) {
+      this.checkpointWorker = null;
+      try {
+        this.rawDb.exec(`PRAGMA wal_autocheckpoint = ${NodeD1Database.DEFAULT_AUTOCHECKPOINT_PAGES};`);
+      } catch {
+        /* ignore */
+      }
+      console.warn('[SQLite D1] Could not start the WAL checkpoint worker; checkpoints stay on the main thread:', err);
+      return false;
+    }
+  }
+
+  /** Stops the checkpoint worker and waits (up to timeoutMs) for it to release its connection. Call before close(). */
+  async stopBackgroundCheckpoint(timeoutMs = 2000): Promise<void> {
+    const worker = this.checkpointWorker;
+    if (!worker) return;
+    this.checkpointWorker = null; // marks the stop as intentional for the exit handler
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        void worker.terminate().finally(resolve);
+      }, timeoutMs);
+      worker.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      try {
+        worker.postMessage({ type: 'stop' });
+      } catch {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  }
+
   /**
    * Runs `fn` while holding the connection-wide lock shared with batch(), so it can never start
    * in the middle of another caller's open transaction (which would make e.g. wal_checkpoint fail
@@ -352,11 +442,11 @@ export class NodeD1Database implements D1Database {
    *
    * Requires auto_vacuum = INCREMENTAL (set automatically by initServerfullDb). Each chunk takes the
    * connection lock on its own and yields to the event loop afterwards, so DNS queries and log writes
-   * are delayed by one chunk (a few to tens of milliseconds) at most, never by the whole job.
+   * are delayed by one chunk (a few milliseconds) at most, never by the whole job.
    * Unlike vacuum(), it does not rewrite the database.
    */
   async reclaimSpace(options: ReclaimSpaceOptions = {}): Promise<ReclaimSpaceResult> {
-    const chunkPages = Math.max(1, Math.floor(options.chunkPages ?? 1000));
+    const chunkPages = Math.max(1, Math.floor(options.chunkPages ?? 256));
     const minFreePages = Math.max(1, Math.floor(options.minFreePages ?? 2048));
     const stopBelowPages = Math.max(0, Math.floor(options.stopBelowPages ?? 256));
     const maxMs = options.maxMs ?? 30_000;
@@ -383,10 +473,14 @@ export class NodeD1Database implements D1Database {
         });
         await yieldToEventLoop();
       }
-      // PASSIVE never waits for other connections; journal_size_limit then trims the -wal file.
-      await this.runExclusive(() => {
-        this.rawDb.exec('PRAGMA wal_checkpoint(PASSIVE);');
-      });
+      // With the checkpoint worker running, it picks up the WAL these chunks produced; a checkpoint here
+      // would run (and fsync) on the event loop. Without it: PASSIVE never waits for other connections,
+      // and journal_size_limit then trims the -wal file.
+      if (!this.checkpointWorker) {
+        await this.runExclusive(() => {
+          this.rawDb.exec('PRAGMA wal_checkpoint(PASSIVE);');
+        });
+      }
     } catch (err: unknown) {
       console.warn('[SQLite D1] reclaimSpace warning:', err);
       remaining = this.pragmaInt('freelist_count');

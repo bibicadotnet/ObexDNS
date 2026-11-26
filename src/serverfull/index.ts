@@ -7,7 +7,7 @@
 import path from 'node:path';
 import { initNodeGlobals } from './cache';
 import { getPackageVersion, getServerfullConfig } from './config';
-import { initServerfullDb } from './db';
+import { initServerfullDb, type NodeD1Database } from './db';
 import { createTursoClient, maskDatabaseUrl } from '../lib/turso';
 import { runTursoMigrations } from '../lib/turso/migrate';
 import { UdpDnsServer } from './udp';
@@ -114,7 +114,7 @@ async function bootstrap(): Promise<void> {
   }
 
   // 4. Initialize Database adapter based on DATABASE_SERVICE (File | Turso | D1)
-  let localSqliteDb: { rawDb: { close(): void } } | null = null;
+  let localSqliteDb: NodeD1Database | null = null;
 
   if (config.databaseService === 'Turso') {
     if (!config.tursoDatabaseUrl || !config.tursoAuthToken) {
@@ -147,6 +147,8 @@ async function bootstrap(): Promise<void> {
   } else {
     // Default: 'File' (Local SQLite)
     const db = initServerfullDb(config.dbPath);
+    // WAL checkpoints (the 24-85 ms COMMIT / wal_checkpoint stalls) run in a worker thread instead of the event loop.
+    db.startBackgroundCheckpoint();
     localSqliteDb = db;
     env.DB = db;
   }
@@ -310,6 +312,7 @@ async function bootstrap(): Promise<void> {
 
     if (localSqliteDb) {
       try {
+        await localSqliteDb.stopBackgroundCheckpoint();
         localSqliteDb.rawDb.close();
         console.log('[Serverfull] Database connection closed.');
       } catch {
