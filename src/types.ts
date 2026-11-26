@@ -38,6 +38,8 @@ export interface Env {
   SYNC_FORCE_COOLDOWN_SEC?: string | number;
   SYNC_YIELD_BATCH_SIZE?: string | number;
   SYNC_YIELD_SLEEP_MS?: string | number;
+  FILTER_YIELD_CHUNK_ITEMS?: string | number;
+  FILTER_YIELD_SLEEP_MS?: string | number;
   MAX_REGEX_RULES?: string | number;
   MAX_CUSTOM_LISTS_PER_PROFILE?: string | number;
   LIST_FETCH_MAX_RETRIES?: string | number;

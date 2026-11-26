@@ -8,6 +8,12 @@
  * - False positive probability: ~1e-13 for 2M entries (64-bit hash collision floor).
  * - Binary search lookup (~277 ns) accelerated by an 18-bit index (~111 ns for 2M domains).
  * - Asynchronous chunked sorting (128K items per slice) to prevent event-loop blocking.
+ * - Dedupe and prefix-index construction run slice by slice (FILTER_YIELD_CHUNK_ITEMS / FILTER_YIELD_SLEEP_MS)
+ *   and read the 64-bit values through a Uint32 view instead of BigInt, so a list with millions of entries
+ *   never blocks the event loop for more than one slice (the native sort() call stays a single step).
+ *
+ * Byte order: entries are stored as (low word, high word) Uint32 pairs, i.e. the table assumes a
+ * little-endian host (x86-64, ARM64), exactly like FingerprintSetBuilder.add() always did.
  */
 
 export const FILTER_CHUNK_SIZE = 1.5 * 1024 * 1024; // 1,572,864 bytes (D1 / SQLite chunk limit)
@@ -91,6 +97,149 @@ function yieldLoop(): Promise<void> {
 }
 
 /**
+ * Tuning for the slice-by-slice passes over large fingerprint tables (dedupe, index build).
+ * Each pass handles `chunkItems` entries, then pauses `sleepMs` so pending DNS I/O can run.
+ */
+export interface FilterYieldTuning {
+  /** Entries processed between two pauses. */
+  chunkItems: number;
+  /** Pause between two slices in milliseconds. */
+  sleepMs: number;
+}
+
+export const DEFAULT_FILTER_YIELD_CHUNK_ITEMS = 131072;
+export const DEFAULT_FILTER_YIELD_SLEEP_MS = 1;
+const MIN_FILTER_YIELD_CHUNK_ITEMS = 4096;
+const MAX_FILTER_YIELD_SLEEP_MS = 1000;
+
+function readTunable(env: any, key: string): number | undefined {
+  const raw = env?.[key] ?? (typeof process !== 'undefined' ? process.env?.[key] : undefined);
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Reads FILTER_YIELD_CHUNK_ITEMS / FILTER_YIELD_SLEEP_MS from `env` (or process.env when absent),
+ * falling back to the defaults for missing or invalid values.
+ */
+export function getFilterYieldTuning(env?: any): FilterYieldTuning {
+  const chunk = readTunable(env, 'FILTER_YIELD_CHUNK_ITEMS');
+  const sleep = readTunable(env, 'FILTER_YIELD_SLEEP_MS');
+  return {
+    chunkItems: chunk !== undefined ? Math.max(MIN_FILTER_YIELD_CHUNK_ITEMS, Math.floor(chunk)) : DEFAULT_FILTER_YIELD_CHUNK_ITEMS,
+    sleepMs: sleep !== undefined && sleep >= 0 ? Math.min(MAX_FILTER_YIELD_SLEEP_MS, Math.floor(sleep)) : DEFAULT_FILTER_YIELD_SLEEP_MS
+  };
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Prefix-index bit count for `n` entries, or 0 when no index is worth building. */
+function indexBitsFor(n: number): number {
+  if (n < 65536) return 0; // standard binary search is already fast (< 50 ns)
+  // Target ~4 entries per bucket: bits = clamp(floor(log2(n / 4)), 10, 18)
+  const targetBuckets = Math.floor(n / 4);
+  let bits = 0;
+  while ((1 << (bits + 1)) <= targetBuckets && bits < 18) {
+    bits++;
+  }
+  return bits < 10 ? 0 : bits;
+}
+
+interface PrefixIndex {
+  table: Uint32Array;
+  bits: number;
+}
+
+interface IndexScan {
+  /** Uint32 view over the sorted table: high word of entry i is words[2 * i + 1]. */
+  words: Uint32Array;
+  table: Uint32Array;
+  bits: number;
+  bucketCount: number;
+  currBucket: number;
+}
+
+function startIndexScan(data: BigUint64Array, bits: number): IndexScan {
+  const bucketCount = 1 << bits;
+  return {
+    words: new Uint32Array(data.buffer, data.byteOffset, data.length * 2),
+    table: new Uint32Array(bucketCount + 1),
+    bits,
+    bucketCount,
+    currBucket: 0
+  };
+}
+
+/** Scans entries [start, end) of the sorted table and records the first position of each prefix bucket. */
+function scanIndexSlice(scan: IndexScan, start: number, end: number): void {
+  const { table, words } = scan;
+  const shift = 32 - scan.bits; // top `bits` bits of the 64-bit value = high word >>> (32 - bits)
+  let curr = scan.currBucket;
+  for (let i = start; i < end; i++) {
+    const b = words[2 * i + 1] >>> shift;
+    while (curr < b) {
+      curr++;
+      table[curr] = i;
+    }
+  }
+  scan.currBucket = curr;
+}
+
+function finishIndexScan(scan: IndexScan, n: number): PrefixIndex {
+  // Only fill buckets strictly past currBucket with n
+  for (let k = scan.currBucket + 1; k <= scan.bucketCount; k++) {
+    scan.table[k] = n;
+  }
+  return { table: scan.table, bits: scan.bits };
+}
+
+/** Builds the prefix index in one go (small tables, legacy synchronous callers). */
+function computeIndex(data: BigUint64Array): PrefixIndex | null {
+  const n = data.length;
+  const bits = indexBitsFor(n);
+  if (!bits) return null;
+  const scan = startIndexScan(data, bits);
+  scanIndexSlice(scan, 0, n);
+  return finishIndexScan(scan, n);
+}
+
+/** Builds the prefix index slice by slice, pausing between slices so DNS queries keep flowing. */
+async function computeIndexAsync(data: BigUint64Array, tuning: FilterYieldTuning): Promise<PrefixIndex | null> {
+  const n = data.length;
+  const bits = indexBitsFor(n);
+  if (!bits) return null;
+  const scan = startIndexScan(data, bits);
+  const chunk = Math.max(1, tuning.chunkItems);
+  for (let start = 0; start < n; start += chunk) {
+    const end = Math.min(n, start + chunk);
+    scanIndexSlice(scan, start, end);
+    if (end < n) await pause(tuning.sleepMs);
+  }
+  return finishIndexScan(scan, n);
+}
+
+/**
+ * In-place dedupe of entries [start, end) of a sorted table viewed as Uint32 pairs (lo, hi).
+ * `w` is the number of unique entries kept so far; returns the updated count.
+ * Comparing the two words avoids reading each element as a BigInt.
+ */
+function dedupeSortedSlice(words: Uint32Array, start: number, end: number, w: number): number {
+  for (let i = start; i < end; i++) {
+    const lo = words[2 * i];
+    const hi = words[2 * i + 1];
+    if (w === 0 || lo !== words[2 * w - 2] || hi !== words[2 * w - 1]) {
+      words[2 * w] = lo;
+      words[2 * w + 1] = hi;
+      w++;
+    }
+  }
+  return w;
+}
+
+/**
  * FingerprintSet represents an immutable, sorted 64-bit table of domain fingerprints.
  */
 export class FingerprintSet {
@@ -99,10 +248,29 @@ export class FingerprintSet {
   private indexTable?: Uint32Array;
   private indexBits: number = 0;
 
-  constructor(data: BigUint64Array) {
+  /**
+   * @param data Sorted, deduplicated fingerprints.
+   * @param prebuiltIndex Index computed by FingerprintSet.create(); when omitted it is built here synchronously.
+   */
+  constructor(data: BigUint64Array, prebuiltIndex?: PrefixIndex | null) {
     this.data = data;
     this.length = data.length;
-    this.buildIndex();
+    if (prebuiltIndex) {
+      this.indexTable = prebuiltIndex.table;
+      this.indexBits = prebuiltIndex.bits;
+    } else {
+      this.buildIndex();
+    }
+  }
+
+  /**
+   * Creates a set and builds its prefix index slice by slice (see FilterYieldTuning), so a table with
+   * millions of entries never blocks the event loop for more than one slice.
+   * Same result as `new FingerprintSet(data)`.
+   */
+  static async create(data: BigUint64Array, tuning: FilterYieldTuning = getFilterYieldTuning()): Promise<FingerprintSet> {
+    const index = await computeIndexAsync(data, tuning);
+    return new FingerprintSet(data, index);
   }
 
   /**
@@ -138,41 +306,11 @@ export class FingerprintSet {
    * Target ~4 to 8 entries per bucket for N >= 64K.
    */
   private buildIndex(): void {
-    const n = this.length;
-    if (n < 65536) {
-      return; // List small enough, standard binary search is already fast (< 50 ns)
+    const index = computeIndex(this.data);
+    if (index) {
+      this.indexTable = index.table;
+      this.indexBits = index.bits;
     }
-
-    // Target ~4 entries per bucket: bits = clamp(floor(log2(n / 4)), 10, 18)
-    const targetBuckets = Math.floor(n / 4);
-    let bits = 0;
-    while ((1 << (bits + 1)) <= targetBuckets && bits < 18) {
-      bits++;
-    }
-    if (bits < 10) return;
-
-    this.indexBits = bits;
-    const bucketCount = 1 << bits;
-    const shift = BigInt(64 - bits);
-    const table = new Uint32Array(bucketCount + 1);
-
-    const arr = this.data;
-    let currBucket = 0;
-    table[0] = 0;
-
-    for (let i = 0; i < n; i++) {
-      const b = Number(arr[i] >> shift);
-      while (currBucket < b) {
-        currBucket++;
-        table[currBucket] = i;
-      }
-    }
-    // Bug fix: only fill buckets strictly past currBucket with n
-    for (let k = currBucket + 1; k <= bucketCount; k++) {
-      table[k] = n;
-    }
-
-    this.indexTable = table;
   }
 
   /**
@@ -247,7 +385,7 @@ export class FingerprintSet {
   /**
    * Deserializes a FingerprintSet from binary buffer.
    */
-  static fromUint8Array(buffer: Uint8Array | ArrayBuffer): FingerprintSet {
+  private static parseBuffer(buffer: Uint8Array | ArrayBuffer): BigUint64Array {
     const buf = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
     if (buf.byteLength < FPRT_HEADER_SIZE) {
       throw new Error("Invalid fingerprint buffer: header too short");
@@ -280,7 +418,19 @@ export class FingerprintSet {
       data = new BigUint64Array(copy.buffer, 0, count);
     }
 
-    return new FingerprintSet(data);
+    return data;
+  }
+
+  static fromUint8Array(buffer: Uint8Array | ArrayBuffer): FingerprintSet {
+    return new FingerprintSet(FingerprintSet.parseBuffer(buffer));
+  }
+
+  /**
+   * Same as fromUint8Array, but the prefix index is built slice by slice (see FilterYieldTuning)
+   * so loading a large list does not block the event loop.
+   */
+  static async fromUint8ArrayAsync(buffer: Uint8Array | ArrayBuffer, tuning: FilterYieldTuning = getFilterYieldTuning()): Promise<FingerprintSet> {
+    return FingerprintSet.create(FingerprintSet.parseBuffer(buffer), tuning);
   }
 
   /**
@@ -312,7 +462,7 @@ export class FingerprintSet {
       current = await mergeTwoSortedBigUint64(current, next);
     }
 
-    return new FingerprintSet(current);
+    return FingerprintSet.create(current);
   }
 }
 
@@ -518,7 +668,7 @@ export class FingerprintSetBuilder {
   /**
    * Assembles, sorts and deduplicates elements into a single FingerprintSet.
    */
-  async build(): Promise<FingerprintSet> {
+  async build(tuning: FilterYieldTuning = getFilterYieldTuning()): Promise<FingerprintSet> {
     if (this.totalCount === 0) {
       return new FingerprintSet(new BigUint64Array(0));
     }
@@ -531,17 +681,12 @@ export class FingerprintSetBuilder {
     this.currentBlock32 = null;
     this.blocks = [];
 
-    // Single block fast path
+    // Single block fast path (tiny list, one slice is enough)
     if (allBlocks.length === 1) {
       const block = allBlocks[0];
       block.sort();
-      let outIdx = 0;
-      for (let i = 0; i < block.length; i++) {
-        if (outIdx === 0 || block[i] !== block[outIdx - 1]) {
-          block[outIdx++] = block[i];
-        }
-      }
-      return new FingerprintSet(outIdx === block.length ? block : block.subarray(0, outIdx));
+      const unique = dedupeSortedSlice(new Uint32Array(block.buffer, block.byteOffset, block.length * 2), 0, block.length, 0);
+      return new FingerprintSet(unique === block.length ? block : block.subarray(0, unique));
     }
 
     // Allocate single contiguous destination array for all blocks
@@ -555,20 +700,24 @@ export class FingerprintSetBuilder {
 
     await yieldLoop();
 
-    // Fast in-place C++ pdqsort / TimSort
+    // Fast in-place native sort (one call, cannot be sliced)
     full.sort();
 
     await yieldLoop();
 
-    // Deduplicate in-place in a single linear pass
-    let outIdx = 0;
-    for (let i = 0; i < full.length; i++) {
-      if (outIdx === 0 || full[i] !== full[outIdx - 1]) {
-        full[outIdx++] = full[i];
-      }
+    // Deduplicate in place, slice by slice, comparing the two 32-bit words instead of BigInt values
+    const words = new Uint32Array(full.buffer, full.byteOffset, full.length * 2);
+    const total = full.length;
+    const chunk = Math.max(1, tuning.chunkItems);
+    let unique = 0;
+    for (let start = 0; start < total; start += chunk) {
+      const end = Math.min(total, start + chunk);
+      unique = dedupeSortedSlice(words, start, end, unique);
+      if (end < total) await pause(tuning.sleepMs);
     }
 
-    const finalData = outIdx === full.length ? full : full.subarray(0, outIdx);
-    return new FingerprintSet(finalData);
+    const finalData = unique === total ? full : full.subarray(0, unique);
+    // The prefix index is built slice by slice as well
+    return FingerprintSet.create(finalData, tuning);
   }
 }

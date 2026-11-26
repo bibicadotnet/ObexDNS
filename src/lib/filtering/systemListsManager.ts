@@ -5,7 +5,7 @@
 
 import { D1Database } from "@cloudflare/workers-types";
 import { SystemListModel } from "../../models/systemList";
-import { FingerprintSet } from "../../utils/fingerprintSet";
+import { FingerprintSet, getFilterYieldTuning } from "../../utils/fingerprintSet";
 import { AdGuardProfileEngine, AdGuardPayload } from "../adguard";
 import { getSystemFilterUrls, getSystemFilterEntries } from "../../constants/presets";
 
@@ -169,7 +169,7 @@ class SystemListsManager {
             const bloomBuf = await model.getSystemListFilter(list.id);
             if (bloomBuf) {
               if (FingerprintSet.isCurrentVersion(bloomBuf)) {
-                bloom = FingerprintSet.fromUint8Array(new Uint8Array(bloomBuf));
+                bloom = await FingerprintSet.fromUint8ArrayAsync(new Uint8Array(bloomBuf), getFilterYieldTuning(env));
                 if (bloom.isEmpty()) {
                   bloom = null;
                 }

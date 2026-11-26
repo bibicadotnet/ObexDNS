@@ -8,7 +8,7 @@
 import { D1Database } from "@cloudflare/workers-types";
 import { ListFilterModel } from "../../models/listFilter";
 import { AdguardRulesModel } from "../../models/adguardRules";
-import { FingerprintSet } from "../../utils/fingerprintSet";
+import { FingerprintSet, getFilterYieldTuning } from "../../utils/fingerprintSet";
 import { AdGuardProfileEngine, AdGuardPayload } from "../adguard";
 import { ByteCappedMap } from "../../pipeline/cache";
 
@@ -159,7 +159,8 @@ class CustomListsManager {
 
           if (filterBuf && FingerprintSet.isCurrentVersion(filterBuf)) {
             try {
-              filter = FingerprintSet.fromUint8Array(new Uint8Array(filterBuf));
+              // The prefix index is built slice by slice, so the event loop keeps serving DNS queries meanwhile
+              filter = await FingerprintSet.fromUint8ArrayAsync(new Uint8Array(filterBuf), getFilterYieldTuning(this.lastEnv));
               byteLength = filter.byteLength;
             } catch (e: any) {
               console.warn(`[CustomListsManager] Failed to deserialize filter for list #${listId}:`, e?.message || e);
@@ -186,6 +187,13 @@ class CustomListsManager {
             } catch (e: any) {
               console.warn(`[CustomListsManager] Failed to instantiate AdGuard engine for list #${listId}:`, e?.message || e);
             }
+          }
+
+          // The index build above yields to the event loop: if the list was invalidated meanwhile
+          // (a sync replaced it), drop this stale result instead of caching it.
+          if (this.generations.get(listId) !== currentGen) {
+            if (attempt === 0) continue;
+            return;
           }
 
           this.cache.set(listId, {

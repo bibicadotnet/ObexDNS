@@ -1,5 +1,5 @@
 import { Env } from "../../types";
-import { FingerprintSet, FingerprintSetBuilder } from "../fingerprintSet";
+import { FingerprintSet, FingerprintSetBuilder, getFilterYieldTuning } from "../fingerprintSet";
 import { fetchListContent, getListFetchTuning } from "../listFetcher";
 import { encodeLimitWarnings, keepLimitWarning, ListLimitKind } from "./syncWarnings";
 import { envNumber } from "../envNumber";
@@ -271,7 +271,7 @@ export async function syncSingleList(
     }
 
     // Build the sorted fingerprint set asynchronously (with event loop yields)
-    const listFilter = await filterBuilder.build();
+    const listFilter = await filterBuilder.build(getFilterYieldTuning(env));
 
     const saveOps: Promise<any>[] = [];
     if (!listFilter.isEmpty()) {

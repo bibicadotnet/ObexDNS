@@ -7,7 +7,7 @@
 
 import { Env } from "../../types";
 import { SystemListModel } from "../../models/systemList";
-import { FingerprintSet, FingerprintSetBuilder } from "../fingerprintSet";
+import { FingerprintSet, FingerprintSetBuilder, getFilterYieldTuning } from "../fingerprintSet";
 import { fetchListContent, getListFetchTuning } from "../listFetcher";
 import { encodeLimitWarnings, keepLimitWarning, ListLimitKind } from "./syncWarnings";
 import { AdGuardRuleKind, AdGuardPayload, ParsedAdGuardRule } from "../../lib/adguard";
@@ -252,7 +252,7 @@ export async function syncSingleSystemList(
       console.warn(`[SystemListSync] System list #${systemListId} truncated with ${count} rules. Warning: ${syncError}`);
     }
 
-    const listFilter = await filterBuilder.build();
+    const listFilter = await filterBuilder.build(getFilterYieldTuning(env));
 
     const saveOps: Promise<any>[] = [
       model.upsertSystemListAdguard(systemListId, adguardPayload, now)

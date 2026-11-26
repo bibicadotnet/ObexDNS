@@ -13,7 +13,7 @@ import { isSafeUrl } from "../../utils/validator";
 import { probeListUrl } from "../../utils/listFetcher";
 import { pipeline } from "../../pipeline";
 import { ListFilterModel } from "../../models/listFilter";
-import { FingerprintSet } from "../../utils/fingerprintSet";
+import { FingerprintSet, getFilterYieldTuning } from "../../utils/fingerprintSet";
 import { AdguardRulesModel } from "../../models/adguardRules";
 import { AdGuardProfileEngine } from "../../lib/adguard";
 import { systemListsManager } from "../../lib/filtering/systemListsManager";
@@ -129,7 +129,7 @@ export async function handleProfileListsRequest(
 
         if (buffer && FingerprintSet.isCurrentVersion(buffer)) {
           try {
-            filter = FingerprintSet.fromUint8Array(new Uint8Array(buffer));
+            filter = await FingerprintSet.fromUint8ArrayAsync(new Uint8Array(buffer), getFilterYieldTuning(env));
           } catch (err: any) {
             console.error(`[Lists] Failed to deserialize Fingerprint Filter for list #${listId}:`, err?.message || err);
           }
