@@ -4,6 +4,7 @@ import "./i18n/config";
 import App from "./App.tsx";
 import { OverlaysProvider, FocusStyleManager } from "@blueprintjs/core";
 import { Icons } from "@blueprintjs/icons";
+import { preloadIcons } from "./utils/preloadIcons";
 
 import { BrowserRouter } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
@@ -15,20 +16,10 @@ import { refresh, ApiError } from "./services/auth";
 Icons.setLoaderOptions({ loader: "split-by-size" });
 FocusStyleManager.onlyShowFocusOnTabs();
 
-// Non-blocking: dynamically loads the full icon path data for both sizes
-// via splitPathsBySizeLoader after the initial UI has rendered and idle,
-// preventing network contention on mobile devices (e.g. iOS/Safari).
-if (typeof window !== "undefined") {
-  const loadIcons = () => {
-    try {
-      Icons.loadAll();
-    } catch {}
-  };
-  if ("requestIdleCallback" in window) {
-    (window as any).requestIdleCallback(loadIcons, { timeout: 2000 });
-  } else {
-    setTimeout(loadIcons, 1200);
-  }
+// A session cookie means the dashboard is the likely next screen: warm the 16px icon set once the
+// browser is idle. Without one (login page) nothing is loaded up front; App.tsx starts it after sign-in.
+if (typeof document !== "undefined" && document.cookie.includes("csrf_token=")) {
+  preloadIcons("idle");
 }
 
 let isRefreshing = false;

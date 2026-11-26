@@ -17,6 +17,7 @@ import { useAuth } from "./hooks/useAuth";
 import { useProfiles } from "./hooks/useProfiles";
 import { IdleSessionLock } from "./components/IdleSessionLock";
 import { loadLocale } from "./i18n/config";
+import { preloadIcons } from "./utils/preloadIcons";
 
 import { AuthView } from "./components/AuthView";
 
@@ -83,6 +84,10 @@ function App() {
       setLocaleReady(true);
     });
   }, [i18n.language]);
+
+  useEffect(() => {
+    if (isLoggedIn) preloadIcons("now");
+  }, [isLoggedIn]);
 
   if (!localeReady) {
     return (
