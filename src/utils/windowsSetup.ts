@@ -82,12 +82,104 @@ Clear-Host
         }
     }
 
+    if (!([System.Management.Automation.PSTypeName]'LockKiller').Type) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public class LockKiller {
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Auto)]
+    public static extern int RmStartSession(out uint pSessionHandle, int dwSessionFlags, string strSessionKey);
+
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmEndSession(uint pSessionHandle);
+
+    [DllImport("rstrtmgr.dll", CharSet = CharSet.Auto)]
+    public static extern int RmRegisterResources(uint pSessionHandle, uint nFiles, string[] rgsFilenames, uint nApplications, IntPtr rgApplications, uint nServices, IntPtr rgsServiceNames);
+
+    [DllImport("rstrtmgr.dll")]
+    public static extern int RmGetList(uint dwSessionHandle, out uint pnProcInfoNeeded, ref uint pnProcInfo, [In, Out] RM_PROCESS_INFO[] rgAffectedApps, ref uint lpdwRebootReasons);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RM_UNIQUE_PROCESS {
+        public int dwProcessId;
+        public System.Runtime.InteropServices.ComTypes.FILETIME ProcessStartTime;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct RM_PROCESS_INFO {
+        public RM_UNIQUE_PROCESS Process;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string strAppName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string strServiceShortName;
+        public int ApplicationType;
+        public uint AppStatus;
+        public uint TSSessionId;
+        [MarshalAs(UnmanagedType.Bool)]
+        public bool bRestartable;
+    }
+
+    public static List<int> GetLockers(string[] files) {
+        uint handle;
+        List<int> processes = new List<int>();
+        if (files == null || files.Length == 0) return processes;
+        if (RmStartSession(out handle, 0, Guid.NewGuid().ToString()) != 0) return processes;
+        try {
+            if (RmRegisterResources(handle, (uint)files.Length, files, 0, IntPtr.Zero, 0, IntPtr.Zero) != 0) return processes;
+            uint needed = 0;
+            uint count = 0;
+            uint reasons = 0;
+            int res = RmGetList(handle, out needed, ref count, null, ref reasons);
+            if (res == 234) {
+                RM_PROCESS_INFO[] infos = new RM_PROCESS_INFO[needed];
+                count = needed;
+                if (RmGetList(handle, out needed, ref count, infos, ref reasons) == 0) {
+                    for (int i = 0; i < count; i++) {
+                        processes.Add(infos[i].Process.dwProcessId);
+                    }
+                }
+            }
+        } finally {
+            RmEndSession(handle);
+        }
+        return processes;
+    }
+}
+'@ -EA SilentlyContinue
+    }
+
     function Kill-Lockers(\$path) {
-        # Close any editor / viewer / tail processes locking files in target directory (excluding installer process)
+        if (!(Test-Path \$path)) { return }
+        # 1. Close open File Explorer windows browsing the path
+        try {
+            (New-Object -ComObject Shell.Application).Windows() | ? {
+                \$_.LocationURL -and \$_.LocationURL -like "*\$(\$path -replace '\\', '/')*"
+            } | % { \$_.Quit() }
+        } catch {}
+
+        # 2. Kill all processes locking ANY file in the path via native Windows Restart Manager
+        try {
+            \$files = @(Get-ChildItem \$path -Recurse -File -EA SilentlyContinue | % { \$_.FullName })
+            if (\$files.Count -and ([System.Management.Automation.PSTypeName]'LockKiller').Type) {
+                \$lockers = [LockKiller]::GetLockers(\$files)
+                foreach (\$pidToKill in \$lockers) {
+                    if (\$pidToKill -and \$pidToKill -ne \$PID) {
+                        Stop-Process -Id \$pidToKill -Force -EA SilentlyContinue
+                    }
+                }
+            }
+        } catch {}
+
+        # 3. Kill processes whose command line references the path or key files
         Get-CimInstance Win32_Process -EA SilentlyContinue | ? {
             \$_.CommandLine -and \$_.ProcessId -ne \$PID -and (
                 \$_.CommandLine -like "*\$path*" -or
-                \$_.CommandLine -like '*dnsproxy.log*'
+                \$_.CommandLine -like '*dnsproxy.log*' -or
+                \$_.CommandLine -like '*config.yaml*' -or
+                \$_.CommandLine -like '*blacklist.txt*' -or
+                \$_.CommandLine -like '*dns-backup.txt*'
             )
         } | % { Stop-Process -Id \$_.ProcessId -Force -EA SilentlyContinue }
     }
@@ -202,7 +294,17 @@ try {
 Remove-Item \$zip
 
 # ---- Config files ----
-@'
+function Write-Config(\$f, \$c) {
+    try {
+        \$c | Set-Content \$f -Encoding ASCII -Force -EA Stop
+    } catch {
+        Kill-Lockers (Split-Path \$f)
+        Start-Sleep -m 500
+        \$c | Set-Content \$f -Encoding ASCII -Force
+    }
+}
+
+Write-Config "\$dir\\dnsproxy\\config.yaml" @'
 listen-addrs:
   - 127.0.0.1
 listen-ports:
@@ -214,14 +316,14 @@ bootstrap:
   - 1.1.1.1
   - 8.8.8.8
 cache: false
-'@ | Set-Content "\$dir\\dnsproxy\\config.yaml" -Encoding ASCII
+'@
 
 # Zapret matches subdomains automatically, so www./store./api. variants are not needed
--split 'pornhub.com linkedin.com medium.com bilibili.tv bbc.com bbc.co.uk steamcommunity.com steampowered.com
+Write-Config "\$dir\\zapret\\blacklist.txt" (-split 'pornhub.com linkedin.com medium.com bilibili.tv bbc.com bbc.co.uk steamcommunity.com steampowered.com
 steamusercontent.com steamstatic.com rsload.net xvideos.com xvideos2.com xvideos3.com xnxx.com xhamster.com nyaa.si
 lrepacks.net voa.gov rfa.org amnesty.org pastebin.com paste.ee javhd.today javhd.com spankbang.com javmost.com
 beeg.com sextop1.net sextop1.sale youporn.com www.wattpad.com mangadex.org fitgirl-repacks.site voatiengviet.com
-voz.vn rou.video' | Set-Content "\$dir\\zapret\\blacklist.txt" -Encoding ASCII
+voz.vn rou.video')
 
 # ---- Helper scripts ----
 @'
