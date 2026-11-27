@@ -13,20 +13,35 @@ import { D1Database, D1PreparedStatement, D1Result, D1ExecResult, D1DatabaseSess
 import { getPackageRoot } from './config';
 import { yieldToEventLoop } from '../utils/yieldToEventLoop';
 
-/** The -wal file is truncated back to this size whenever a checkpoint completes (bytes). */
+/** Default size the -wal file is truncated back to whenever a checkpoint completes (bytes). SQLITE_WAL_SIZE_LIMIT_BYTES overrides it. */
 export const WAL_SIZE_LIMIT_BYTES = 64 * 1024 * 1024;
+
+/** Integer environment variable: unset, empty or non-numeric values give `def`; the result is never below `min`. */
+function envInt(name: string, def: number, min = 0): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return def;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(min, Math.floor(n)) : def;
+}
+
+/** Boolean environment variable: `0`, `false`, `off`, `no` or `none` mean off; unset or empty gives `def`. */
+function envFlag(name: string, def: boolean): boolean {
+  const v = (process.env[name] ?? '').trim().toLowerCase();
+  if (v === '') return def;
+  return !['0', 'false', 'off', 'no', 'none'].includes(v);
+}
 
 /**
  * Options for NodeD1Database.reclaimSpace().
  */
 export interface ReclaimSpaceOptions {
-  /** Pages released per incremental_vacuum step (default 256, about 1 MB: a few ms even on a slow disk). */
+  /** Pages released per incremental_vacuum step (default 256, about 1 MB: a few ms even on a slow disk). Env: SQLITE_RECLAIM_CHUNK_PAGES. */
   chunkPages?: number;
-  /** Do nothing unless at least this many free pages exist (default 2048, about 8 MB). */
+  /** Do nothing unless at least this many free pages exist (default 2048, about 8 MB). Env: SQLITE_RECLAIM_MIN_FREE_PAGES. */
   minFreePages?: number;
-  /** Stop once the freelist is at or below this many pages (default 256). */
+  /** Stop once the freelist is at or below this many pages (default 256). Env: SQLITE_RECLAIM_STOP_BELOW_PAGES. */
   stopBelowPages?: number;
-  /** Wall-clock budget in milliseconds (default 30000). Leftover pages are taken by the next call. */
+  /** Wall-clock budget in milliseconds (default 30000). Leftover pages are taken by the next call. Env: SQLITE_RECLAIM_MAX_MS. */
   maxMs?: number;
 }
 
@@ -340,11 +355,18 @@ export class NodeD1Database implements D1Database {
    * wal_checkpoint(PASSIVE) (see walWorker.mjs). If the worker file is missing or the worker dies, the default
    * auto-checkpoint is restored and the server keeps running exactly as before.
    *
+   * Environment: WAL_CHECKPOINT_WORKER (default on; `false` keeps SQLite's own auto-checkpoint on the main thread),
+   * WAL_CHECKPOINT_INTERVAL_MS (default 15000, minimum 1000: how often the worker runs a PASSIVE checkpoint).
+   *
    * @returns true when the worker is running.
    */
-  startBackgroundCheckpoint(pollMs = 2000): boolean {
+  startBackgroundCheckpoint(intervalMs = envInt('WAL_CHECKPOINT_INTERVAL_MS', 15_000, 1000)): boolean {
     if (this.checkpointWorker) return true;
     if (!this.dbPath) return false;
+    if (!envFlag('WAL_CHECKPOINT_WORKER', true)) {
+      console.log('[SQLite D1] WAL checkpoint worker disabled (WAL_CHECKPOINT_WORKER); checkpoints stay on the main thread.');
+      return false;
+    }
 
     let workerUrl: URL;
     try {
@@ -360,7 +382,7 @@ export class NodeD1Database implements D1Database {
 
     try {
       this.rawDb.exec('PRAGMA wal_autocheckpoint = 0;');
-      const worker = new Worker(workerUrl, { workerData: { dbPath: this.dbPath, pollMs } });
+      const worker = new Worker(workerUrl, { workerData: { dbPath: this.dbPath, intervalMs } });
       this.checkpointWorker = worker;
 
       const lost = (why: string, err?: unknown): void => {
@@ -446,10 +468,10 @@ export class NodeD1Database implements D1Database {
    * Unlike vacuum(), it does not rewrite the database.
    */
   async reclaimSpace(options: ReclaimSpaceOptions = {}): Promise<ReclaimSpaceResult> {
-    const chunkPages = Math.max(1, Math.floor(options.chunkPages ?? 256));
-    const minFreePages = Math.max(1, Math.floor(options.minFreePages ?? 2048));
-    const stopBelowPages = Math.max(0, Math.floor(options.stopBelowPages ?? 256));
-    const maxMs = options.maxMs ?? 30_000;
+    const chunkPages = Math.max(1, Math.floor(options.chunkPages ?? envInt('SQLITE_RECLAIM_CHUNK_PAGES', 256, 1)));
+    const minFreePages = Math.max(1, Math.floor(options.minFreePages ?? envInt('SQLITE_RECLAIM_MIN_FREE_PAGES', 2048, 1)));
+    const stopBelowPages = Math.max(0, Math.floor(options.stopBelowPages ?? envInt('SQLITE_RECLAIM_STOP_BELOW_PAGES', 256, 0)));
+    const maxMs = options.maxMs ?? envInt('SQLITE_RECLAIM_MAX_MS', 30_000, 1000);
 
     if (this.reclaiming) {
       return { reclaimedPages: 0, remainingFreePages: this.pragmaInt('freelist_count'), skipped: 'busy' };
@@ -666,7 +688,8 @@ export function initServerfullDb(
   const sqliteCacheKb = Number(process.env.SQLITE_CACHE_SIZE_KB) || 32000; // 32 MB default page cache
   const sqliteMmapBytes = Number(process.env.SQLITE_MMAP_SIZE_BYTES) || 67108864; // 64 MB default mmap
   rawDb.exec('PRAGMA journal_mode = WAL;');
-  rawDb.exec(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES};`); // trim the -wal file after checkpoints
+  // Trim the -wal file after checkpoints (SQLITE_WAL_SIZE_LIMIT_BYTES, minimum 1 MiB).
+  rawDb.exec(`PRAGMA journal_size_limit = ${envInt('SQLITE_WAL_SIZE_LIMIT_BYTES', WAL_SIZE_LIMIT_BYTES, 1048576)};`);
   rawDb.exec('PRAGMA synchronous = NORMAL;');
   rawDb.exec('PRAGMA busy_timeout = 5000;');
   rawDb.exec('PRAGMA foreign_keys = ON;');

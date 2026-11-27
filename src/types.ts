@@ -68,6 +68,13 @@ export interface Env {
   MAX_LOGS_PER_PROFILE?: string | number;
   SQLITE_CACHE_SIZE_KB?: string | number;
   SQLITE_MMAP_SIZE_BYTES?: string | number;
+  SQLITE_WAL_SIZE_LIMIT_BYTES?: string | number;
+  WAL_CHECKPOINT_WORKER?: string;
+  WAL_CHECKPOINT_INTERVAL_MS?: string | number;
+  SQLITE_RECLAIM_CHUNK_PAGES?: string | number;
+  SQLITE_RECLAIM_MIN_FREE_PAGES?: string | number;
+  SQLITE_RECLAIM_STOP_BELOW_PAGES?: string | number;
+  SQLITE_RECLAIM_MAX_MS?: string | number;
   NORMAL_USER_MAX_LOG_RETENTION_DAYS?: string | number;
   NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS?: string | number;
   FAIL_OPEN_UPSTREAM?: string;

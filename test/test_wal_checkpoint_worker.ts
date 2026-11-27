@@ -58,6 +58,28 @@ async function main() {
   await db.stopBackgroundCheckpoint();
   db.close();
 
+  // 6) Environment overrides: kill switch, WAL size limit, reclaim chunk size.
+  process.env.WAL_CHECKPOINT_WORKER = 'false';
+  process.env.SQLITE_WAL_SIZE_LIMIT_BYTES = String(8 * 1048576);
+  process.env.SQLITE_RECLAIM_CHUNK_PAGES = '64';
+  const db2 = initServerfullDb(path.join(dir, 'env.sqlite'), rootDir, { autoVacuum: 'INCREMENTAL' });
+  const pragma2 = (n: string) => Number(Object.values(db2.rawDb.prepare(`PRAGMA ${n}`).get() as object)[0]);
+  assert.strictEqual(db2.startBackgroundCheckpoint(200), false, 'WAL_CHECKPOINT_WORKER=false must keep checkpoints on the main thread');
+  assert.strictEqual(pragma2('wal_autocheckpoint'), 1000, 'auto-checkpoint untouched when the worker is disabled');
+  assert.strictEqual(pragma2('journal_size_limit'), 8 * 1048576, 'SQLITE_WAL_SIZE_LIMIT_BYTES applied');
+  db2.rawDb.exec('CREATE TABLE junk (id INTEGER PRIMARY KEY, d TEXT)');
+  const insJ = db2.rawDb.prepare('INSERT INTO junk (d) VALUES (?)');
+  db2.rawDb.exec('BEGIN');
+  for (let i = 0; i < 20000; i++) insJ.run('y'.repeat(200) + i);
+  db2.rawDb.exec('COMMIT');
+  db2.rawDb.exec('DELETE FROM junk');
+  const r2 = await db2.reclaimSpace({ minFreePages: 1, stopBelowPages: 0, maxMs: 20_000 });
+  assert.ok(r2.reclaimedPages > 0 && r2.remainingFreePages === 0, `reclaim with env chunk: ${JSON.stringify(r2)}`);
+  db2.close();
+  delete process.env.WAL_CHECKPOINT_WORKER;
+  delete process.env.SQLITE_WAL_SIZE_LIMIT_BYTES;
+  delete process.env.SQLITE_RECLAIM_CHUNK_PAGES;
+
   fs.rmSync(dir, { recursive: true, force: true });
   console.log('test_wal_checkpoint_worker: OK');
 }
