@@ -1,0 +1,1 @@
+Xoá file backup.sh ở gốc repo (đã thay bằng backup.mjs).

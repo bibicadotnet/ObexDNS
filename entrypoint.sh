@@ -91,24 +91,33 @@ if [ ! -s "$DB_PATH" ]; then
 
   # Priority 1: Pull from private S3 / Cloudflare R2 if configured
   if [ -n "$BACKUP_BUCKET" ] && [ -f "/app/s3-client.mjs" ]; then
-    S3_TARGET="latest.tar.gz"
+    # Current backups are latest.tar.zst; older installs only have latest.tar.gz. An explicit
+    # DB_INIT_URL (non-URL) names the exact object to restore instead.
+    S3_TARGETS="latest.tar.zst latest.tar.gz"
     case "$DB_INIT_URL" in
       http://* | https://*) ;;
-      ?*) S3_TARGET="$DB_INIT_URL" ;;
+      ?*) S3_TARGETS="$DB_INIT_URL" ;;
     esac
 
-    echo "[DB-Restore] S3 bucket configured ($BACKUP_BUCKET). Attempting private restore from '$S3_TARGET'..."
-    set +e
-    bun /app/s3-client.mjs download "$S3_TARGET" "$TMP_DOWNLOAD"
-    S3_DL_STATUS=$?
-    set -e
+    for S3_TARGET in $S3_TARGETS; do
+      echo "[DB-Restore] S3 bucket configured ($BACKUP_BUCKET). Attempting private restore from '$S3_TARGET'..."
+      set +e
+      bun /app/s3-client.mjs download "$S3_TARGET" "$TMP_DOWNLOAD"
+      S3_DL_STATUS=$?
+      set -e
 
-    if [ $S3_DL_STATUS -eq 0 ] && [ -s "$TMP_DOWNLOAD" ]; then
-      DOWNLOAD_OK=1
-    elif [ $S3_DL_STATUS -eq 44 ]; then
-      echo "[DB-Restore] No existing backup found in S3 bucket (clean setup)."
-    else
-      echo "[DB-Restore] Warning: Failed to download backup from S3 (exit code $S3_DL_STATUS)."
+      if [ $S3_DL_STATUS -eq 0 ] && [ -s "$TMP_DOWNLOAD" ]; then
+        DOWNLOAD_OK=1
+        break
+      elif [ $S3_DL_STATUS -eq 44 ]; then
+        echo "[DB-Restore] '$S3_TARGET' not found in S3 bucket."
+      else
+        echo "[DB-Restore] Warning: Failed to download '$S3_TARGET' from S3 (exit code $S3_DL_STATUS)."
+        break
+      fi
+    done
+    if [ $DOWNLOAD_OK -eq 0 ]; then
+      echo "[DB-Restore] No usable backup downloaded from S3 (clean setup, or see warnings above)."
     fi
   fi
 
@@ -140,24 +149,31 @@ if [ ! -s "$DB_PATH" ]; then
       rm -f "${DB_PATH}-wal" "${DB_PATH}-shm"
       IS_RESTORED=1
 
-    # Case 2: tar.gz archive
+    # Case 2: tar.zst archive (current backup format; zstd magic bytes 28 b5 2f fd)
+    elif [ "$(head -c 4 "$TMP_DOWNLOAD" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "28b52ffd" ] \
+         && command -v zstd >/dev/null 2>&1 && zstd -t -q "$TMP_DOWNLOAD" >/dev/null 2>&1; then
+      echo "[DB-Restore] Detected tar.zst archive format. Extracting..."
+      zstd -dc -q "$TMP_DOWNLOAD" | tar -x -C "$EXTRACT_DIR"
+      rm -f "$TMP_DOWNLOAD"
+
+    # Case 3: tar.gz archive (legacy backups)
     elif tar -tzf "$TMP_DOWNLOAD" >/dev/null 2>&1; then
       echo "[DB-Restore] Detected tar.gz archive format. Extracting..."
       tar -xzf "$TMP_DOWNLOAD" -C "$EXTRACT_DIR"
       rm -f "$TMP_DOWNLOAD"
 
-    # Case 3: zip archive
+    # Case 4: zip archive
     elif command -v unzip >/dev/null 2>&1 && unzip -tq "$TMP_DOWNLOAD" >/dev/null 2>&1; then
       echo "[DB-Restore] Detected zip archive format. Extracting..."
       unzip -qo "$TMP_DOWNLOAD" -d "$EXTRACT_DIR"
       rm -f "$TMP_DOWNLOAD"
 
     else
-      echo "[DB-Restore] Warning: Unknown file format from backup (not SQLite, tar.gz, or zip)."
+      echo "[DB-Restore] Warning: Unknown file format from backup (not SQLite, tar.zst, tar.gz, or zip)."
       rm -f "$TMP_DOWNLOAD"
     fi
 
-    # If extracted from archive (Case 2 or Case 3), locate and install components
+    # If extracted from archive (Case 2, 3 or 4), locate and install components
     if [ -d "$EXTRACT_DIR" ] && [ "$IS_RESTORED" -eq 0 ]; then
       # 1. Restore SQLite database (Core Data: profiles, rules, logs, users, analytics)
       FOUND_DB=$(find "$EXTRACT_DIR" -type f -name "*.sqlite" ! -name "*-wal" ! -name "*-shm" | head -n 1)
@@ -342,7 +358,7 @@ if [ -n "$BACKUP_BUCKET" ]; then
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-$BACKUP_CRON_EXPR root nice -n 19 /app/backup.sh > /proc/1/fd/1 2>&1
+$BACKUP_CRON_EXPR root nice -n 19 bun /app/backup.mjs --trigger cron > /proc/1/fd/1 2>&1
 EOF
   chmod 0644 /etc/cron.d/backup
   echo "[Backup] Scheduled automated S3 backup cron ($BACKUP_CRON_EXPR UTC)."

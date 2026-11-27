@@ -15,6 +15,7 @@ import {
   runTursoMigrations
 } from "../../lib/turso";
 import { toPublicErrorCode } from "../../utils/publicError";
+import { handleBackupRequest } from "./adminBackup";
 
 /**
  * Allowlist of system setting keys that can be updated via administrative REST APIs.
@@ -193,194 +194,15 @@ export async function handleAdminRequest(
     }
   }
 
-  // 备份与 S3 存储管理接口: /api/admin/backup
+  // 备份与 S3 存储管理接口: /api/admin/backup (逻辑见 ./adminBackup.ts)
   if (pathParts[2] === 'backup') {
-    const isServerfull = isServerfullEnv(env);
-    if (!isServerfull) {
+    if (!isServerfullEnv(env)) {
       return new Response(JSON.stringify({ configured: false, error: "Backup is only supported in Serverfull / Docker environment" }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
     }
-
-    const nodeFs = await import('node:fs');
-    const nodeCp = await import('node:child_process');
-
-    const parseEnvFile = (filePath: string) => {
-      const cfg: Record<string, string> = {};
-      try {
-        if (nodeFs.existsSync(filePath)) {
-          const content = nodeFs.readFileSync(filePath, 'utf-8');
-          for (const line of content.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('#')) continue;
-            const eqIdx = trimmed.indexOf('=');
-            if (eqIdx !== -1) {
-              const k = trimmed.slice(0, eqIdx).trim();
-              let v = trimmed.slice(eqIdx + 1).trim();
-              if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-                v = v.slice(1, -1);
-              }
-              cfg[k] = v;
-            }
-          }
-        }
-      } catch {}
-      return cfg;
-    };
-
-    const fileConfig = {
-      ...parseEnvFile('/data/.env'),
-      ...parseEnvFile('/data/config/.env')
-    };
-
-    const getVal = (key: string, fallback = '') => process.env[key] || fileConfig[key] || fallback;
-
-    const endpoint = getVal('BACKUP_S3_ENDPOINT');
-    const bucket = getVal('BACKUP_S3_BUCKET');
-    const region = getVal('BACKUP_S3_REGION', 'auto');
-    const prefix = getVal('BACKUP_S3_PREFIX', 'obexdns').replace(/^\/+|\/+$/g, '');
-    const accessKeyId = getVal('BACKUP_S3_ACCESS_KEY_ID', getVal('BACKUP_S3_ACCESS_KEY'));
-    const secretAccessKey = getVal('BACKUP_S3_SECRET_ACCESS_KEY', getVal('BACKUP_S3_SECRET_KEY'));
-    const cronExpr = getVal('BACKUP_CRON', getVal('BACKUP_CRON_EXPR', '0 2 * * *'));
-    const keepDays = parseInt(getVal('BACKUP_KEEP_DAYS', '30'), 10) || 30;
-
-    const isConfigured = Boolean(endpoint && bucket && accessKeyId && secretAccessKey);
-
-    // GET /api/admin/backup -> status
-    if (request.method === 'GET' && !pathParts[3]) {
-      return new Response(JSON.stringify({
-        configured: isConfigured,
-        endpoint: endpoint || null,
-        bucket: bucket || null,
-        region: region || 'auto',
-        prefix: prefix || 'obexdns',
-        cron: cronExpr,
-        keepDays
-      }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // POST /api/admin/backup/test -> test S3 connection
-    if (request.method === 'POST' && pathParts[3] === 'test') {
-      if (!isConfigured) {
-        return new Response(JSON.stringify({
-          success: false,
-          error: "S3 backup is not configured (missing endpoint, bucket, or credentials)."
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      const s3Script = '/app/s3-client.mjs';
-      if (!nodeFs.existsSync(s3Script)) {
-        return new Response(JSON.stringify({ success: false, error: "s3-client.mjs script not found." }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      return new Promise<Response>((resolve) => {
-        const bin = process.execPath || 'node';
-        nodeCp.execFile(bin, [s3Script, 'test'], { timeout: 15000 }, (err, stdout, stderr) => {
-          if (err) {
-            const errMsg = stderr?.trim() || stdout?.trim() || err.message;
-            return resolve(new Response(JSON.stringify({
-              success: false,
-              error: errMsg.replace(/^\[S3-Backup\]\s*/, '')
-            }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            }));
-          }
-          let parsed = { success: true, message: `Connected to S3 bucket '${bucket}' successfully.` };
-          try {
-            parsed = JSON.parse(stdout.trim());
-          } catch {}
-          return resolve(new Response(JSON.stringify(parsed), {
-            headers: { 'Content-Type': 'application/json' }
-          }));
-        });
-      });
-    }
-
-    // POST /api/admin/backup/run -> trigger immediate backup
-    if (request.method === 'POST' && pathParts[3] === 'run') {
-      const backupScript = '/app/backup.sh';
-      if (!nodeFs.existsSync(backupScript)) {
-        return new Response(JSON.stringify({ success: false, error: "backup.sh script not found." }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      return new Promise<Response>((resolve) => {
-        nodeCp.exec(`nice -n 19 /bin/sh "${backupScript}"`, { timeout: 120000 }, (err, stdout, stderr) => {
-          if (err) {
-            const errMsg = stderr?.trim() || stdout?.trim() || err.message;
-            return resolve(new Response(JSON.stringify({
-              success: false,
-              error: errMsg
-            }), {
-              status: 500,
-              headers: { 'Content-Type': 'application/json' }
-            }));
-          }
-          return resolve(new Response(JSON.stringify({
-            success: true,
-            message: "Backup completed successfully.",
-            output: stdout.trim()
-          }), {
-            headers: { 'Content-Type': 'application/json' }
-          }));
-        });
-      });
-    }
-
-    // GET /api/admin/backup/download -> generate local snapshot and stream file
-    if (request.method === 'GET' && pathParts[3] === 'download') {
-      const backupScript = '/app/backup.sh';
-      if (!nodeFs.existsSync(backupScript)) {
-        return new Response(JSON.stringify({ error: "backup.sh script not found." }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      const tempFile = `/tmp/obexdns_manual_${Date.now()}.tar.gz`;
-      return new Promise<Response>((resolve) => {
-        nodeCp.exec(`nice -n 19 /bin/sh "${backupScript}" --local-only --output "${tempFile}"`, { timeout: 60000 }, (err, stdout, stderr) => {
-          if (err || !nodeFs.existsSync(tempFile)) {
-            const errMsg = stderr?.trim() || stdout?.trim() || err?.message || "Snapshot generation failed.";
-            return resolve(new Response(JSON.stringify({ error: errMsg }), {
-              status: 500,
-              headers: { 'Content-Type': 'application/json' }
-            }));
-          }
-
-          try {
-            const fileBuffer = nodeFs.readFileSync(tempFile);
-            nodeFs.unlinkSync(tempFile);
-            const dateStr = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-            return resolve(new Response(fileBuffer, {
-              headers: {
-                'Content-Type': 'application/gzip',
-                'Content-Disposition': `attachment; filename="obexdns_backup_${dateStr}.tar.gz"`,
-                'Content-Length': String(fileBuffer.length),
-                'Access-Control-Expose-Headers': 'Content-Disposition, Content-Length'
-              }
-            }));
-          } catch (e: any) {
-            return resolve(new Response(JSON.stringify({ error: e.message }), {
-              status: 500,
-              headers: { 'Content-Type': 'application/json' }
-            }));
-          }
-        });
-      });
-    }
+    return handleBackupRequest(request, pathParts);
   }
 
   return new Response("Not Found", { status: 404 });

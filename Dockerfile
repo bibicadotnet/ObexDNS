@@ -33,9 +33,9 @@ LABEL maintainer="Hugo Koo <hokdung@outlook.com>" \
 
 WORKDIR /app
 
-# Install ca-certificates, curl, openssl, cron, sqlite3, unzip for TLS, backup snapshots, and restore
+# Install ca-certificates, curl, openssl, cron, sqlite3, zstd, unzip for TLS, backup snapshots/archives, and restore
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl openssl cron sqlite3 unzip && \
+    apt-get install -y --no-install-recommends ca-certificates curl openssl cron sqlite3 zstd unzip && \
     rm -rf /var/lib/apt/lists/*
 
 # Install acme.sh client (pinned version, installed with --no-cron to manage scheduling cleanly via Debian cron)
@@ -72,12 +72,12 @@ COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/.env.serverfull ./.env.serverfull
 
-# Copy entrypoint, automated renewal, and backup scripts
+# Copy entrypoint, automated renewal, and backup scripts (backup.mjs = job, s3-client.mjs = S3/R2 client)
 COPY entrypoint.sh /app/entrypoint.sh
 COPY ssl-renew.sh /app/ssl-renew.sh
-COPY backup.sh /app/backup.sh
+COPY backup.mjs /app/backup.mjs
 COPY s3-client.mjs /app/s3-client.mjs
-RUN chmod +x /app/entrypoint.sh /app/ssl-renew.sh /app/backup.sh /app/s3-client.mjs
+RUN chmod +x /app/entrypoint.sh /app/ssl-renew.sh /app/backup.mjs /app/s3-client.mjs
 
 # Expose Serverfull network transports:
 # - 53/udp:   Classic UDP DNS

@@ -87,8 +87,9 @@ volumes:
 
 ## 4. Tự động sao lưu & Di dời (Disaster Recovery) với Cloudflare R2 / S3
 
-- **Snapshot an toàn tuyệt đối:** Sử dụng SQLite online `.backup` API để chụp bản sao lưu từ database WAL đang chạy. Không bao giờ bị hỏng file (corrupt).
+- **Snapshot an toàn tuyệt đối:** Chụp bản sao lưu bằng `VACUUM INTO` (một transaction đọc duy nhất, không bị khởi động lại khi ứng dụng đang ghi), kiểm tra `quick_check` và kiểm tra lại file nén trước khi tải lên. Nén bằng `zstd` ở mức ưu tiên CPU thấp nhất. Bản lỗi không bao giờ ghi đè `latest`.
 - **Lưu trữ riêng tư (Private 100%):** Dùng chữ ký số AWS SigV4 trực tiếp từ container. Bucket của bạn hoàn toàn bảo mật, không cần mở Public URL.
-- **Upload kép & Tự dọn dẹp:** Mỗi ngày tự upload 1 bản theo ngày giờ (`obexdns_backup_YYYYMMDD_HHMMSS.tar.gz`) và 1 bản cố định (`latest.tar.gz`). Tự động xóa các bản cũ hơn `BACKUP_KEEP_DAYS`.
-- **Tự động khôi phục khi chuyển VPS (Zero-touch):** Khi dựng container trên VPS mới với cùng thông số S3 ở trên, container thấy database chưa có dữ liệu sẽ **tự động kết nối vào bucket private kéo `latest.tar.gz` về khôi phục lại toàn bộ database và phiên đăng nhập**. Sau đó tự động cấp SSL mới chuẩn cho VPS đó mà bạn không cần thao tác thủ công.
+- **Upload kép & Tự dọn dẹp:** Mỗi ngày tự upload 1 bản theo ngày giờ (`obexdns_backup_YYYYMMDD_HHMMSS.tar.zst`) và 1 bản cố định (`latest.tar.zst`). Tự động xóa các bản cũ hơn `BACKUP_KEEP_DAYS`.
+- **Tải bản sao lưu từ trang quản trị:** nút *Sao lưu ngay* chạy nền (theo dõi tiến trình trực tiếp), danh sách bản sao lưu hiển thị ngay trong trang và nút *Tải về* tải thẳng từ R2/S3 bằng đường dẫn ký sẵn có hạn 5 phút, VPS không phải truyền file.
+- **Tự động khôi phục khi chuyển VPS (Zero-touch):** Khi dựng container trên VPS mới với cùng thông số S3 ở trên, container thấy database chưa có dữ liệu sẽ **tự động kết nối vào bucket private kéo `latest.tar.zst` về khôi phục lại toàn bộ database và phiên đăng nhập**. Sau đó tự động cấp SSL mới chuẩn cho VPS đó mà bạn không cần thao tác thủ công.
 

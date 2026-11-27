@@ -80,6 +80,29 @@ export async function runDatabaseMigrations(): Promise<RunMigrationsResponse> {
   return res.json();
 }
 
+export interface BackupLastSuccess {
+  file: string;
+  sizeBytes: number;
+  finishedAt: number;
+  uploaded?: boolean;
+}
+
+export interface BackupJobStatus {
+  state: "running" | "success" | "failed";
+  /** true only while the backup process is actually alive */
+  running: boolean;
+  trigger?: string;
+  /** starting | snapshot | archive | verify | upload */
+  phase?: string;
+  startedAt?: number;
+  finishedAt?: number;
+  durationMs?: number;
+  error?: string;
+  file?: string;
+  sizeBytes?: number;
+  lastSuccess?: BackupLastSuccess | null;
+}
+
 export interface BackupStatusResponse {
   configured: boolean;
   endpoint?: string | null;
@@ -88,6 +111,13 @@ export interface BackupStatusResponse {
   prefix?: string | null;
   cron?: string | null;
   keepDays?: number | null;
+  job?: BackupJobStatus | null;
+}
+
+export interface BackupItem {
+  name: string;
+  size: number;
+  lastModified: number;
 }
 
 export async function getBackupStatus(): Promise<BackupStatusResponse> {
@@ -105,42 +135,48 @@ export async function testBackupConnection(): Promise<{ success: boolean; messag
   return data;
 }
 
-export async function runManualBackup(): Promise<{ success: boolean; message: string }> {
+/**
+ * Starts a backup in the background. Resolves immediately (HTTP 202); progress is read with getBackupStatus().
+ * `alreadyRunning` is true when a backup (e.g. the scheduled one) is already in progress.
+ */
+export async function startBackup(): Promise<{ alreadyRunning: boolean }> {
   const res = await fetch("/api/admin/backup/run", { method: "POST" });
-  const data = await res.json();
+  if (res.status === 409) return { alreadyRunning: true };
+  const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.success) {
-    throw new Error(data.error || "Manual backup failed");
+    throw new Error(data.error || "Failed to start backup");
   }
-  return data;
+  return { alreadyRunning: false };
 }
 
-export async function downloadBackup(): Promise<void> {
-  const res = await fetch("/api/admin/backup/download");
-  if (!res.ok) {
-    let err = "Download failed";
-    try {
-      const data = await res.json();
-      err = data.error || err;
-    } catch {}
-    throw new Error(err);
+export async function listBackups(): Promise<BackupItem[]> {
+  const res = await fetch("/api/admin/backup/list");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to list backups");
   }
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
+  return data.backups as BackupItem[];
+}
+
+/**
+ * Starts a download of a stored backup. The server only signs a short-lived URL; the browser then downloads
+ * straight from S3 / R2, so the VPS does not carry the traffic and the browser shows normal download progress.
+ */
+export async function downloadBackup(name: string): Promise<void> {
+  const res = await fetch("/api/admin/backup/presign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success || !data.url) {
+    throw new Error(data.error || "Download failed");
+  }
   const a = document.createElement("a");
-  a.href = url;
-  const disp = res.headers.get("Content-Disposition");
-  let filename = "";
-  if (disp) {
-    const match = disp.match(/filename="?([^";]+)"?/i);
-    if (match) filename = match[1];
-  }
-  if (!filename) {
-    const now = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
-    filename = `obexdns_backup_${now}.tar.gz`;
-  }
-  a.download = filename;
+  a.href = data.url;
+  a.download = name;
+  a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
 }
