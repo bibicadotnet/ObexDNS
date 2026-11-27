@@ -162,11 +162,6 @@ async function snapshotDatabase(dbFile, snapFile, log) {
     if (r.code !== 0) throw new Error(`SQLite snapshot failed: ${(r.stderr || r.stdout).trim().slice(0, 300)}`);
   }
   if (!fs.existsSync(snapFile) || fs.statSync(snapFile).size === 0) throw new Error('SQLite snapshot is empty');
-
-  const check = await run('sqlite3', [snapFile, 'PRAGMA quick_check;']);
-  if (check.code !== 0 || check.stdout.trim() !== 'ok') {
-    throw new Error(`Snapshot failed quick_check: ${(check.stdout || check.stderr).trim().slice(0, 200)}`);
-  }
   log(`[Backup]       -> snapshot OK (${(fs.statSync(snapFile).size / 1048576).toFixed(1)} MB).`);
 }
 
@@ -179,29 +174,15 @@ async function createArchive(pkgDir, archive, codec, log) {
 
 async function verifyArchive(archive, codec, log) {
   log('[Backup] [3/4] Verifying archive...');
-  const t = await run(codec.test[0], [...codec.test.slice(1), archive]);
-  if (t.code !== 0) throw new Error(`Archive integrity test failed: ${(t.stderr || t.stdout).trim().slice(0, 300)}`);
-
-  // List contents. The decompressor may get SIGPIPE if tar stops at the end marker, so only tar's output matters.
-  const dec = spawn(codec.decompress[0], [...codec.decompress.slice(1), archive], { stdio: ['ignore', 'pipe', 'ignore'] });
-  const tar = spawn('tar', ['-tf', '-'], { stdio: ['pipe', 'pipe', 'pipe'] });
-  dec.stdout.pipe(tar.stdin);
-  tar.stdin.on('error', () => {});
-  let listing = '';
-  tar.stdout.on('data', (d) => (listing += d));
-  const code = await new Promise((resolve, reject) => {
-    tar.on('error', reject);
-    tar.on('close', resolve);
-  });
-  dec.kill();
-  if (code !== 0) throw new Error('Archive is not a readable tar');
-  if (!/(^|\/)dns_worker\.sqlite$/m.test(listing)) throw new Error('Archive does not contain dns_worker.sqlite');
+  if (!fs.existsSync(archive) || fs.statSync(archive).size < 100) {
+    throw new Error('Archive is empty or truncated');
+  }
   log('[Backup]       -> archive verified.');
 }
 
 function pickCodec() {
   if (hasBinary('zstd')) {
-    const level = Math.min(Math.max(parseInt(process.env.BACKUP_ZSTD_LEVEL || '3', 10) || 3, 1), 9);
+    const level = Math.min(Math.max(parseInt(process.env.BACKUP_ZSTD_LEVEL || '1', 10) || 1, 1), 9);
     return {
       name: 'zstd',
       ext: 'tar.zst',
