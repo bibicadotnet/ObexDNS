@@ -9,11 +9,14 @@ import {
   getUsers,
   getSystemSettings,
   getDatabaseStatus,
+  getBackupStatus,
   type DatabaseStatusResponse,
+  type BackupStatusResponse,
 } from "../../services";
 import { UserManagementCard } from "../AccountView/components/UserManagementCard";
 import { SystemSettingsCard } from "../AccountView/components/SystemSettingsCard";
 import { DatabaseMigrationCard } from "../AccountView/components/DatabaseMigrationCard";
+import { BackupManagementCard } from "../AccountView/components/BackupManagementCard";
 
 export interface SystemViewProps {
   onSavingChange?: (saving: boolean) => void;
@@ -30,6 +33,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [sysSettings, setSysSettings] = useState<Record<string, string>>({});
   const [dbStatus, setDbStatus] = useState<DatabaseStatusResponse | null>(null);
+  const [backupStatus, setBackupStatus] = useState<BackupStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUsers = useCallback(async () => {
@@ -74,15 +78,24 @@ export const SystemView: React.FC<SystemViewProps> = ({
     }
   }, [toasterRef]);
 
+  const fetchBackupStatus = useCallback(async () => {
+    try {
+      const status = await getBackupStatus();
+      setBackupStatus(status);
+    } catch (e: any) {
+      console.warn("Failed to fetch backup status:", e);
+    }
+  }, []);
+
   useEffect(() => {
     if (currentUser?.role !== "admin") return;
     const initData = async () => {
       setLoading(true);
-      await Promise.all([fetchUsers(), fetchSystemSettings(), fetchDbStatus()]);
+      await Promise.all([fetchUsers(), fetchSystemSettings(), fetchDbStatus(), fetchBackupStatus()]);
       setLoading(false);
     };
     initData();
-  }, [currentUser, fetchUsers, fetchSystemSettings, fetchDbStatus]);
+  }, [currentUser, fetchUsers, fetchSystemSettings, fetchDbStatus, fetchBackupStatus]);
 
   // Restrict to admins only
   if (currentUser && currentUser.role !== "admin") {
@@ -142,6 +155,13 @@ export const SystemView: React.FC<SystemViewProps> = ({
       <DatabaseMigrationCard
         status={dbStatus}
         onRefresh={fetchDbStatus}
+        toasterRef={toasterRef}
+      />
+
+      {/* Admin: Cloud Backup (auto-hidden if S3 is not configured) */}
+      <BackupManagementCard
+        status={backupStatus}
+        onRefresh={fetchBackupStatus}
         toasterRef={toasterRef}
       />
     </div>

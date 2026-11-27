@@ -16,6 +16,25 @@ flock -n 9 || {
   exit 0
 }
 
+LOCAL_ONLY=""
+OUTPUT_FILE=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --local-only)
+      LOCAL_ONLY="1"
+      shift
+      ;;
+    --output)
+      OUTPUT_FILE="${2:-}"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
 DATA_DIR="/data"
 CONFIG_DIR="$DATA_DIR/config"
 DB_FILE="$DATA_DIR/dns_worker.sqlite"
@@ -75,6 +94,15 @@ fi
 tar -tzf "$ARCHIVE_NAME" > /dev/null
 ARCHIVE_SIZE=$(du -h "$ARCHIVE_NAME" | cut -f1)
 echo "[Backup]       -> Archive verified successfully ($ARCHIVE_SIZE)."
+
+if [ -n "$OUTPUT_FILE" ]; then
+  cp -f "$ARCHIVE_NAME" "$OUTPUT_FILE"
+fi
+
+if [ -n "$LOCAL_ONLY" ]; then
+  echo "[Backup] Local snapshot archive successfully created at ${OUTPUT_FILE:-$ARCHIVE_NAME} ($ARCHIVE_SIZE)."
+  exit 0
+fi
 
 # 5. Optional local copy if BACKUP_KEEP_LOCAL is enabled
 if [ "${BACKUP_KEEP_LOCAL:-false}" = "true" ] || [ "${BACKUP_KEEP_LOCAL:-0}" = "1" ]; then

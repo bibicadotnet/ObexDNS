@@ -79,3 +79,63 @@ export async function runDatabaseMigrations(): Promise<RunMigrationsResponse> {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+export interface BackupStatusResponse {
+  configured: boolean;
+  endpoint?: string | null;
+  bucket?: string | null;
+  region?: string | null;
+  prefix?: string | null;
+  cron?: string | null;
+  keepDays?: number | null;
+}
+
+export async function getBackupStatus(): Promise<BackupStatusResponse> {
+  const res = await fetch("/api/admin/backup");
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function testBackupConnection(): Promise<{ success: boolean; message: string }> {
+  const res = await fetch("/api/admin/backup/test", { method: "POST" });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Connection test failed");
+  }
+  return data;
+}
+
+export async function runManualBackup(): Promise<{ success: boolean; message: string }> {
+  const res = await fetch("/api/admin/backup/run", { method: "POST" });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Manual backup failed");
+  }
+  return data;
+}
+
+export async function downloadBackup(): Promise<void> {
+  const res = await fetch("/api/admin/backup/download");
+  if (!res.ok) {
+    let err = "Download failed";
+    try {
+      const data = await res.json();
+      err = data.error || err;
+    } catch {}
+    throw new Error(err);
+  }
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const disp = res.headers.get("Content-Disposition");
+  let filename = "obexdns_backup.tar.gz";
+  if (disp && disp.includes("filename=")) {
+    filename = disp.split("filename=")[1].replace(/["']/g, "").trim();
+  }
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}

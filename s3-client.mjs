@@ -288,6 +288,48 @@ async function downloadFile(remoteName, localPath) {
   console.log(`[S3-Backup] Successfully downloaded ${remoteKey} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB) to ${localPath}`);
 }
 
+async function testConnection() {
+  const cfg = getConfig();
+  if (!cfg.endpoint || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
+    const missing = [];
+    if (!cfg.endpoint) missing.push('BACKUP_S3_ENDPOINT');
+    if (!cfg.bucket) missing.push('BACKUP_S3_BUCKET');
+    if (!cfg.accessKeyId) missing.push('BACKUP_S3_ACCESS_KEY_ID');
+    if (!cfg.secretAccessKey) missing.push('BACKUP_S3_SECRET_ACCESS_KEY');
+    throw new Error(`Missing S3 configuration: ${missing.join(', ')}`);
+  }
+
+  const testUrl = buildS3Url(cfg.endpoint, cfg.bucket, '') + '?list-type=2&max-keys=1';
+  const headers = {};
+  signRequest({
+    method: 'GET',
+    url: testUrl,
+    region: cfg.region,
+    accessKeyId: cfg.accessKeyId,
+    secretAccessKey: cfg.secretAccessKey,
+    headers,
+    payloadHash: sha256('')
+  });
+
+  const resp = await fetch(testUrl, { method: 'GET', headers });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    let msg = `HTTP ${resp.status} ${resp.statusText}`;
+    const codeMatch = errText.match(/<Code>([^<]+)<\/Code>/i);
+    const msgMatch = errText.match(/<Message>([^<]+)<\/Message>/i);
+    if (codeMatch && msgMatch) {
+      msg = `${codeMatch[1]}: ${msgMatch[1]}`;
+    } else if (codeMatch) {
+      msg = codeMatch[1];
+    } else if (errText.trim()) {
+      msg = `${msg} - ${errText.slice(0, 150)}`;
+    }
+    throw new Error(msg);
+  }
+
+  return { success: true, message: `Successfully connected to S3 bucket '${cfg.bucket}'.` };
+}
+
 async function main() {
   const [,, command, ...args] = process.argv;
 
@@ -309,17 +351,23 @@ async function main() {
     } else if (command === 'prune') {
       const [keepDays] = args;
       await pruneOldBackups(keepDays || '30');
+    } else if (command === 'test') {
+      const res = await testConnection();
+      console.log(JSON.stringify(res));
     } else {
       console.log('ObexDNS S3/R2 Backup Utility');
       console.log('Commands:');
+      console.log('  test');
       console.log('  upload <localPath> <remoteName>');
       console.log('  download <remoteName> <localPath>');
       console.log('  prune <keepDays>');
     }
   } catch (err) {
-    console.error('[S3-Backup] Fatal error:', err);
+    console.error('[S3-Backup] Fatal error:', err.message || err);
     process.exit(1);
   }
 }
 
 main();
+
+export { getConfig, testConnection, uploadFile, downloadFile, pruneOldBackups, buildS3Url, signRequest };

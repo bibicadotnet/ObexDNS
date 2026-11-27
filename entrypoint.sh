@@ -195,28 +195,46 @@ fi
 
 # 5. Resolve SSL configuration values
 CF_TOKEN=$(get_env_val "CLOUDFLARE_API_TOKEN" "$(get_env_val "CF_Token" "")")
+CERTBOT_DOMAINS=$(get_env_val "CERTBOT_DOMAINS" "$(get_env_val "SSL_DOMAINS" "")")
 RAW_DOMAIN=$(get_env_val "SERVERFULL_DOT_DOMAIN" "$(get_env_val "DOT_DOMAIN" "")")
 CRON_EXPR=$(get_env_val "SSL_RENEW_CRON" "23 3 * * *")
 ACME_STAGING=$(get_env_val "ACME_STAGING" "")
 ACME_EMAIL=$(get_env_val "ACME_EMAIL" "$(get_env_val "CERTBOT_EMAIL" "")")
 CF_ACCOUNT_ID=$(get_env_val "CF_Account_ID" "")
 
-# Normalize domain: strip https?://, ports, paths, leading wildcard (*.), trailing dots & spaces, to lowercase
-CLEAN_DOMAIN=$(printf '%s' "$RAW_DOMAIN" | sed -e 's|^https*://||' -e 's|/.*$||' -e 's|:.*$||' -e 's|^\*\.||' -e 's|\.*$||' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+DOMAIN_INPUT="${CERTBOT_DOMAINS:-$RAW_DOMAIN}"
 
-# Validate domain format (must contain at least one dot, valid hostname characters)
-DOMAIN_VALID=0
-case "$CLEAN_DOMAIN" in
-  *[!a-z0-9.-]* | "" | *..* | .* | *-)
-    DOMAIN_VALID=0 ;;
-  *.*)
-    DOMAIN_VALID=1 ;;
-  *)
-    DOMAIN_VALID=0 ;;
-esac
+PRIMARY_DOMAIN=""
+ACME_DOM_ARGS=""
+ALL_DOMAINS=""
+
+for _raw_d in $(printf '%s' "$DOMAIN_INPUT" | tr ',' ' '); do
+  _clean_d=$(printf '%s' "$_raw_d" | sed -e 's|^https*://||' -e 's|/.*$||' -e 's|:.*$||' -e 's|^\*\.||' -e 's|\.*$||' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+  
+  case "$_clean_d" in
+    *[!a-z0-9.-]* | "" | *..* | .* | *-) continue ;;
+    *.*) ;;
+    *) continue ;;
+  esac
+
+  [ -z "$PRIMARY_DOMAIN" ] && PRIMARY_DOMAIN="$_clean_d"
+
+  # Automatically issue for both base domain and wildcard (*.domain)
+  for _target in "$_clean_d" "*.$_clean_d"; do
+    case " $ALL_DOMAINS " in
+      *" $_target "*) ;;
+      *)
+        ALL_DOMAINS="$ALL_DOMAINS $_target"
+        ACME_DOM_ARGS="$ACME_DOM_ARGS -d $_target"
+        ;;
+    esac
+  done
+done
+
+[ -z "$PRIMARY_DOMAIN" ] && [ -n "$ALL_DOMAINS" ] && PRIMARY_DOMAIN=$(printf '%s' "$ALL_DOMAINS" | awk '{print $1}' | sed 's|^\*\.||')
 
 # 6. Automated Let's Encrypt Wildcard SSL via acme.sh (Cloudflare DNS-01)
-if [ -n "$CF_TOKEN" ] && [ "$DOMAIN_VALID" -eq 1 ]; then
+if [ -n "$CF_TOKEN" ] && [ -n "$PRIMARY_DOMAIN" ]; then
   ACME_BIN="$(command -v acme.sh || echo '/opt/acme.sh/acme.sh')"
   if [ ! -x "$ACME_BIN" ]; then
     echo "[SSL] Warning: acme.sh executable not found at $ACME_BIN. Skipping SSL provisioning."
@@ -225,23 +243,24 @@ if [ -n "$CF_TOKEN" ] && [ "$DOMAIN_VALID" -eq 1 ]; then
     export CF_Token="$CF_TOKEN"
     [ -n "$CF_ACCOUNT_ID" ] && export CF_Account_ID="$CF_ACCOUNT_ID"
 
-    # Check if a valid certificate covering the domain already exists (expires in > 7 days)
+    # Check if a valid certificate covering the primary domain already exists (expires in > 7 days)
     CERT_VALID=0
     if [ -s "$CERT_PATH" ] && openssl x509 -checkend 604800 -noout -in "$CERT_PATH" >/dev/null 2>&1; then
       _sans=$(openssl x509 -noout -ext subjectAltName -in "$CERT_PATH" 2>/dev/null | tr -d ' ' || true)
       case "$_sans" in
-        *"DNS:${CLEAN_DOMAIN}"* | *"DNS:*.${CLEAN_DOMAIN}"*)
+        *"DNS:${PRIMARY_DOMAIN}"* | *"DNS:*.${PRIMARY_DOMAIN}"*)
           CERT_VALID=1
           ;;
       esac
     fi
 
     if [ "$CERT_VALID" -eq 1 ]; then
-      echo "[SSL] Valid certificate found at $CERT_PATH for $CLEAN_DOMAIN (*.$CLEAN_DOMAIN)."
+      echo "[SSL] Valid certificate found at $CERT_PATH covering $PRIMARY_DOMAIN."
     else
-      echo "[SSL] Requesting Let's Encrypt Wildcard certificate for ${CLEAN_DOMAIN} and *.${CLEAN_DOMAIN} via Cloudflare DNS..."
+      echo "[SSL] Requesting Let's Encrypt certificate for:$ALL_DOMAINS via Cloudflare DNS..."
       
-      ISSUE_ARGS="--home /opt/acme.sh --config-home $ACME_DIR --issue --dns dns_cf -d $CLEAN_DOMAIN -d *.$CLEAN_DOMAIN --server letsencrypt"
+      set -f
+      ISSUE_ARGS="--home /opt/acme.sh --config-home $ACME_DIR --issue --dns dns_cf $ACME_DOM_ARGS --server letsencrypt"
       [ "$ACME_STAGING" = "true" ] || [ "$ACME_STAGING" = "1" ] && ISSUE_ARGS="$ISSUE_ARGS --staging"
       [ -n "$ACME_EMAIL" ] && ISSUE_ARGS="$ISSUE_ARGS -m $ACME_EMAIL"
 
@@ -250,11 +269,12 @@ if [ -n "$CF_TOKEN" ] && [ "$DOMAIN_VALID" -eq 1 ]; then
       "$ACME_BIN" $ISSUE_ARGS
       ISSUE_STATUS=$?
       set -e
+      set +f
 
       # Status 0 = successfully issued, Status 2 = cert already issued and valid
       if [ $ISSUE_STATUS -eq 0 ] || [ $ISSUE_STATUS -eq 2 ]; then
         echo "[SSL] Installing certificate to $CERT_PATH and $KEY_PATH..."
-        "$ACME_BIN" --home /opt/acme.sh --config-home "$ACME_DIR" --install-cert -d "$CLEAN_DOMAIN" \
+        "$ACME_BIN" --home /opt/acme.sh --config-home "$ACME_DIR" --install-cert -d "$PRIMARY_DOMAIN" \
           --key-file "$KEY_PATH" \
           --fullchain-file "$CERT_PATH"
         chmod 600 "$KEY_PATH"
@@ -269,7 +289,8 @@ if [ -n "$CF_TOKEN" ] && [ "$DOMAIN_VALID" -eq 1 ]; then
 
     # Save runtime environment for background cron renewals
     cat <<EOF > "$ACME_DIR/ssl.env"
-DOMAIN="$CLEAN_DOMAIN"
+DOMAIN="$PRIMARY_DOMAIN"
+ALL_DOMAINS="$ALL_DOMAINS"
 CERT_PATH="$CERT_PATH"
 KEY_PATH="$KEY_PATH"
 ACME_STAGING="$ACME_STAGING"

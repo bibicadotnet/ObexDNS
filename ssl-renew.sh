@@ -33,24 +33,38 @@ KEY_PATH="${KEY_PATH:-$SSL_DIR/privkey.pem}"
 if [ -z "$DOMAIN" ]; then
   for _f in "$CONFIG_DIR/.env" "$DATA_DIR/.env"; do
     if [ -f "$_f" ]; then
-      DOMAIN=$(awk -F= -v dq='"' -v sq="'" '$1 ~ /^[[:space:]]*SERVERFULL_DOT_DOMAIN[[:space:]]*$/ {
-        sub(/^[[:space:]]*[^=]+=[[:space:]]*/, "");
-        val=$0;
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", val);
-        len = length(val);
-        if (len >= 2) {
-          c1 = substr(val, 1, 1);
-          c2 = substr(val, len, 1);
-          if ((c1 == dq && c2 == dq) || (c1 == sq && c2 == sq)) {
-            val = substr(val, 2, len - 2);
+      DOMAIN_INPUT=$(awk -F= -v dq='"' -v sq="'" '
+        $1 ~ /^[[:space:]]*(CERTBOT_DOMAINS|SSL_DOMAINS|SERVERFULL_DOT_DOMAIN)[[:space:]]*$/ {
+          sub(/^[[:space:]]*[^=]+=[[:space:]]*/, "");
+          val=$0;
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", val);
+          len = length(val);
+          if (len >= 2) {
+            c1 = substr(val, 1, 1);
+            c2 = substr(val, len, 1);
+            if ((c1 == dq && c2 == dq) || (c1 == sq && c2 == sq)) {
+              val = substr(val, 2, len - 2);
+            }
           }
+          if ($1 ~ /CERTBOT_DOMAINS|SSL_DOMAINS/) { certbot = val; }
+          else if (dot == "") { dot = val; }
         }
-        print val;
-      }' "$_f")
-      [ -n "$DOMAIN" ] && break
+        END {
+          print (certbot != "" ? certbot : dot);
+        }
+      ' "$_f")
+      [ -n "$DOMAIN_INPUT" ] && break
     fi
   done
-  DOMAIN=$(printf '%s' "$DOMAIN" | sed -e 's|^https*://||' -e 's|/.*$||' -e 's|:.*$||' -e 's|^\*\.||' -e 's|\.*$||' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+  for _raw_d in $(printf '%s' "${DOMAIN_INPUT:-}" | tr ',' ' '); do
+    _clean_d=$(printf '%s' "$_raw_d" | sed -e 's|^https*://||' -e 's|/.*$||' -e 's|:.*$||' -e 's|^\*\.||' -e 's|\.*$||' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    case "$_clean_d" in
+      *.*)
+        DOMAIN="$_clean_d"
+        break
+        ;;
+    esac
+  done
 fi
 
 if [ -z "$DOMAIN" ]; then
