@@ -89,9 +89,9 @@ if [ -f "$DATA_DIR/.jwt_secret" ]; then
   cp -f "$DATA_DIR/.jwt_secret" "$PKG_DIR/.jwt_secret"
 fi
 
-# 4. Pack staged files into gzip archive (using level 1 for lowest CPU impact)
+# 4. Pack staged files into gzip archive (using gzip -1 directly for lowest CPU impact)
 echo "[Backup] [3/4] Creating archive ($ARCHIVE_NAME)..."
-tar -czf "$ARCHIVE_NAME" -C "$PKG_DIR" .
+tar -cf - -C "$PKG_DIR" . | gzip -1 > "$ARCHIVE_NAME"
 
 if [ ! -s "$ARCHIVE_NAME" ]; then
   echo "[Backup] Error: Archive creation failed or archive is empty."
@@ -130,9 +130,7 @@ fi
 
 if [ -n "$HAS_S3" ] && [ -f "$S3_CLIENT" ]; then
   echo "[Backup] [4/4] Uploading to S3/Cloudflare R2 and enforcing retention policy..."
-  bun "$S3_CLIENT" upload "$ARCHIVE_NAME" "obexdns_backup_${TIMESTAMP}.tar.gz"
-  bun "$S3_CLIENT" upload "$ARCHIVE_NAME" "latest.tar.gz"
-  bun "$S3_CLIENT" prune "$RETENTION_DAYS"
+  bun "$S3_CLIENT" backup "$ARCHIVE_NAME" "${TIMESTAMP}" "${RETENTION_DAYS}"
 else
   echo "[Backup] [4/4] No S3 bucket configured. Skipping cloud upload."
 fi

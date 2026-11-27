@@ -330,11 +330,129 @@ async function testConnection() {
   return { success: true, message: `Successfully connected to S3 bucket '${cfg.bucket}'.` };
 }
 
+async function runUnifiedBackup(localPath, timestamp, keepDays) {
+  const cfg = getConfig();
+  if (!cfg.endpoint || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
+    console.error('[S3-Backup] Error: S3 configuration missing (endpoint, bucket, accessKeyId, secretAccessKey required).');
+    process.exit(1);
+  }
+
+  if (!fs.existsSync(localPath)) {
+    console.error(`[S3-Backup] Error: Local file not found: ${localPath}`);
+    process.exit(1);
+  }
+
+  const fileData = fs.readFileSync(localPath);
+  const payloadHash = sha256(fileData);
+  const sizeMb = (fileData.length / 1024 / 1024).toFixed(2);
+
+  // 1. Upload timestamped backup
+  const tsRemoteName = `obexdns_backup_${timestamp}.tar.gz`;
+  const tsKey = cfg.prefix ? `${cfg.prefix}/${tsRemoteName}` : tsRemoteName;
+  const tsUrl = buildS3Url(cfg.endpoint, cfg.bucket, tsKey);
+
+  const headers1 = {
+    'content-type': 'application/gzip',
+    'content-length': String(fileData.length)
+  };
+  signRequest({
+    method: 'PUT',
+    url: tsUrl,
+    region: cfg.region,
+    accessKeyId: cfg.accessKeyId,
+    secretAccessKey: cfg.secretAccessKey,
+    headers: headers1,
+    payloadHash
+  });
+
+  console.log(`[S3-Backup] Uploading ${tsRemoteName} (${sizeMb} MB) to S3/R2...`);
+  const resp1 = await fetch(tsUrl, {
+    method: 'PUT',
+    headers: headers1,
+    body: fileData
+  });
+
+  if (!resp1.ok) {
+    const errText = await resp1.text();
+    console.error(`[S3-Backup] Upload failed (${resp1.status} ${resp1.statusText}):`, errText);
+    process.exit(1);
+  }
+  console.log(`[S3-Backup] Successfully uploaded: ${tsKey}`);
+
+  // 2. Update latest.tar.gz (fast S3 CopyObject: 0 bytes uploaded over network, ~100ms)
+  const latestRemoteName = 'latest.tar.gz';
+  const latestKey = cfg.prefix ? `${cfg.prefix}/${latestRemoteName}` : latestRemoteName;
+  const latestUrl = buildS3Url(cfg.endpoint, cfg.bucket, latestKey);
+
+  console.log(`[S3-Backup] Updating ${latestRemoteName}...`);
+  let copySucceeded = false;
+  try {
+    const copySource = `/${cfg.bucket}/${tsKey}`;
+    const copyHeaders = {
+      'x-amz-copy-source': encodeURI(copySource)
+    };
+    signRequest({
+      method: 'PUT',
+      url: latestUrl,
+      region: cfg.region,
+      accessKeyId: cfg.accessKeyId,
+      secretAccessKey: cfg.secretAccessKey,
+      headers: copyHeaders,
+      payloadHash: sha256('')
+    });
+    const copyResp = await fetch(latestUrl, { method: 'PUT', headers: copyHeaders });
+    if (copyResp.ok) {
+      copySucceeded = true;
+      console.log(`[S3-Backup] Successfully updated ${latestKey} (via instant S3 copy).`);
+    }
+  } catch (err) {
+    // S3 copy failed, fallback to standard upload
+  }
+
+  if (!copySucceeded) {
+    const headers2 = {
+      'content-type': 'application/gzip',
+      'content-length': String(fileData.length)
+    };
+    signRequest({
+      method: 'PUT',
+      url: latestUrl,
+      region: cfg.region,
+      accessKeyId: cfg.accessKeyId,
+      secretAccessKey: cfg.secretAccessKey,
+      headers: headers2,
+      payloadHash
+    });
+    const resp2 = await fetch(latestUrl, {
+      method: 'PUT',
+      headers: headers2,
+      body: fileData
+    });
+    if (!resp2.ok) {
+      console.warn(`[S3-Backup] Warning: Failed to update ${latestRemoteName} (${resp2.status})`);
+    } else {
+      console.log(`[S3-Backup] Successfully updated: ${latestKey}`);
+    }
+  }
+
+  // 3. Prune old backups in the same process
+  if (keepDays) {
+    await pruneOldBackups(keepDays);
+  }
+}
+
 async function main() {
   const [,, command, ...args] = process.argv;
 
   try {
-    if (command === 'upload') {
+    if (command === 'backup') {
+      const [localPath, timestamp, keepDays] = args;
+      if (!localPath || !timestamp) {
+        console.error('Usage: s3-client.mjs backup <localPath> <timestamp> [keepDays]');
+        process.exit(1);
+      }
+      await runUnifiedBackup(localPath, timestamp, keepDays || '30');
+    } else if (command === 'upload') {
       const [localPath, remoteName] = args;
       if (!localPath || !remoteName) {
         console.error('Usage: s3-client.mjs upload <localPath> <remoteName>');
@@ -358,6 +476,7 @@ async function main() {
       console.log('ObexDNS S3/R2 Backup Utility');
       console.log('Commands:');
       console.log('  test');
+      console.log('  backup <localPath> <timestamp> [keepDays]');
       console.log('  upload <localPath> <remoteName>');
       console.log('  download <remoteName> <localPath>');
       console.log('  prune <keepDays>');
@@ -370,4 +489,4 @@ async function main() {
 
 main();
 
-export { getConfig, testConnection, uploadFile, downloadFile, pruneOldBackups, buildS3Url, signRequest };
+export { getConfig, testConnection, uploadFile, downloadFile, pruneOldBackups, runUnifiedBackup, buildS3Url, signRequest };

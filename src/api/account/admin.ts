@@ -368,7 +368,8 @@ export async function handleAdminRequest(
               headers: {
                 'Content-Type': 'application/gzip',
                 'Content-Disposition': `attachment; filename="obexdns_backup_${dateStr}.tar.gz"`,
-                'Content-Length': String(fileBuffer.length)
+                'Content-Length': String(fileBuffer.length),
+                'Access-Control-Expose-Headers': 'Content-Disposition, Content-Length'
               }
             }));
           } catch (e: any) {
