@@ -195,6 +195,7 @@ export interface Rule {
   v_cname?: string;
   created_at?: number;
   include_subdomains?: boolean | number;
+  enabled?: boolean | number;
 }
 
 export interface List {

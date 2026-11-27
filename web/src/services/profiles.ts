@@ -244,6 +244,18 @@ export async function deleteProfileRule(profileId: string, ruleId: number): Prom
   if (!res.ok) throw new Error(await res.text());
 }
 
+/**
+ * Enables or disables a custom rule without deleting it.
+ */
+export async function toggleProfileRule(profileId: string, ruleId: number, enabled: boolean): Promise<void> {
+  const res = await profileFetch(`/api/profiles/${profileId}/rules/${ruleId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled })
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 export async function getProfileAccessPoints(profileId: string): Promise<AccessPoint[]> {
   const res = await profileFetch(`/api/profiles/${profileId}/access_points`);
   if (!res.ok) throw new Error("Failed to fetch access points");

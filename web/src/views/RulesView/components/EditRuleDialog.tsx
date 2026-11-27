@@ -1,5 +1,5 @@
 import React from "react";
-import { Dialog, DialogBody, DialogFooter, FormGroup, HTMLSelect, InputGroup, Button, Intent } from "@blueprintjs/core";
+import { Dialog, DialogBody, DialogFooter, FormGroup, HTMLSelect, InputGroup, Button, Intent, Switch } from "@blueprintjs/core";
 import { Globe, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type {  Rule  } from "../types";
@@ -50,6 +50,24 @@ export const EditRuleDialog: React.FC<EditRuleDialogProps> = ({
                   onChange={(e) => setEditRule({ ...editRule, pattern: e.target.value })}
                 />
               </FormGroup>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-gray-800">
+                  {t("rules.enableRule", "Enable rule")}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {editRule.enabled !== false && (editRule.enabled as any) !== 0
+                    ? t("rules.statusNormal", "Active")
+                    : t("rules.statusDisabled", "Disabled")}
+                </span>
+              </div>
+              <Switch
+                className="mb-0! cursor-pointer"
+                checked={editRule.enabled !== false && (editRule.enabled as any) !== 0}
+                onChange={(e) => setEditRule({ ...editRule, enabled: (e.target as HTMLInputElement).checked })}
+              />
             </div>
 
             <div className="text-xs text-gray-500">

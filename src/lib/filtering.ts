@@ -175,6 +175,7 @@ function compile(rules: Rule[]): CompiledRules {
   if (compiled) return compiled;
   compiled = { ALLOW: new CompiledRuleSet(), BLOCK: new CompiledRuleSet(), REDIRECT: new CompiledRuleSet() };
   for (const rule of rules) {
+    if (rule.enabled === false || (rule.enabled as any) === 0) continue;
     compiled[rule.type]?.add(rule);
   }
   compiledCache.set(rules, compiled);
@@ -219,6 +220,9 @@ export class DNSFilter {
     patternOrRule: string | Rule,
     explicitIncludeSubdomains?: boolean
   ): boolean {
+    if (typeof patternOrRule === "object") {
+      if (patternOrRule.enabled === false || (patternOrRule.enabled as any) === 0) return false;
+    }
     const d = normalizeDomain(domain);
     const raw = typeof patternOrRule === "string" ? patternOrRule : patternOrRule.pattern || "";
     const sub = typeof patternOrRule === "string"
@@ -235,6 +239,7 @@ export class DNSFilter {
   /** Finds the first matching rule in the given list (compat helper; prefer findByType). */
   static findMatch(domain: string, rules: Rule[]): Rule | null {
     for (const rule of rules) {
+      if (rule.enabled === false || (rule.enabled as any) === 0) continue;
       if (this.isMatch(domain, rule)) return rule;
     }
     return null;

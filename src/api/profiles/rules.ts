@@ -18,7 +18,49 @@ export async function handleProfileRulesRequest(
 
   if (request.method === 'GET') {
     const results = await ruleModel.getRules(profileId);
-    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+    const mapped = results.map(r => ({
+      ...r,
+      enabled: r.enabled === undefined || r.enabled === null ? true : (r.enabled !== 0 && (r.enabled as any) !== false)
+    }));
+    return new Response(JSON.stringify(mapped), { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  if (request.method === 'PATCH') {
+    let ruleId = Number(pathParts[4]);
+    let body: { id?: unknown; enabled?: unknown };
+    try {
+      body = await request.json() as { id?: unknown; enabled?: unknown };
+    } catch {
+      return new Response("Invalid JSON body", { status: 400 });
+    }
+
+    if (!ruleId && Number.isInteger(Number(body?.id))) {
+      ruleId = Number(body.id);
+    }
+
+    if (!Number.isInteger(ruleId) || ruleId <= 0) {
+      return new Response("Invalid rule id", { status: 400 });
+    }
+
+    if (typeof body.enabled !== 'boolean') {
+      return new Response("Body must contain { enabled: boolean }", { status: 400 });
+    }
+
+    const rule = await ruleModel.getRuleById(ruleId, profileId);
+    if (!rule) {
+      return new Response("Rule Not Found", { status: 404 });
+    }
+
+    const updated = await ruleModel.setEnabled(ruleId, profileId, body.enabled);
+    if (!updated) {
+      return new Response("Failed to update rule", { status: 500 });
+    }
+
+    ctx.waitUntil(pipeline.clearCache(profileId, false, env));
+    return new Response(JSON.stringify({ id: ruleId, enabled: body.enabled }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   if (request.method === 'POST') {
@@ -51,6 +93,7 @@ export async function handleProfileRulesRequest(
           v_cname: r.v_cname || null,
           created_at: typeof r.created_at === 'number' ? r.created_at : undefined,
           include_subdomains: Boolean(r.include_subdomains),
+          enabled: r.enabled !== undefined ? (r.enabled ? 1 : 0) : 1,
         });
       }
 
@@ -91,6 +134,9 @@ export async function handleProfileRulesRequest(
       return new Response("Rule for this domain already exists", { status: 400 });
     }
     rule.include_subdomains = Boolean(rule.include_subdomains);
+    if (rule.enabled !== undefined) {
+      rule.enabled = Boolean(rule.enabled);
+    }
     await ruleModel.addRule(profileId, rule);
     ctx.waitUntil(pipeline.clearCache(profileId, false, env));
     return new Response(null, { status: 201 });
@@ -111,6 +157,9 @@ export async function handleProfileRulesRequest(
       return new Response("Rule for this domain already exists", { status: 400 });
     }
     rule.include_subdomains = Boolean(rule.include_subdomains);
+    if (rule.enabled !== undefined) {
+      rule.enabled = Boolean(rule.enabled);
+    }
     await ruleModel.updateRule(rule.id, profileId, rule);
     ctx.waitUntil(pipeline.clearCache(profileId, false, env));
     return new Response(null, { status: 200 });

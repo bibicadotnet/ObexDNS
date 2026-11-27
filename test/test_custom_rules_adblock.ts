@@ -19,7 +19,7 @@ const settings: ProfileSettings = {
 };
 const req = new Request("http://127.0.0.1/dns-query");
 const run = (rules: Rule[], name: string, type: any = "A") =>
-  pipelineFilter.match(req, { name, type, raw: new Uint8Array() } as DNSQuery, ctx, settings, rules, undefined, () => {});
+  pipelineFilter.match(req, { name, type, raw: new Uint8Array() } as DNSQuery, ctx, settings, rules, () => {});
 
 async function main() {
   // --- BLOCK with the user's regex
@@ -64,6 +64,15 @@ async function main() {
   assert.strictEqual(rr?.action, "REDIRECT");
   assert.strictEqual(await run(redirect, "other.test.com"), null);
   console.log("✓ REDIRECT with wildcard");
+
+  // --- Disabled rules are skipped
+  const disabledRules = [
+    rule("BLOCK", "disabled.com", { enabled: false }),
+    rule("BLOCK", "enabled.com", { enabled: true })
+  ];
+  assert.strictEqual(await run(disabledRules, "disabled.com"), null, "disabled rule should not match");
+  assert.strictEqual((await run(disabledRules, "enabled.com"))?.action, "BLOCK", "enabled rule should match");
+  console.log("✓ disabled rules (enabled=false) are skipped");
 
   // --- Compile cache: same array reused, rules mutated copy gets fresh compile
   const arr = [rule("BLOCK", "||cache.com^")];

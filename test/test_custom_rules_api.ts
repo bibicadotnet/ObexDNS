@@ -17,7 +17,7 @@ function makeD1(sqlite: DatabaseSync): any {
 const sqlite = new DatabaseSync(":memory:");
 sqlite.exec(`
   CREATE TABLE rules (id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT NOT NULL, type TEXT NOT NULL, pattern TEXT NOT NULL,
-    v_a TEXT, v_aaaa TEXT, v_txt TEXT, v_cname TEXT, created_at INTEGER, include_subdomains INTEGER DEFAULT 0);
+    v_a TEXT, v_aaaa TEXT, v_txt TEXT, v_cname TEXT, created_at INTEGER, include_subdomains INTEGER DEFAULT 0, enabled INTEGER DEFAULT 1);
 `);
 const env: any = { DB: makeD1(sqlite) };
 const pending: Promise<any>[] = [];
@@ -97,6 +97,32 @@ async function main() {
   assert.strictEqual(r.status, 204);
   assert.strictEqual(rows().length, 5);
   console.log("✓ GET / DELETE");
+
+  // PATCH: toggle enabled status
+  const targetRule = rows()[0];
+  let patchRes = await handleProfileRulesRequest(
+    new Request(`http://x/api/profiles/p1/rules/${targetRule.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled: false }),
+      headers: { "Content-Type": "application/json" }
+    }),
+    env, user, "p1", ["api", "profiles", "p1", "rules", String(targetRule.id)], ctx
+  );
+  assert.strictEqual(patchRes.status, 200);
+  assert.strictEqual(rows()[0].enabled, 0);
+
+  // Toggle back to true via body id
+  patchRes = await handleProfileRulesRequest(
+    new Request(`http://x/api/profiles/p1/rules`, {
+      method: "PATCH",
+      body: JSON.stringify({ id: targetRule.id, enabled: true }),
+      headers: { "Content-Type": "application/json" }
+    }),
+    env, user, "p1", ["api", "profiles", "p1", "rules"], ctx
+  );
+  assert.strictEqual(patchRes.status, 200);
+  assert.strictEqual(rows()[0].enabled, 1);
+  console.log("✓ PATCH: toggle rule enabled status");
 
   // Cache clear hook fired without throwing
   const settled = await Promise.allSettled(pending);

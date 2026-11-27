@@ -15,6 +15,7 @@ import {
   addProfileRule,
   updateProfileRule,
   deleteProfileRule,
+  toggleProfileRule,
 } from "../../services";
 
 export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPrefillUsed, toasterRef }) => {
@@ -25,6 +26,8 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
   const [isAdding, setIsAdding] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [pendingToggleIds, setPendingToggleIds] = useState<Set<number>>(new Set());
+  const pendingToggles = React.useRef(0);
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [newRule, setNewRule] = useState<{
@@ -167,6 +170,7 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
         ...editRule,
         pattern: trimmedPattern,
         include_subdomains: 0,
+        enabled: editRule.enabled !== false && (editRule.enabled as any) !== 0,
       } as Rule);
       toasterRef?.current?.show({
         message: t("rules.updateSuccess", "Rule updated successfully"),
@@ -191,8 +195,43 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
   const startEdit = (rule: Rule) => {
     setEditRule({
       ...rule,
+      enabled: rule.enabled !== false && (rule.enabled as any) !== 0,
       include_subdomains: rule.include_subdomains === 1 || rule.include_subdomains === true,
     });
+  };
+
+  const setRuleEnabled = async (id: number, enabled: boolean) => {
+    setRules((prev) => prev.map((r) => (r.id === id ? { ...r, enabled } : r)));
+    setEditRule((prev) => (prev && prev.id === id ? { ...prev, enabled } : prev));
+    setPendingToggleIds((prev) => new Set(prev).add(id));
+    pendingToggles.current++;
+    try {
+      await toggleProfileRule(profileId, id, enabled);
+      toasterRef?.current?.show({
+        message: enabled
+          ? t("rules.ruleEnabledToast", "Rule enabled")
+          : t("rules.ruleDisabledToast", "Rule disabled"),
+        intent: Intent.PRIMARY,
+        icon: enabled ? "tick" : "disable",
+      });
+    } catch (e) {
+      console.error(e);
+      setRules((prev) => prev.map((r) => (r.id === id ? { ...r, enabled: !enabled } : r)));
+      setEditRule((prev) => (prev && prev.id === id ? { ...prev, enabled: !enabled } : prev));
+      toasterRef?.current?.show({
+        message: e instanceof Error ? e.message : String(e),
+        intent: Intent.DANGER,
+        icon: "error",
+      });
+    } finally {
+      setPendingToggleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      pendingToggles.current--;
+      if (pendingToggles.current === 0) await fetchRules();
+    }
   };
 
   const deleteRule = async (id: number) => {
@@ -268,7 +307,13 @@ export const RulesView: React.FC<RulesViewProps> = ({ profileId, prefill, onPref
               <Spinner size={32} />
             </div>
           )}
-          <RulesTable rules={rules} startEdit={startEdit} getBlockDetail={getBlockDetail} />
+          <RulesTable
+            rules={rules}
+            startEdit={startEdit}
+            getBlockDetail={getBlockDetail}
+            onToggleEnabled={setRuleEnabled}
+            pendingIds={pendingToggleIds}
+          />
         </div>
       )}
 

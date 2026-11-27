@@ -1,20 +1,14 @@
 import React, { useState, useMemo } from "react";
-import { HTMLTable, Tag, Intent, HTMLSelect, Button } from "@blueprintjs/core";
+import { HTMLTable, Tag, Intent, HTMLSelect, Button, Switch, Tooltip } from "@blueprintjs/core";
 import { ShieldX, CheckCircle, ArrowRightLeft, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { clsx } from "clsx";
 import { CompactDateTime } from "../../../components/CompactDateTime";
 import { useContainerWidth } from "../../../hooks/useContainerWidth";
 import { useIsMobile } from "../../../hooks/useIsMobile";
-import type { Rule } from "../types";
+import type { Rule, RulesTableProps } from "../types";
 
-export interface RulesTableProps {
-  rules: Rule[];
-  startEdit: (rule: Rule) => void;
-  getBlockDetail: () => string;
-}
-
-type SortField = "action" | "pattern" | "details" | "created_at";
+type SortField = "status" | "action" | "pattern" | "details" | "created_at";
 
 /** Below this container width the table is replaced by cards, so there is never a horizontal scrollbar. */
 const TABLE_MIN_WIDTH = 640;
@@ -25,10 +19,17 @@ interface ColumnConfig {
   header: React.ReactNode;
   headerClassName?: string;
   cellClassName?: string;
+  stopRowClick?: boolean;
   render: (rule: Rule) => React.ReactNode;
 }
 
-export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlockDetail }) => {
+export const RulesTable: React.FC<RulesTableProps> = ({
+  rules,
+  startEdit,
+  getBlockDetail,
+  onToggleEnabled,
+  pendingIds,
+}) => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [sortField, setSortField] = useState<SortField>("created_at");
@@ -59,6 +60,12 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
     return [...rules].sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
+        case "status": {
+          const aEnabled = a.enabled !== false && (a.enabled as any) !== 0 ? 1 : 0;
+          const bEnabled = b.enabled !== false && (b.enabled as any) !== 0 ? 1 : 0;
+          cmp = aEnabled - bEnabled;
+          break;
+        }
         case "action":
           cmp = a.type.localeCompare(b.type);
           break;
@@ -163,6 +170,34 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
       ),
     },
     {
+      key: "status",
+      header: t("rules.tableStatus", "Status"),
+      headerClassName: "w-20 text-center whitespace-nowrap",
+      cellClassName: "w-20 text-center align-middle whitespace-nowrap",
+      stopRowClick: true,
+      render: (rule: Rule): React.ReactNode => {
+        const enabled = rule.enabled !== false && (rule.enabled as any) !== 0;
+        return (
+          <div className="flex justify-center items-center" onClick={(e) => e.stopPropagation()}>
+            <Tooltip
+              content={enabled ? t("rules.statusNormal", "Active") : t("rules.statusDisabled", "Disabled")}
+              placement="top"
+              hoverOpenDelay={200}
+            >
+              <Switch
+                className="mb-0! cursor-pointer"
+                checked={enabled}
+                disabled={pendingIds?.has(rule.id)}
+                onChange={(e) => {
+                  onToggleEnabled?.(rule.id, (e.target as HTMLInputElement).checked);
+                }}
+              />
+            </Tooltip>
+          </div>
+        );
+      },
+    },
+    {
       key: "created_at",
       header: t("rules.tableCreatedAt", "Added Time"),
       headerClassName: "w-36 sm:w-44 whitespace-nowrap text-right",
@@ -200,22 +235,50 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
           />
         </div>
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {sortedRules.map((rule) => (
-            <li key={rule.id}>
-              <button
-                type="button"
-                onClick={() => startEdit(rule)}
-                className="w-full min-w-0 cursor-pointer rounded-lg border border-gray-200 bg-white p-3 text-left transition-colors hover:bg-gray-50"
-              >
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <div className="shrink-0">{column("action").render(rule)}</div>
-                  <span className="truncate text-xs text-gray-500">{column("created_at").render(rule)}</span>
+          {sortedRules.map((rule) => {
+            const enabled = rule.enabled !== false && (rule.enabled as any) !== 0;
+            return (
+              <li key={rule.id}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => startEdit(rule)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") startEdit(rule);
+                  }}
+                  className={clsx(
+                    "w-full min-w-0 cursor-pointer rounded-lg border border-gray-200 bg-white p-3 text-left transition-colors hover:bg-gray-50",
+                    !enabled && "opacity-60 bg-gray-50/60"
+                  )}
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div>{column("action").render(rule)}</div>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <Tooltip
+                          content={enabled ? t("rules.statusNormal", "Active") : t("rules.statusDisabled", "Disabled")}
+                          placement="top"
+                          hoverOpenDelay={200}
+                        >
+                          <Switch
+                            className="mb-0! cursor-pointer scale-90 origin-left"
+                            checked={enabled}
+                            disabled={pendingIds?.has(rule.id)}
+                            onChange={(e) => {
+                              onToggleEnabled?.(rule.id, (e.target as HTMLInputElement).checked);
+                            }}
+                          />
+                        </Tooltip>
+                      </div>
+                    </div>
+                    <span className="truncate text-xs text-gray-500">{column("created_at").render(rule)}</span>
+                  </div>
+                  <div className="break-all font-mono text-sm font-bold">{rule.pattern}</div>
+                  <div className="mt-1.5 min-w-0 break-all">{column("details").render(rule)}</div>
                 </div>
-                <div className="break-all font-mono text-sm font-bold">{rule.pattern}</div>
-                <div className="mt-1.5 min-w-0 break-all">{column("details").render(rule)}</div>
-              </button>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       </div>
     );
@@ -239,7 +302,8 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
                 <div
                   className={clsx(
                     "flex items-center gap-1.5",
-                    col.key === "created_at" && "justify-end"
+                    col.key === "created_at" && "justify-end",
+                    col.key === "status" && "justify-center"
                   )}
                 >
                   <span>{col.header}</span>
@@ -258,15 +322,26 @@ export const RulesTable: React.FC<RulesTableProps> = ({ rules, startEdit, getBlo
           </tr>
         </thead>
         <tbody>
-          {sortedRules.map((rule) => (
-            <tr key={rule.id} onClick={() => startEdit(rule)} className="cursor-pointer">
-              {columns.map((col) => (
-                <td key={col.key} className={col.cellClassName}>
-                  {col.render(rule)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {sortedRules.map((rule) => {
+            const enabled = rule.enabled !== false && (rule.enabled as any) !== 0;
+            return (
+              <tr
+                key={rule.id}
+                onClick={() => startEdit(rule)}
+                className={clsx("cursor-pointer", !enabled && "opacity-60")}
+              >
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    className={col.cellClassName}
+                    onClick={col.stopRowClick ? (e) => e.stopPropagation() : undefined}
+                  >
+                    {col.render(rule)}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </HTMLTable>
     </div>

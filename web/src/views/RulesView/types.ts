@@ -10,6 +10,15 @@ export interface Rule {
   v_txt?: string;
   v_cname?: string;
   created_at?: number;
+  enabled?: boolean | number;
+}
+
+export interface RulesTableProps {
+  rules: Rule[];
+  startEdit: (rule: Rule) => void;
+  getBlockDetail: () => string;
+  onToggleEnabled?: (id: number, enabled: boolean) => void;
+  pendingIds?: Set<number>;
 }
 
 export interface RulesViewProps {
