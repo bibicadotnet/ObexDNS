@@ -291,6 +291,32 @@ SUBSTITUTE_DOMAIN=www.okx.com
 # Token API Cloudflare có quyền 'Zone -> Cache Purge' để tự động xoá cache proxy (tuỳ chọn).
 # CF_PURGE_TOKEN=
 
+# Website favicons on the Query Logs page / Favicon website ở trang Nhật ký truy vấn.
+# Icons come only from Google's favicon service (the one behind https://www.google.com/s2/favicons, called directly on gstatic.com). If Google has no favicon for the host (or does not answer in time),
+# the parent domain is asked next (edge.microsoft.com -> microsoft.com): at most 2 requests per domain. No other service is used.
+# Requests are queued and sent a few at a time with a short pause between them.
+# Favicon chỉ lấy từ dịch vụ favicon của Google (cái nằm sau https://www.google.com/s2/favicons, gọi thẳng trên gstatic.com). Nếu Google không có favicon cho host (hoặc không trả lời kịp),
+# domain cha được hỏi tiếp (edge.microsoft.com -> microsoft.com): tối đa 2 request cho mỗi domain. Không dùng dịch vụ nào khác.
+# Các request được xếp hàng và gửi từng nhóm nhỏ, có nhịp nghỉ giữa các lượt.
+
+# How long a favicon, or the answer "no favicon", is kept in RAM, in seconds (default: 86400 = 24 hours). Lost when the server restarts.
+# Also sent to the browser as Cache-Control max-age. A lookup where Google did not answer (timeout, 429, 5xx) is never cached.
+# Thời gian giữ favicon, hoặc kết quả "không có favicon", trong RAM, tính bằng giây (mặc định: 86400 = 24 giờ). Mất khi khởi động lại server.
+# Đồng thời gửi cho trình duyệt qua Cache-Control max-age. Lượt tra mà Google không trả lời (timeout, 429, 5xx) không bao giờ được lưu.
+# ICON_CACHE_TTL_SEC=86400
+
+# Maximum number of favicon requests sent to Google at the same time (default: 4, minimum: 1).
+# Số request favicon tối đa gửi tới Google cùng lúc (mặc định: 4, tối thiểu: 1).
+# ICON_FETCH_CONCURRENCY=4
+
+# Pause in milliseconds after each favicon request before its slot is reused (default: 10, minimum: 0).
+# Thời gian nghỉ (mili giây) sau mỗi request favicon trước khi luồng đó được dùng lại (mặc định: 10, tối thiểu: 0).
+# ICON_FETCH_DELAY_MS=10
+
+# Timeout in milliseconds of one favicon request; on timeout the parent domain is tried. Queue waiting time is not counted (default: 100, minimum: 10).
+# Thời gian chờ tối đa (mili giây) của một request favicon; quá hạn thì chuyển sang domain cha. Thời gian xếp hàng không được tính (mặc định: 100, tối thiểu: 10).
+# ICON_FETCH_TIMEOUT_MS=100
+
 # ------------------------------------------------------------------------------
 # 9. Blocklist Parsing & Capacity Limits / Giới hạn dung lượng và quy tắc bộ lọc
 # ------------------------------------------------------------------------------

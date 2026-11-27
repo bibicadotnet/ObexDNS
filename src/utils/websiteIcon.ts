@@ -2,23 +2,56 @@
  * @file websiteIcon.ts
  * @description Server side favicon lookup for the Query Logs page.
  *
- * Several public icon providers are tried in order and the first usable image wins, so one provider being
- * down, rate limited or unaware of a site no longer means "no icon". Every upstream answer is checked
- * (image type, size, not the provider's generic placeholder) before it is passed on, and the response is
- * rebuilt from scratch instead of copying upstream headers.
+ * Icons come from a single provider, Google's favicon service (gstatic.com/faviconV2, the target of
+ * https://www.google.com/s2/favicons). Its answer is final: there is
+ * no second service. When it has no favicon for the host (or does not answer in time), the registrable domain is
+ * asked next (edge.microsoft.com -> microsoft.com), so a service is still recognisable. That is at most
+ * two requests per domain, and one for the common case.
  *
- * Upstream calls are the expensive part (a DNS log is full of trackers, PTR names and random probe labels),
- * so names that can never have a favicon are rejected without any request, and a lookup costs at most
- * `host + registrable domain` x `providers` requests.
+ * Google reports "no favicon" with a 404 (the body is a generic globe image, which is never served).
+ *
+ * Requests are queued and sent a few at a time with a short pause (all configurable), and identical requests that
+ * are waiting or running are shared. Every upstream answer is checked (image type, size) before it is passed on,
+ * and the response is rebuilt from scratch instead of copying upstream headers.
+ *
+ * Tunables (all optional, see .env.serverfull):
+ *   ICON_CACHE_TTL_SEC       how long a hit or a "no favicon" answer is cached      (default 86400)
+ *   ICON_FETCH_CONCURRENCY   upstream requests in flight at once                    (default 4)
+ *   ICON_FETCH_DELAY_MS      pause after each upstream request                      (default 10)
+ *   ICON_FETCH_TIMEOUT_MS    timeout of one upstream request (queue wait excluded)  (default 100)
  */
+import type { Env } from '../types';
+import { envNumber } from './envNumber';
 import { iconCandidates } from './iconCandidates';
 
-const UPSTREAM_TIMEOUT_MS = 1000;
-/** A whole lookup (all providers, both hosts) gives up after this long. */
-const TOTAL_BUDGET_MS = 2500;
 export const MAX_ICON_BYTES = 256 * 1024;
-export const ICON_TTL_SEC = 30 * 24 * 60 * 60;
-export const ICON_MISS_TTL_SEC = 2 * 60 * 60;
+export const DEFAULT_ICON_CACHE_TTL_SEC = 24 * 60 * 60;
+export const DEFAULT_ICON_FETCH_CONCURRENCY = 4;
+export const DEFAULT_ICON_FETCH_DELAY_MS = 10;
+export const DEFAULT_ICON_FETCH_TIMEOUT_MS = 100;
+
+export interface IconConfig {
+  cacheTtlSec: number;
+  concurrency: number;
+  delayMs: number;
+  timeoutMs: number;
+}
+
+function rawSetting(env: Env | null | undefined, key: string): unknown {
+  const fromEnv = env ? (env as unknown as Record<string, unknown>)[key] : undefined;
+  if (fromEnv !== undefined && fromEnv !== null && fromEnv !== '') return fromEnv;
+  return typeof process !== 'undefined' ? process.env?.[key] : undefined;
+}
+
+/** Reads the ICON_* settings, falling back to the defaults for anything unset or invalid. */
+export function getIconConfig(env?: Env | null): IconConfig {
+  return {
+    cacheTtlSec: Math.floor(envNumber(rawSetting(env, 'ICON_CACHE_TTL_SEC'), DEFAULT_ICON_CACHE_TTL_SEC, { min: 1 })),
+    concurrency: Math.floor(envNumber(rawSetting(env, 'ICON_FETCH_CONCURRENCY'), DEFAULT_ICON_FETCH_CONCURRENCY, { min: 1 })),
+    delayMs: Math.floor(envNumber(rawSetting(env, 'ICON_FETCH_DELAY_MS'), DEFAULT_ICON_FETCH_DELAY_MS, { min: 0 })),
+    timeoutMs: Math.floor(envNumber(rawSetting(env, 'ICON_FETCH_TIMEOUT_MS'), DEFAULT_ICON_FETCH_TIMEOUT_MS, { min: 10 })),
+  };
+}
 
 const SAFE_ICON_TYPES = new Set([
   'image/avif',
@@ -37,22 +70,15 @@ const NO_ICON_SUFFIXES = [
   'invalid', 'test', 'onion', 'example',
 ];
 
-const BITWARDEN_DEFAULT_GLOBE = {
-  byteLength: 500,
-  sha256: 'aaa64871332ad5b7d28fe8874efb19c2d9cc2f1e6de75d52b080b438225a0783',
-};
-
-interface IconSource {
-  url: (host: string) => string;
-  /** Generic "no icon" image the provider returns with status 200. */
-  rejectImage?: { byteLength: number; sha256: string };
-}
-
-const SOURCES: IconSource[] = [
-  { url: (h) => `https://icons.duckduckgo.com/ip3/${h}.ico` },
-  { url: (h) => `https://icons.bitwarden.net/${h}/icon.png`, rejectImage: BITWARDEN_DEFAULT_GLOBE },
-  { url: (h) => `https://favicon.im/zh/${h}?larger=true&throw-error-on-404=true` },
-];
+/**
+ * Google's favicon endpoint behind https://www.google.com/s2/favicons: that URL only answers with a redirect to this one,
+ * so asking it directly saves one round trip per lookup. A fixed t1 shard keeps one connection warm instead of
+ * spreading requests over t0..t3. `host` is already validated (letters, digits, '-', '_', '.'), so it needs no escaping.
+ * Not a documented API: if Google ever changes it, this is the one line to point back at
+ * `https://www.google.com/s2/favicons?domain=${host}`.
+ */
+const iconUrl = (host: string): string =>
+  `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${host}&size=16`;
 
 const LABEL = '[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?';
 const DOMAIN_RE = new RegExp(`^(${LABEL}\\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$`);
@@ -88,11 +114,6 @@ export function iconLookupHosts(host: string): string[] {
 
 function mediaType(contentType: string | null): string {
   return String(contentType || '').split(';', 1)[0].trim().toLowerCase();
-}
-
-async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function readBounded(response: Response, maxBytes: number, signal: AbortSignal): Promise<ArrayBuffer | null> {
@@ -134,55 +155,109 @@ export interface WebsiteIcon {
   contentType: string;
 }
 
-async function fetchFromSource(source: IconSource, host: string): Promise<WebsiteIcon | null> {
+/**
+ * hit   - Google returned a usable image.
+ * miss  - Google has no favicon (404), or answered with something that cannot be served as an icon.
+ * error - no answer (timeout, network failure, 429, 5xx). Says nothing about the site, so it is never cached.
+ */
+export type IconLookup = { kind: 'hit'; icon: WebsiteIcon } | { kind: 'miss' } | { kind: 'error' };
+
+async function fetchFromGoogle(host: string, timeoutMs: number): Promise<IconLookup> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const dropBody = (resp: Response) => void resp.body?.cancel().catch(() => undefined);
   try {
-    const resp = await fetch(source.url(encodeURIComponent(host)), {
+    const resp = await fetch(iconUrl(host), {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ObexDNS-icon/1.0)', Accept: 'image/*' },
       redirect: 'follow',
       signal: controller.signal,
-      // Cloudflare edge cache for the upstream answer (ignored outside Workers).
-      cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': ICON_TTL_SEC, '404': ICON_MISS_TTL_SEC, '500-599': 0 } },
-    } as RequestInit);
+    });
+    if (resp.status === 404) {
+      dropBody(resp);
+      return { kind: 'miss' };
+    }
     if (!resp.ok) {
-      void resp.body?.cancel().catch(() => undefined);
-      return null;
+      dropBody(resp);
+      return { kind: 'error' };
     }
     const type = mediaType(resp.headers.get('Content-Type'));
     if (!SAFE_ICON_TYPES.has(type)) {
-      void resp.body?.cancel().catch(() => undefined);
-      return null;
+      dropBody(resp);
+      return { kind: 'miss' };
     }
     const declared = Number(resp.headers.get('Content-Length'));
     if (Number.isFinite(declared) && declared > MAX_ICON_BYTES) {
-      void resp.body?.cancel().catch(() => undefined);
-      return null;
+      dropBody(resp);
+      return { kind: 'miss' };
     }
     const body = await readBounded(resp, MAX_ICON_BYTES, controller.signal);
-    if (!body) return null;
-    const reject = source.rejectImage;
-    if (reject && body.byteLength === reject.byteLength && (await sha256Hex(body)) === reject.sha256) return null;
-    return { body, contentType: type };
+    if (!body) return controller.signal.aborted ? { kind: 'error' } : { kind: 'miss' };
+    return { kind: 'hit', icon: { body, contentType: type } };
   } catch {
-    return null;
+    return { kind: 'error' };
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** Looks the icon up; null when no provider has a real one. */
-export async function fetchWebsiteIcon(host: string): Promise<WebsiteIcon | null> {
-  if (isIconlessHost(host)) return null;
-  const deadline = Date.now() + TOTAL_BUDGET_MS;
-  for (const candidate of iconLookupHosts(host)) {
-    for (const source of SOURCES) {
-      if (Date.now() >= deadline) return null;
-      const icon = await fetchFromSource(source, candidate);
-      if (icon) return icon;
-    }
+const queue: Array<() => void> = [];
+const inFlight = new Map<string, Promise<IconLookup>>();
+let running = 0;
+let limits = { concurrency: DEFAULT_ICON_FETCH_CONCURRENCY, delayMs: DEFAULT_ICON_FETCH_DELAY_MS };
+
+function pump(): void {
+  while (running < limits.concurrency) {
+    const next = queue.shift();
+    if (!next) return;
+    running++;
+    next();
   }
-  return null;
+}
+
+/** One request to Google for one hostname, through the queue and shared with an identical request already waiting or running. */
+function fetchQueued(host: string, config: IconConfig): Promise<IconLookup> {
+  const existing = inFlight.get(host);
+  if (existing) return existing;
+
+  const promise = new Promise<IconLookup>((resolve) => {
+    queue.push(() => {
+      fetchFromGoogle(host, config.timeoutMs)
+        .catch((): IconLookup => ({ kind: 'error' }))
+        .then(resolve)
+        .finally(() => {
+          inFlight.delete(host);
+          setTimeout(() => {
+            running--;
+            pump();
+          }, limits.delayMs);
+        });
+    });
+  });
+  inFlight.set(host, promise);
+  pump();
+  return promise;
+}
+
+/**
+ * Looks up the favicon of `host`: the host itself, then its registrable domain when Google has no favicon for
+ * the host or does not answer in time. Returns the first hit.
+ *
+ * With no hit, the result is a miss only when every request got a definite "no favicon". If any request got no
+ * answer, the result is an error, so an uncertain outcome is never cached as "this site has no icon".
+ *
+ * The timeout of a request only starts once it leaves the queue, so waiting for a turn never counts as a slow answer.
+ */
+export async function lookupWebsiteIcon(host: string, config: IconConfig): Promise<IconLookup> {
+  if (isIconlessHost(host)) return { kind: 'miss' };
+  limits = { concurrency: config.concurrency, delayMs: config.delayMs };
+
+  let unanswered = false;
+  for (const candidate of iconLookupHosts(host)) {
+    const result = await fetchQueued(candidate, config);
+    if (result.kind === 'hit') return result;
+    if (result.kind === 'error') unanswered = true;
+  }
+  return { kind: unanswered ? 'error' : 'miss' };
 }
 
 const SAFE_HEADERS = {
@@ -190,21 +265,29 @@ const SAFE_HEADERS = {
   'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; sandbox",
 };
 
-export function iconHitResponse(icon: WebsiteIcon): Response {
+export function iconHitResponse(icon: WebsiteIcon, ttlSec: number): Response {
   return new Response(icon.body, {
     status: 200,
     headers: {
       ...SAFE_HEADERS,
       'Content-Type': icon.contentType,
-      'Cache-Control': `public, max-age=${ICON_TTL_SEC}, immutable`,
+      'Cache-Control': `public, max-age=${ttlSec}`,
     },
   });
 }
 
-/** A miss is cached briefly: long enough to spare the providers, short enough for an icon added later. */
-export function iconMissResponse(): Response {
+/** "No favicon" is Google's final answer, so it is cached for as long as a hit. */
+export function iconMissResponse(ttlSec: number): Response {
   return new Response('Icon not found', {
     status: 404,
-    headers: { ...SAFE_HEADERS, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': `public, max-age=${ICON_MISS_TTL_SEC}` },
+    headers: { ...SAFE_HEADERS, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': `public, max-age=${ttlSec}` },
+  });
+}
+
+/** No answer from Google: reported as a failure and never cached, so the next request tries again. */
+export function iconErrorResponse(): Response {
+  return new Response('Icon lookup unavailable', {
+    status: 502,
+    headers: { ...SAFE_HEADERS, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
   });
 }

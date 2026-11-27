@@ -226,6 +226,10 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     STATIC_REDIRECT_CACHE_TTL: Number(process.env.STATIC_REDIRECT_CACHE_TTL) || 31536000,
     PROFILE_KEY_CACHE_LIMIT: Number(process.env.PROFILE_KEY_CACHE_LIMIT) || 10000,
     MEMORY_CACHE_LIMIT: Number(process.env.MEMORY_CACHE_LIMIT) || 20000,
+    ICON_CACHE_TTL_SEC: process.env.ICON_CACHE_TTL_SEC,
+    ICON_FETCH_CONCURRENCY: process.env.ICON_FETCH_CONCURRENCY,
+    ICON_FETCH_DELAY_MS: process.env.ICON_FETCH_DELAY_MS,
+    ICON_FETCH_TIMEOUT_MS: process.env.ICON_FETCH_TIMEOUT_MS,
     RULE_PARSE_CACHE_LIMIT: Number(process.env.RULE_PARSE_CACHE_LIMIT) || 5000,
     SYNC_TIMEOUT_MS: process.env.SYNC_TIMEOUT_MS || 30000,
     INACTIVITY_THRESHOLD_DAYS: process.env.INACTIVITY_THRESHOLD_DAYS !== undefined && process.env.INACTIVITY_THRESHOLD_DAYS !== ''

@@ -21,6 +21,10 @@ export interface Env {
   STATIC_REDIRECT_CACHE_TTL?: string | number;
   PROFILE_KEY_CACHE_LIMIT?: string | number;
   MEMORY_CACHE_LIMIT?: string | number;
+  ICON_CACHE_TTL_SEC?: string | number;
+  ICON_FETCH_CONCURRENCY?: string | number;
+  ICON_FETCH_DELAY_MS?: string | number;
+  ICON_FETCH_TIMEOUT_MS?: string | number;
   RULE_PARSE_CACHE_LIMIT?: string | number;
   SYNC_TIMEOUT_MS?: string | number;
   INACTIVITY_THRESHOLD_DAYS?: string | number;

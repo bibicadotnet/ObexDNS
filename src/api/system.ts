@@ -5,7 +5,7 @@ import { getPresetEchFrontingDomains } from '../utils/ech/constants';
 import { fetchGeoIP, GeoIP } from '../utils/geoip';
 import { isPublicInternetIP, isIPv4, isIPv6 } from '../utils/validator';
 import { isServerfullEnv } from '../utils/serverfullEnv';
-import { fetchWebsiteIcon, iconHitResponse, iconMissResponse, normalizeIconDomain } from '../utils/websiteIcon';
+import { getIconConfig, iconErrorResponse, iconHitResponse, iconMissResponse, lookupWebsiteIcon, normalizeIconDomain } from '../utils/websiteIcon';
 import {
   DEFAULT_SUBSTITUTE_DOMAIN,
   getPresetUpstreams,
@@ -185,7 +185,7 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
       return new Response("Invalid domain format", { status: 400 });
     }
 
-    // Both hits and misses are kept at the edge, so a busy log does not re-ask the icon providers.
+    // Hits and "no favicon" answers are both cached (ICON_CACHE_TTL_SEC), so a busy log does not re-ask the provider.
     const cacheKey = new Request(`${url.origin}/api/icon/${host}.ico`);
     if (cache) {
       try {
@@ -194,8 +194,13 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
       } catch { /* cache unavailable: look it up */ }
     }
 
-    const icon = await fetchWebsiteIcon(host);
-    const response = icon ? iconHitResponse(icon) : iconMissResponse();
+    const iconConfig = getIconConfig(env);
+    const lookup = await lookupWebsiteIcon(host, iconConfig);
+    // No answer from the provider (timeout, 429, 5xx): report it, but never cache it.
+    if (lookup.kind === 'error') return iconErrorResponse();
+    const response = lookup.kind === 'hit'
+      ? iconHitResponse(lookup.icon, iconConfig.cacheTtlSec)
+      : iconMissResponse(iconConfig.cacheTtlSec);
     if (cache) {
       try {
         await cache.put(cacheKey, response.clone());
