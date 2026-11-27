@@ -40,18 +40,7 @@ if [ -f "$DATA_DIR/.env" ] && [ ! -f "$CONFIG_DIR/.env" ]; then
   ln -sfn "$DATA_DIR/.env" "$CONFIG_DIR/.env"
 fi
 
-# 3. Optional: Initial SQLite database download from remote URL if DB does not exist
-if [ ! -f "$DB_PATH" ] && [ -n "$DB_INIT_URL" ]; then
-  echo "[DB] Initializing SQLite database from DB_INIT_URL..."
-  if curl -fsSL -o "$DB_PATH" "$DB_INIT_URL"; then
-    echo "[DB] Database successfully initialized at $DB_PATH."
-  else
-    echo "[DB] Warning: Failed to download database from $DB_INIT_URL. ObexDNS will create a fresh database."
-    rm -f "$DB_PATH"
-  fi
-fi
-
-# 4. Configuration extractor: safely reads key from process env, /data/config/.env, or /data/.env
+# 3. Configuration extractor: safely reads key from process env, /data/config/.env, or /data/.env
 # Process environment variables always take precedence over file-based values.
 get_env_val() {
   _var="$1"
@@ -85,6 +74,32 @@ get_env_val() {
   done
   printf '%s' "$_def"
 }
+
+# 4. Optional: One-time SQLite database download from remote URL (only if DB is missing or empty)
+DB_INIT_URL=$(get_env_val "DB_INIT_URL" "")
+if [ -n "$DB_INIT_URL" ]; then
+  if [ ! -s "$DB_PATH" ]; then
+    echo "[DB] Initializing SQLite database from DB_INIT_URL: $DB_INIT_URL..."
+    TMP_DB="${DB_PATH}.tmp.$$"
+    if curl -fsSL -o "$TMP_DB" "$DB_INIT_URL"; then
+      # Verify that downloaded file is a valid SQLite 3 database (starts with "SQLite format 3")
+      HEADER=$(head -c 15 "$TMP_DB" 2>/dev/null || true)
+      if [ "$HEADER" = "SQLite format 3" ]; then
+        mv -f "$TMP_DB" "$DB_PATH"
+        rm -f "${DB_PATH}-wal" "${DB_PATH}-shm"
+        echo "[DB] Database successfully initialized from DB_INIT_URL at $DB_PATH."
+      else
+        echo "[DB] Warning: Downloaded file from DB_INIT_URL is not a valid SQLite database. ObexDNS will create a fresh database."
+        rm -f "$TMP_DB"
+      fi
+    else
+      echo "[DB] Warning: Failed to download database from $DB_INIT_URL. ObexDNS will create a fresh database."
+      rm -f "$TMP_DB"
+    fi
+  else
+    echo "[DB] Existing database detected at $DB_PATH. Skipping DB_INIT_URL."
+  fi
+fi
 
 # 5. Resolve SSL configuration values
 CF_TOKEN=$(get_env_val "CLOUDFLARE_API_TOKEN" "$(get_env_val "CF_Token" "")")

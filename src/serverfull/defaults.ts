@@ -123,6 +123,12 @@ DATABASE_SERVICE=File
 # Đường dẫn lưu file SQLite cục bộ (Docker mặc định: /data/dns_worker.sqlite, Linux systemd: /var/lib/dns-worker/dns_worker.sqlite).
 # SERVERFULL_DB_PATH=
 
+# Optional remote URL to automatically download and initialize SQLite database on first container startup (Docker only).
+# Only downloaded once when database file does not exist or is empty; never re-downloaded on restart.
+# URL từ xa để tự động tải về và khởi tạo database SQLite trong lần khởi động container đầu tiên (chỉ Docker).
+# Chỉ tải một lần duy nhất khi database chưa tồn tại hoặc rỗng 0 byte; không bao giờ tải đè khi reboot/restart.
+# DB_INIT_URL=
+
 # SQLite in-memory page cache size in KiB (default: 32000 = 32 MiB; lower values reduce RAM usage).
 # Kích thước bộ nhớ đệm trang SQLite tính bằng KiB (mặc định: 32000 = 32 MiB; giảm xuống nếu RAM hạn chế).
 # SQLITE_CACHE_SIZE_KB=32000
