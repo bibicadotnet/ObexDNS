@@ -342,7 +342,7 @@ if [ -n "$BACKUP_BUCKET" ]; then
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-$BACKUP_CRON_EXPR root /app/backup.sh > /proc/1/fd/1 2>&1
+$BACKUP_CRON_EXPR root nice -n 19 /app/backup.sh > /proc/1/fd/1 2>&1
 EOF
   chmod 0644 /etc/cron.d/backup
   echo "[Backup] Scheduled automated S3 backup cron ($BACKUP_CRON_EXPR UTC)."

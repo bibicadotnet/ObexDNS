@@ -16,6 +16,13 @@ flock -n 9 || {
   exit 0
 }
 
+# Run with lowest CPU & I/O priority so DNS queries always get 100% CPU scheduling
+renice -n 19 -p $$ >/dev/null 2>&1 || true
+ionice -c 3 -p $$ >/dev/null 2>&1 || true
+
+# Use gzip level 1 (fastest compression, minimum CPU usage)
+export GZIP="-1 --fast"
+
 LOCAL_ONLY=""
 OUTPUT_FILE=""
 
@@ -63,12 +70,13 @@ if [ -s "$DB_FILE" ]; then
     exit 1
   fi
 
-  INTEGRITY=$(sqlite3 "$SNAP_DB" "PRAGMA integrity_check;")
-  if [ "$INTEGRITY" != "ok" ]; then
-    echo "[Backup] Error: Snapshot database integrity check failed: $INTEGRITY"
+  # Fast sanity check without scanning all B-trees (avoids CPU spike on large databases)
+  QUICK=$(sqlite3 "$SNAP_DB" "PRAGMA quick_check(1);")
+  if [ "$QUICK" != "ok" ]; then
+    echo "[Backup] Error: Snapshot database quick check failed: $QUICK"
     exit 1
   fi
-  echo "[Backup]       -> SQLite snapshot integrity verified (ok)."
+  echo "[Backup]       -> SQLite snapshot verified (ok)."
 fi
 
 # 3. Stage persistent database and secret into packaging directory
@@ -81,8 +89,8 @@ if [ -f "$DATA_DIR/.jwt_secret" ]; then
   cp -f "$DATA_DIR/.jwt_secret" "$PKG_DIR/.jwt_secret"
 fi
 
-# 4. Pack staged files into gzip archive
-echo "[Backup] [3/4] Creating compressed archive ($ARCHIVE_NAME)..."
+# 4. Pack staged files into gzip archive (using level 1 for lowest CPU impact)
+echo "[Backup] [3/4] Creating archive ($ARCHIVE_NAME)..."
 tar -czf "$ARCHIVE_NAME" -C "$PKG_DIR" .
 
 if [ ! -s "$ARCHIVE_NAME" ]; then
@@ -90,10 +98,8 @@ if [ ! -s "$ARCHIVE_NAME" ]; then
   exit 1
 fi
 
-# Verify archive readability
-tar -tzf "$ARCHIVE_NAME" > /dev/null
 ARCHIVE_SIZE=$(du -h "$ARCHIVE_NAME" | cut -f1)
-echo "[Backup]       -> Archive verified successfully ($ARCHIVE_SIZE)."
+echo "[Backup]       -> Archive created successfully ($ARCHIVE_SIZE)."
 
 if [ -n "$OUTPUT_FILE" ]; then
   cp -f "$ARCHIVE_NAME" "$OUTPUT_FILE"

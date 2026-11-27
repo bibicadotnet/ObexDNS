@@ -317,7 +317,7 @@ export async function handleAdminRequest(
       }
 
       return new Promise<Response>((resolve) => {
-        nodeCp.exec(`/bin/sh "${backupScript}"`, { timeout: 120000 }, (err, stdout, stderr) => {
+        nodeCp.exec(`nice -n 19 /bin/sh "${backupScript}"`, { timeout: 120000 }, (err, stdout, stderr) => {
           if (err) {
             const errMsg = stderr?.trim() || stdout?.trim() || err.message;
             return resolve(new Response(JSON.stringify({
@@ -351,7 +351,7 @@ export async function handleAdminRequest(
 
       const tempFile = `/tmp/obexdns_manual_${Date.now()}.tar.gz`;
       return new Promise<Response>((resolve) => {
-        nodeCp.exec(`/bin/sh "${backupScript}" --local-only --output "${tempFile}"`, { timeout: 60000 }, (err, stdout, stderr) => {
+        nodeCp.exec(`nice -n 19 /bin/sh "${backupScript}" --local-only --output "${tempFile}"`, { timeout: 60000 }, (err, stdout, stderr) => {
           if (err || !nodeFs.existsSync(tempFile)) {
             const errMsg = stderr?.trim() || stdout?.trim() || err?.message || "Snapshot generation failed.";
             return resolve(new Response(JSON.stringify({ error: errMsg }), {
