@@ -243,6 +243,7 @@ export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: Serv
     ACTIVE_DNS_CACHE_TTL: Number(process.env.ACTIVE_DNS_CACHE_TTL) || 60,
     SYNC_PROFILE_INTERVAL_SEC: process.env.SYNC_PROFILE_INTERVAL_SEC || 86400,
     SYNC_SYSTEM_INTERVAL_SEC: process.env.SYNC_SYSTEM_INTERVAL_SEC || 21600,
+    CF_IP_SYNC_INTERVAL_SEC: process.env.CF_IP_SYNC_INTERVAL_SEC || '86400',
     MAX_PROFILE_CUSTOM_DOMAINS: process.env.MAX_PROFILE_CUSTOM_DOMAINS,
     MAX_LIST_DOMAINS: Number(process.env.MAX_LIST_DOMAINS) || 2000000,
     MAX_LIST_BYTES: Number(process.env.MAX_LIST_BYTES) || 104857600, // 100 MB

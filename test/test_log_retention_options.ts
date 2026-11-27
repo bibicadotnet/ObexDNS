@@ -140,6 +140,19 @@ async function runTests(): Promise<void> {
   // Case G: Direct connection with explicitly trusted proxy configured
   assert.strictEqual(extractClientIp(headersF, '93.184.216.34', '93.184.216.34'), '1.1.1.1', 'Must honor headers from explicitly trusted proxy');
 
+  // Case H: Connection from Bunny CDN edge IP with bunny-client-ip
+  const headersH = new Headers({
+    'bunny-client-ip': '203.0.113.77',
+    'X-Forwarded-For': '203.0.113.77, 89.187.162.249'
+  });
+  assert.strictEqual(extractClientIp(headersH, '89.187.162.249'), '203.0.113.77', 'Must trust Bunny CDN edge IP and extract real client IP');
+
+  // Case I: Connection from Bunny CDN edge IP with only X-Forwarded-For
+  const headersI = new Headers({
+    'X-Forwarded-For': '198.51.100.99, 89.187.162.249'
+  });
+  assert.strictEqual(extractClientIp(headersI, '89.187.162.249'), '198.51.100.99', 'Must extract client IP from XFF when socket is Bunny CDN edge');
+
   // 7. Test getFlagEmoji behavior (LAN, UN, UNKNOWN, Country Codes)
   console.log('>>> [TEST] 7. getFlagEmoji mapping');
   const { getFlagEmoji } = await import('../web/src/utils/getFlagEmoji');

@@ -143,7 +143,7 @@ export async function syncCloudflareIpRanges(
   }
 
   try {
-    const [v4Res, v6Res, echRes] = await Promise.all([
+    const [v4Res, v6Res, echRes, bunnyRes] = await Promise.all([
       fetch("https://www.cloudflare.com/ips-v4", {
         headers: { "User-Agent": "DNS-Worker/1.0" },
         signal: AbortSignal.timeout(5000)
@@ -155,7 +155,11 @@ export async function syncCloudflareIpRanges(
       fetch("https://cloudflare-dns.com/dns-query?name=cloudflare-ech.com&type=HTTPS", {
         headers: { "Accept": "application/dns-json" },
         signal: AbortSignal.timeout(5000)
-      }).catch(() => null)
+      }).catch(() => null),
+      fetch("https://bunnycdn.com/api/system/edgeserverlist", {
+        headers: { "User-Agent": "DNS-Worker/1.0" },
+        signal: AbortSignal.timeout(5000)
+      }).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
 
     if (!v4Res.ok || !v6Res.ok) {
@@ -168,6 +172,14 @@ export async function syncCloudflareIpRanges(
     const rawList = [...v4Text.split("\n"), ...v6Text.split("\n")]
       .map((line) => line.trim())
       .filter((line) => line.length > 0 && !line.startsWith("#"));
+
+    if (Array.isArray(bunnyRes)) {
+      for (const ip of bunnyRes) {
+        if (typeof ip === "string" && ip.trim()) {
+          rawList.push(ip.includes("/") ? ip.trim() : `${ip.trim()}/32`);
+        }
+      }
+    }
 
     const validCidrs = rawList.filter((cidr) => parseCidr(cidr) !== null);
 

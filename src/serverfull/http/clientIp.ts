@@ -73,8 +73,8 @@ export function extractClientIp(
   // If socket IP is a public Internet IP and not explicitly configured in trusted proxies,
   // do not trust incoming proxy headers to prevent IP spoofing (CWE-290 / SEC-01).
   if (socketIp && isPublicInternetIP(socketIp)) {
-    // Trust explicitly configured proxies, or Cloudflare edge IPs (ranges kept in sync by cron,
-    // same list used by ECH) so that an orange-clouded domain still yields the real client IP.
+    // Trust explicitly configured proxies, or synced Cloudflare & Bunny CDN edge IPs
+    // (ranges kept in sync by daily cron) so that a proxied domain still yields the real client IP.
     const isTrusted = isTrustedProxyIp(socketIp, trustedProxies) || isCloudflareIp(socketIp);
     if (!isTrusted) {
       return socketIp;
@@ -85,11 +85,15 @@ export function extractClientIp(
   const cfIp = sanitizeClientIp(headers.get('CF-Connecting-IP'));
   if (cfIp) return cfIp;
 
-  // 2. Check X-Real-IP (Caddy / Nginx direct real IP)
+  // 2. Check Bunny CDN client IP headers (bunny-client-ip or b-cdn-client-ip)
+  const bunnyIp = sanitizeClientIp(headers.get('bunny-client-ip') || headers.get('b-cdn-client-ip'));
+  if (bunnyIp) return bunnyIp;
+
+  // 3. Check X-Real-IP (Caddy / Nginx direct real IP)
   const realIp = sanitizeClientIp(headers.get('X-Real-IP'));
   if (realIp) return realIp;
 
-  // 3. Check X-Forwarded-For (standard reverse proxy chain)
+  // 4. Check X-Forwarded-For (standard reverse proxy chain)
   const xff = headers.get('X-Forwarded-For');
   if (xff) {
     // The leftmost IP in X-Forwarded-For is the original client
@@ -100,6 +104,6 @@ export function extractClientIp(
     }
   }
 
-  // 4. Fallback to socket remote address
+  // 5. Fallback to socket remote address
   return socketIp || '127.0.0.1';
 }

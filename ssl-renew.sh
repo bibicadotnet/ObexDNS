@@ -33,12 +33,17 @@ KEY_PATH="${KEY_PATH:-$SSL_DIR/privkey.pem}"
 if [ -z "$DOMAIN" ]; then
   for _f in "$CONFIG_DIR/.env" "$DATA_DIR/.env"; do
     if [ -f "$_f" ]; then
-      DOMAIN=$(awk -F= '$1 ~ /^[[:space:]]*SERVERFULL_DOT_DOMAIN[[:space:]]*$/ {
+      DOMAIN=$(awk -F= -v dq='"' -v sq="'" '$1 ~ /^[[:space:]]*SERVERFULL_DOT_DOMAIN[[:space:]]*$/ {
         sub(/^[[:space:]]*[^=]+=[[:space:]]*/, "");
         val=$0;
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", val);
-        if ((val ~ /^".*"$/) || (val ~ /^'\''[^\'']*'\''$/)) {
-          val = substr(val, 2, length(val) - 2);
+        len = length(val);
+        if (len >= 2) {
+          c1 = substr(val, 1, 1);
+          c2 = substr(val, len, 1);
+          if ((c1 == dq && c2 == dq) || (c1 == sq && c2 == sq)) {
+            val = substr(val, 2, len - 2);
+          }
         }
         print val;
       }' "$_f")
