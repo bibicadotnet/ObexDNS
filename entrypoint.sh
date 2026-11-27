@@ -75,30 +75,117 @@ get_env_val() {
   printf '%s' "$_def"
 }
 
-# 4. Optional: One-time SQLite database download from remote URL (only if DB is missing or empty)
-DB_INIT_URL=$(get_env_val "DB_INIT_URL" "")
-if [ -n "$DB_INIT_URL" ]; then
-  if [ ! -s "$DB_PATH" ]; then
-    echo "[DB] Initializing SQLite database from DB_INIT_URL: $DB_INIT_URL..."
-    TMP_DB="${DB_PATH}.tmp.$$"
-    if curl -fsSL -o "$TMP_DB" "$DB_INIT_URL"; then
-      # Verify that downloaded file is a valid SQLite 3 database (starts with "SQLite format 3")
-      HEADER=$(head -c 15 "$TMP_DB" 2>/dev/null || true)
-      if [ "$HEADER" = "SQLite format 3" ]; then
-        mv -f "$TMP_DB" "$DB_PATH"
-        rm -f "${DB_PATH}-wal" "${DB_PATH}-shm"
-        echo "[DB] Database successfully initialized from DB_INIT_URL at $DB_PATH."
-      else
-        echo "[DB] Warning: Downloaded file from DB_INIT_URL is not a valid SQLite database. ObexDNS will create a fresh database."
-        rm -f "$TMP_DB"
-      fi
+# 4. Optional: One-time database & persistent data restore (only if DB is missing or empty)
+if [ ! -s "$DB_PATH" ]; then
+  DB_INIT_URL=$(get_env_val "DB_INIT_URL" "")
+  BACKUP_BUCKET=$(get_env_val "BACKUP_S3_BUCKET" "")
+  TMP_DOWNLOAD="${DB_PATH}.download.$$"
+  EXTRACT_DIR="${DATA_DIR}/.restore_tmp.$$"
+  rm -rf "$EXTRACT_DIR" "$TMP_DOWNLOAD"
+  DOWNLOAD_OK=0
+
+  # Priority 1: Pull from private S3 / Cloudflare R2 if configured
+  if [ -n "$BACKUP_BUCKET" ] && [ -f "/app/s3-client.mjs" ]; then
+    S3_TARGET="latest.tar.gz"
+    case "$DB_INIT_URL" in
+      http://* | https://*) ;;
+      ?*) S3_TARGET="$DB_INIT_URL" ;;
+    esac
+
+    echo "[DB-Restore] S3 bucket configured ($BACKUP_BUCKET). Attempting private restore from '$S3_TARGET'..."
+    set +e
+    bun /app/s3-client.mjs download "$S3_TARGET" "$TMP_DOWNLOAD"
+    S3_DL_STATUS=$?
+    set -e
+
+    if [ $S3_DL_STATUS -eq 0 ] && [ -s "$TMP_DOWNLOAD" ]; then
+      DOWNLOAD_OK=1
+    elif [ $S3_DL_STATUS -eq 44 ]; then
+      echo "[DB-Restore] No existing backup found in S3 bucket (clean setup)."
     else
-      echo "[DB] Warning: Failed to download database from $DB_INIT_URL. ObexDNS will create a fresh database."
-      rm -f "$TMP_DB"
+      echo "[DB-Restore] Warning: Failed to download backup from S3 (exit code $S3_DL_STATUS)."
     fi
-  else
-    echo "[DB] Existing database detected at $DB_PATH. Skipping DB_INIT_URL."
   fi
+
+  # Priority 2: Fallback to external HTTP/HTTPS URL if DB_INIT_URL is set and S3 didn't download
+  if [ $DOWNLOAD_OK -eq 0 ] && [ -n "$DB_INIT_URL" ]; then
+    case "$DB_INIT_URL" in
+      http://* | https://*)
+        echo "[DB-Restore] Downloading database/archive from DB_INIT_URL: $DB_INIT_URL..."
+        if curl -fsSL -o "$TMP_DOWNLOAD" "$DB_INIT_URL"; then
+          DOWNLOAD_OK=1
+        else
+          echo "[DB-Restore] Warning: Failed to download from DB_INIT_URL ($DB_INIT_URL)."
+          rm -f "$TMP_DOWNLOAD"
+        fi
+        ;;
+    esac
+  fi
+
+  # Process downloaded file if available
+  if [ $DOWNLOAD_OK -eq 1 ] && [ -s "$TMP_DOWNLOAD" ]; then
+    mkdir -p "$EXTRACT_DIR"
+    HEADER15=$(head -c 15 "$TMP_DOWNLOAD" 2>/dev/null || true)
+    IS_RESTORED=0
+
+    # Case 1: Raw SQLite database
+    if [ "$HEADER15" = "SQLite format 3" ]; then
+      echo "[DB-Restore] Detected raw SQLite database format."
+      mv -f "$TMP_DOWNLOAD" "$DB_PATH"
+      rm -f "${DB_PATH}-wal" "${DB_PATH}-shm"
+      IS_RESTORED=1
+
+    # Case 2: tar.gz archive
+    elif tar -tzf "$TMP_DOWNLOAD" >/dev/null 2>&1; then
+      echo "[DB-Restore] Detected tar.gz archive format. Extracting..."
+      tar -xzf "$TMP_DOWNLOAD" -C "$EXTRACT_DIR"
+      rm -f "$TMP_DOWNLOAD"
+
+    # Case 3: zip archive
+    elif command -v unzip >/dev/null 2>&1 && unzip -tq "$TMP_DOWNLOAD" >/dev/null 2>&1; then
+      echo "[DB-Restore] Detected zip archive format. Extracting..."
+      unzip -qo "$TMP_DOWNLOAD" -d "$EXTRACT_DIR"
+      rm -f "$TMP_DOWNLOAD"
+
+    else
+      echo "[DB-Restore] Warning: Unknown file format from backup (not SQLite, tar.gz, or zip)."
+      rm -f "$TMP_DOWNLOAD"
+    fi
+
+    # If extracted from archive (Case 2 or Case 3), locate and install components
+    if [ -d "$EXTRACT_DIR" ] && [ "$IS_RESTORED" -eq 0 ]; then
+      # 1. Restore SQLite database (Core Data: profiles, rules, logs, users, analytics)
+      FOUND_DB=$(find "$EXTRACT_DIR" -type f -name "*.sqlite" ! -name "*-wal" ! -name "*-shm" | head -n 1)
+      if [ -n "$FOUND_DB" ] && [ -s "$FOUND_DB" ]; then
+        DB_CHECK=$(sqlite3 "$FOUND_DB" "PRAGMA integrity_check;" 2>/dev/null || echo "failed")
+        if [ "$DB_CHECK" = "ok" ]; then
+          mv -f "$FOUND_DB" "$DB_PATH"
+          rm -f "${DB_PATH}-wal" "${DB_PATH}-shm"
+          echo "[DB-Restore] Successfully restored SQLite database to $DB_PATH."
+          IS_RESTORED=1
+        else
+          echo "[DB-Restore] Warning: Database in archive failed integrity check ($DB_CHECK)."
+        fi
+      fi
+
+      # 2. Restore .jwt_secret only if present and /data/.jwt_secret does not already exist
+      FOUND_SECRET=$(find "$EXTRACT_DIR" -type f -name ".jwt_secret" | head -n 1)
+      if [ -n "$FOUND_SECRET" ] && [ ! -s "$DATA_DIR/.jwt_secret" ]; then
+        cp -f "$FOUND_SECRET" "$DATA_DIR/.jwt_secret"
+        chmod 600 "$DATA_DIR/.jwt_secret"
+        echo "[DB-Restore] Successfully restored .jwt_secret."
+      fi
+    fi
+
+    rm -rf "$EXTRACT_DIR" "$TMP_DOWNLOAD"
+    if [ "$IS_RESTORED" -eq 1 ]; then
+      echo "[DB-Restore] Data initialization complete."
+    else
+      echo "[DB-Restore] Warning: Failed to extract a valid database. ObexDNS will create a fresh database."
+    fi
+  fi
+else
+  echo "[DB-Restore] Existing database detected at $DB_PATH. Skipping restore."
 fi
 
 # 5. Resolve SSL configuration values
@@ -203,9 +290,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 $CRON_EXPR root /app/ssl-renew.sh > /proc/1/fd/1 2>&1
 EOF
     chmod 0644 /etc/cron.d/ssl-renew
-
-    # Start Debian cron daemon in the background
-    cron
     echo "[SSL] Scheduled automated certificate renewal cron ($CRON_EXPR UTC)."
   fi
 else
@@ -213,7 +297,41 @@ else
   rm -f /etc/cron.d/ssl-renew
 fi
 
-# 7. Start ObexDNS Serverfull runtime
+# 7. Setup automated S3 / Cloudflare R2 backup cron if configured
+BACKUP_BUCKET=$(get_env_val "BACKUP_S3_BUCKET" "")
+BACKUP_CRON_EXPR=$(get_env_val "BACKUP_CRON" "0 2 * * *")
+
+if [ -n "$BACKUP_BUCKET" ]; then
+  VALID_BCRON=$(printf '%s' "$BACKUP_CRON_EXPR" | awk '
+    NF == 5 && $0 ~ /^[0-9*,\/-]+[[:space:]]+[0-9*,\/-]+[[:space:]]+[0-9*,\/-]+[[:space:]]+[0-9*,\/-]+[[:space:]]+[0-9*,\/-]+$/ {
+      print "valid"
+    }
+  ')
+  if [ "$VALID_BCRON" != "valid" ]; then
+    echo "[Backup] Warning: Invalid BACKUP_CRON ('$BACKUP_CRON_EXPR'). Falling back to '0 2 * * *'."
+    BACKUP_CRON_EXPR="0 2 * * *"
+  fi
+
+  cat <<EOF > /etc/cron.d/backup
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+$BACKUP_CRON_EXPR root /app/backup.sh > /proc/1/fd/1 2>&1
+EOF
+  chmod 0644 /etc/cron.d/backup
+  echo "[Backup] Scheduled automated S3 backup cron ($BACKUP_CRON_EXPR UTC)."
+else
+  rm -f /etc/cron.d/backup
+fi
+
+# 8. Start Debian cron daemon in the background if any scheduled jobs exist
+if [ -f /etc/cron.d/ssl-renew ] || [ -f /etc/cron.d/backup ]; then
+  if ! pgrep -x cron >/dev/null 2>&1; then
+    cron
+  fi
+fi
+
+# 9. Start ObexDNS Serverfull runtime
 # Switch working directory to /data/config so user's /data/config/.env takes precedence
 # while /app/.env.serverfull acts as the base default fallback.
 cd "$CONFIG_DIR"
