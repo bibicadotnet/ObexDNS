@@ -1,0 +1,305 @@
+import { Context, Env, ExecutionContext } from '../types';
+import { parseDNSQuery, createServFail } from '../utils/dns';
+import { pipeline } from '../pipeline';
+import { ProfileModel, ProfileWithFilter } from '../models/profile';
+import { cacheUtils } from '../utils/cache';
+import { recordActiveConnection, touchProfileAndUserActivity } from '../utils/activeDns';
+import {
+  profileKeyMemoryMap,
+  defaultProfileMemoryCache,
+  setDefaultProfileMemoryCache
+} from '../pipeline/cache';
+import { resolveUpstreamEndpoint, fetchFromUpstream } from '../pipeline/resolver/transport';
+import { DEFAULT_FAIL_OPEN_UPSTREAM } from '../constants/presets';
+import { isServerfullEnv } from '../utils/serverfullEnv';
+
+/**
+ * Compiles a compliant RFC 8484 DNS over HTTPS Response.
+ * Ensures that if the answer wire payload is empty or invalid (< 12 bytes),
+ * a standard SERVFAIL (RCODE 2) packet is returned with max-age=0 to prevent client crash.
+ */
+function formatDohResponse(
+  answer: Uint8Array | null | undefined,
+  queryRaw: Uint8Array | null | undefined,
+  ttl: number = 60
+): Response {
+  const isSuccess = Boolean(answer && answer.length >= 12);
+  const effectiveAnswer = isSuccess ? answer! : createServFail(queryRaw || undefined);
+
+  return new Response(effectiveAnswer as any, {
+    headers: {
+      "Content-Type": "application/dns-message",
+      "Cache-Control": isSuccess && ttl > 0 ? `max-age=${ttl}` : "max-age=0, no-cache, no-store"
+    }
+  });
+}
+
+/**
+ * Safely extracts raw wire-format DNS query bytes from incoming HTTP GET or POST request.
+ */
+async function extractRawQuery(request: Request): Promise<Uint8Array | null> {
+  try {
+    if (request.method === "GET") {
+      const url = new URL(request.url);
+      const dnsParam = url.searchParams.get("dns");
+      if (!dnsParam) return null;
+      let base64 = dnsParam.replace(/-/g, "+").replace(/_/g, "/");
+      while (base64.length % 4) base64 += "=";
+      const binary = atob(base64);
+      const raw = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        raw[i] = binary.charCodeAt(i);
+      }
+      return raw;
+    } else if (request.method === "POST") {
+      const buffer = await request.clone().arrayBuffer();
+      return new Uint8Array(buffer);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Resolves profile and access point metadata with multi-tier caching (L1 Memory -> L2 Cache API -> D1 DB).
+ */
+export async function resolveProfileByKey(
+  profileKey: string,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<(ProfileWithFilter & { access_point_id?: string; access_point_name?: string }) | null> {
+  const isServerfull = isServerfullEnv(env);
+  const cache = !isServerfull && typeof caches !== "undefined" && caches ? (caches as any).default : null;
+  const now = Date.now();
+
+  // 1. Check L1 Memory Cache (Isolate Global) - 5 minutes
+  const inMem = profileKeyMemoryMap.get(profileKey);
+  if (inMem && now - inMem.ts < 300_000) {
+    return inMem.data;
+  }
+
+  // 2. Check L2 Cloudflare Cache API (Cloudflare Workers only, skipped on Serverfull)
+  const cacheKey = `doh_key_v1:${profileKey}`;
+  if (cache) {
+    try {
+      const cached = await cacheUtils.get<any>(cache, cacheKey);
+      if (cached) {
+        profileKeyMemoryMap.set(profileKey, { data: cached, ts: now });
+        return cached;
+      }
+    } catch {
+      /* ignore Cache API match error */
+    }
+  }
+
+  // 3. Fallback to D1 (only executed on cache miss)
+  try {
+    const profileModel = new ProfileModel(env.DB);
+    const profile = await profileModel.findByKey(profileKey);
+
+    if (profile) {
+      profileKeyMemoryMap.set(profileKey, { data: profile, ts: now });
+      if (cache) {
+        ctx.waitUntil(cacheUtils.set(cache, cacheKey, profile, 3600));
+      }
+      return profile;
+    }
+  } catch (e: any) {
+    console.warn(`[DoH] D1 profile lookup failed for key ${profileKey}:`, e.message || e);
+    // If D1 is exhausted or erroring, attempt to return stale in-memory data if available
+    if (inMem?.data) {
+      return inMem.data;
+    }
+
+    // Emergency fail-open fallback if D1 has exceeded its read quota or is unavailable:
+    // Generate a temporary fallback profile so DNS resolution doesn't return 404 or 500
+    const failOpenUpstream = env.FAIL_OPEN_UPSTREAM || DEFAULT_FAIL_OPEN_UPSTREAM;
+    console.warn(`[DoH] D1 unavailable. Providing emergency fallback profile for key ${profileKey} -> ${failOpenUpstream}`);
+    return {
+      id: profileKey,
+      name: "Emergency Fallback",
+      settings: JSON.stringify({
+        upstream: [failOpenUpstream],
+        default_policy: "ALLOW",
+        log_retention_days: 0,
+        ecs: { enabled: true, use_client_ip: true }
+      }),
+      owner_id: "system",
+      created_at: Math.floor(now / 1000),
+      updated_at: Math.floor(now / 1000)
+    } as any;
+  }
+
+  return null;
+}
+
+/**
+ * Resolves default profile when no profile key is specified in connection or query (such as Classic UDP DNS).
+ * If an explicit default profile key is configured (`SERVERFULL_DEFAULT_PROFILE_KEY` or `DEFAULT_PROFILE_KEY`),
+ * that profile is resolved and returned.
+ * Otherwise, unauthenticated requests safely fall back to FAIL_OPEN_UPSTREAM (`env.FAIL_OPEN_UPSTREAM || DEFAULT_FAIL_OPEN_UPSTREAM`)
+ * with zero logging (`log_retention_days: 0`), preventing policy leakage, profile hijacking, or log contamination
+ * of user profiles stored in the database.
+ * Uses L1 in-memory caching to eliminate redundant processing under high UDP DNS load.
+ */
+export async function resolveDefaultProfile(
+  env: Env,
+  ctx: ExecutionContext
+): Promise<(ProfileWithFilter & { access_point_id?: string; access_point_name?: string }) | null> {
+  const now = Date.now();
+  if (defaultProfileMemoryCache && now - defaultProfileMemoryCache.ts < 300_000) {
+    return defaultProfileMemoryCache.data;
+  }
+
+  const defaultKey = env.SERVERFULL_DEFAULT_PROFILE_KEY || env.DEFAULT_PROFILE_KEY;
+  if (defaultKey) {
+    const profile = await resolveProfileByKey(defaultKey, env, ctx);
+    if (profile) {
+      setDefaultProfileMemoryCache({ data: profile, ts: now });
+      return profile;
+    }
+  }
+
+  const fallbackUpstream = env.FAIL_OPEN_UPSTREAM || DEFAULT_FAIL_OPEN_UPSTREAM;
+  const fallbackProfile = {
+    id: "default",
+    name: "Default Profile",
+    settings: JSON.stringify({
+      upstream: [fallbackUpstream],
+      default_policy: "ALLOW",
+      log_retention_days: 0,
+      ecs: { enabled: true, use_client_ip: true }
+    }),
+    owner_id: "system",
+    created_at: Math.floor(now / 1000),
+    updated_at: Math.floor(now / 1000)
+  } as any;
+
+  setDefaultProfileMemoryCache({ data: fallbackProfile, ts: now });
+  return fallbackProfile;
+}
+
+/**
+ * Handles DNS-over-HTTPS (DoH) requests, coordinates parsing, pipeline resolution, 
+ * active connection cache registration, and database active tracking.
+ */
+export async function handleDoHRequest(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  profileKey: string
+): Promise<Response> {
+  // RFC 8484 §5.2: Minimum HTTP version restriction for DoH
+  // "The DNS-over-HTTPS protocol MUST be implemented using HTTP/2 or later. Clients and servers MUST NOT negotiate HTTP/1.1 for DoH."
+  // Reverse proxies (Bunny, Caddy, Nginx) terminate TLS at edge and proxy to the container via HTTP/1.1 or plain HTTP.
+  // We only enforce HTTP/2 minimum on direct, unproxied HTTPS connections.
+  const isProxiedOrPlainHttp = Boolean(
+    request.headers.get('x-forwarded-for') ||
+    request.headers.get('x-forwarded-proto') ||
+    request.headers.get('x-real-ip') ||
+    request.url.startsWith('http://')
+  );
+  if (!isProxiedOrPlainHttp) {
+    const httpProto = (request.cf?.httpProtocol as string | undefined) || request.headers.get('X-Http-Version');
+    if (httpProto && (httpProto === 'HTTP/1.0' || httpProto === 'HTTP/1.1' || httpProto === '1.0' || httpProto === '1.1')) {
+      return new Response(
+        'This server implements RFC 8484 - DNS Queries over HTTP, and requires HTTP/2 or later in accordance with section 5.2 of the RFC.\n',
+        {
+          status: 505,
+          statusText: 'HTTP Version Not Supported',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        }
+      );
+    }
+  }
+
+  const cache = (caches as any).default;
+  let queryRaw: Uint8Array | null = null;
+
+  try {
+    // Empty key = the plain /dns-query URL; a non-empty key that does not exist falls back the same way.
+    // Both use the default profile silently and never write query logs: only profiles that a user
+    // reached by their own key are logged (scanners / typos would otherwise flood console and logs).
+    let profile = profileKey ? await resolveProfileByKey(profileKey, env, ctx) : null;
+    let noLog = false;
+    if (!profile) {
+      profile = await resolveDefaultProfile(env, ctx);
+      if (!profile || profile.id === 'default') {
+        noLog = true;
+      }
+    }
+    if (!profile) {
+      return new Response('Invalid Profile Key', { status: 404 });
+    }
+    const profileId = profile.id;
+    const query = await parseDNSQuery(request);
+    if (!query) {
+      return new Response('Invalid DNS Query', { status: 400 });
+    }
+    queryRaw = query.raw;
+
+    const context: Context = { 
+      profileId, 
+      accessPointId: profile.access_point_id, 
+      accessPointName: profile.access_point_name,
+      startTime: Date.now(), 
+      env, 
+      ctx,
+      noLog
+    };
+    const result = await pipeline.process(request, query, context);
+
+    // Async task: record active connections and update active timestamps with throttling
+    ctx.waitUntil((async () => {
+      try {
+        const clientIp = request.headers.get("CF-Connecting-IP") || "127.0.0.1";
+        
+        // Record active connection (Setup page verification + Debug API)
+        await recordActiveConnection(env, clientIp, profileId, query.name, 'doh');
+
+        // Update profile and owning user activity timestamp (throttled)
+        await touchProfileAndUserActivity(env, profileId, cache);
+      } catch (e) {
+        console.error(`[Background Task] Error for ${profileId}:`, e);
+      }
+    })());
+
+    return formatDohResponse(result.answer, queryRaw, result.ttl);
+  } catch (e: any) {
+    console.error(`[DoH Pipeline] Internal Error:`, e);
+    try {
+      // Emergency fail-open: dispatch DNS wire query directly to FAIL_OPEN_UPSTREAM
+      // Supports HTTPS (DoH), TLS/DoT (RFC 7858), TCP (RFC 7766), and DNS Stamps (sdns://)
+      const failOpenUpstream = env.FAIL_OPEN_UPSTREAM || DEFAULT_FAIL_OPEN_UPSTREAM;
+      const rawBytes = queryRaw || (await extractRawQuery(request));
+
+      if (rawBytes && rawBytes.length > 0) {
+        const endpoint = resolveUpstreamEndpoint(failOpenUpstream);
+        const transportRes = await fetchFromUpstream(endpoint, rawBytes);
+        return formatDohResponse(transportRes.answer, rawBytes, 60);
+      }
+
+      // If wire query bytes couldn't be decoded and upstream is HTTP(S), proxy request directly
+      if (failOpenUpstream.startsWith("http://") || failOpenUpstream.startsWith("https://")) {
+        const fallbackUrl = new URL(failOpenUpstream);
+        const reqUrl = new URL(request.url);
+        fallbackUrl.search = reqUrl.search;
+        const fallbackRes = await fetch(fallbackUrl.toString(), {
+          method: request.method,
+          headers: {
+            "Accept": request.headers.get("Accept") || "application/dns-message",
+            "Content-Type": request.headers.get("Content-Type") || "application/dns-message"
+          },
+          body: request.method === "POST" ? request.body : undefined
+        });
+        return fallbackRes;
+      }
+
+      return new Response("Invalid DNS Query", { status: 400 });
+    } catch (proxyErr) {
+      console.error(`[DoH Pipeline] Emergency fallback failed:`, proxyErr);
+      return new Response(`Internal Server Error`, { status: 500 });
+    }
+  }
+}

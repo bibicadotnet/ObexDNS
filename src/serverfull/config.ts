@@ -1,0 +1,299 @@
+/**
+ * @file config.ts
+ * @description Configuration builder and environment variable assembler for Serverfull mode.
+ * Re-exports paths, envLoader, and jwtSecret for backwards-compatible access.
+ */
+
+import fs from 'node:fs';
+import { Env } from '../types';
+import {
+  DEFAULT_PRESET_UPSTREAMS,
+  DEFAULT_PRESET_EXTERNAL_FILTERS,
+  DEFAULT_SUBSTITUTE_DOMAIN,
+  DEFAULT_FAIL_OPEN_UPSTREAM,
+  DEFAULT_PROFILE_FILTER_URLS
+} from '../constants/presets';
+import { getDatabaseService, DatabaseServiceType } from '../lib/turso';
+import {
+  getPackageRoot,
+  getDefaultDbPath,
+  ensurePersistentDirs
+} from './paths';
+import { loadEnvFiles } from './envLoader';
+import { getOrInitPersistentJwtSecret } from './jwtSecret';
+
+// Re-export submodules
+export * from './paths';
+export * from './envLoader';
+export * from './jwtSecret';
+
+export interface ServerfullCliArgs {
+  port?: string;
+  'http-port'?: string;
+  'https-port'?: string;
+  'disable-https'?: boolean;
+  'dns-port'?: string;
+  'dot-port'?: string;
+  'dot-domain'?: string;
+  host?: string;
+  db?: string;
+  'database-service'?: string;
+  'db-service'?: string;
+  'default-profile'?: string;
+  'disable-udp'?: boolean;
+  'disable-dot'?: boolean;
+  'ech-enabled'?: boolean;
+  'ech-config'?: string;
+  'ech-fronting-domain'?: string;
+  'turso-url'?: string;
+  'turso-token'?: string;
+  user?: string;
+  status?: boolean;
+  version?: boolean;
+  help?: boolean;
+}
+
+export interface ServerfullConfig {
+  tlsKeyPath: string;
+  tlsCertPath: string;
+  udpPort: number;
+  dotPort: number;
+  dotDomain: string;
+  httpPort: number;
+  httpsPort: number;
+  host: string;
+  dbPath: string;
+  databaseService: DatabaseServiceType;
+  tursoDatabaseUrl: string;
+  tursoAuthToken: string;
+  defaultProfileKey: string;
+  disableUdp: boolean;
+  disableDot: boolean;
+  disableHttps: boolean;
+  echEnabled: boolean;
+  echConfig: string;
+  echFrontingDomain: string;
+  packageRoot: string;
+}
+
+/**
+ * Loads Serverfull-specific options and builds the standard Env interface.
+ */
+export function getServerfullConfig(cliArgs?: ServerfullCliArgs): { config: ServerfullConfig; env: Env } {
+  ensurePersistentDirs();
+  loadEnvFiles();
+
+  const packageRoot = getPackageRoot();
+
+  // Support SERVERFULL_TLS_KEY_PATH and standard aliases
+  const tlsKeyPath = (
+    process.env.SERVERFULL_TLS_KEY_PATH ||
+    process.env.SERFULL_TLS_KEY_PATH ||
+    process.env.TLS_KEY_PATH ||
+    process.env.SSL_KEY_PATH ||
+    process.env.SERVERFULL_TLS_KEY ||
+    process.env.TLS_KEY ||
+    process.env.SSL_KEY ||
+    process.env.KEY_PATH ||
+    process.env.KEY_FILE ||
+    ''
+  ).trim();
+
+  // Support SERVERFULL_TLS_CERT_PATH and standard aliases
+  const tlsCertPath = (
+    process.env.SERVERFULL_TLS_CERT_PATH || 
+    process.env.SERVERFULL_TLS_PUB_PATH || 
+    process.env.SERVERFULL_TLS_PUBLIC_KEY_PATH ||
+    process.env.SERFULL_TLS_CERT_PATH ||
+    process.env.SERFULL_TLS_PUB_PATH ||
+    process.env.TLS_CERT_PATH ||
+    process.env.SSL_CERT_PATH ||
+    process.env.SERVERFULL_TLS_CERT ||
+    process.env.TLS_CERT ||
+    process.env.SSL_CERT ||
+    process.env.CERT_PATH ||
+    process.env.CERT_FILE ||
+    ''
+  ).trim();
+
+  // Support automatic default TLS discovery if not explicitly specified
+  let effectiveKeyPath = tlsKeyPath;
+  let effectiveCertPath = tlsCertPath;
+
+  if (!effectiveKeyPath && !effectiveCertPath) {
+    const candidatePairs = [
+      { cert: '/data/ssl/fullchain.pem', key: '/data/ssl/privkey.pem' },
+      { cert: '/etc/ssl/dns-worker/fullchain.pem', key: '/etc/ssl/dns-worker/privkey.pem' },
+      { cert: '/etc/ssl/dns-worker/cert.pem', key: '/etc/ssl/dns-worker/key.pem' },
+      { cert: '/etc/dns-worker/certs/fullchain.pem', key: '/etc/dns-worker/certs/privkey.pem' },
+      { cert: '/etc/dns-worker/certs/cert.pem', key: '/etc/dns-worker/certs/key.pem' }
+    ];
+    for (const pair of candidatePairs) {
+      try {
+        if (fs.existsSync(pair.cert) && fs.existsSync(pair.key)) {
+          effectiveCertPath = pair.cert;
+          effectiveKeyPath = pair.key;
+          break;
+        }
+      } catch {}
+    }
+  }
+
+  const udpPort = parseInt(cliArgs?.['dns-port'] || process.env.SERVERFULL_UDP_PORT || process.env.DNS_PORT || '53', 10);
+  const dotPort = parseInt(cliArgs?.['dot-port'] || process.env.SERVERFULL_DOT_PORT || process.env.DOT_PORT || '853', 10);
+  const dotDomain = (cliArgs?.['dot-domain'] || process.env.SERVERFULL_DOT_DOMAIN || process.env.DOT_DOMAIN || '').trim();
+  const httpPort = parseInt(cliArgs?.['http-port'] || cliArgs?.port || process.env.SERVERFULL_HTTP_PORT || process.env.HTTP_PORT || process.env.PORT || '10080', 10);
+  const httpsPort = parseInt(cliArgs?.['https-port'] || process.env.SERVERFULL_HTTPS_PORT || process.env.HTTPS_PORT || '10443', 10);
+  const host = cliArgs?.host || process.env.SERVERFULL_HOST || process.env.SERVERFULL_BIND_ADDRESS || '0.0.0.0';
+  const defaultDbPath = getDefaultDbPath();
+  const dbPath = cliArgs?.db || process.env.SERVERFULL_DB_PATH || process.env.DB_PATH || defaultDbPath;
+  const defaultProfileKey = cliArgs?.['default-profile'] || process.env.SERVERFULL_DEFAULT_PROFILE_KEY || process.env.DEFAULT_PROFILE_KEY || '';
+  const disableUdp = Boolean(cliArgs?.['disable-udp'] || process.env.SERVERFULL_DISABLE_UDP === 'true');
+  const disableDot = Boolean(cliArgs?.['disable-dot'] || process.env.SERVERFULL_DISABLE_DOT === 'true');
+  const disableHttps = Boolean(cliArgs?.['disable-https'] || process.env.SERVERFULL_DISABLE_HTTPS === 'true');
+  const echEnabled = cliArgs?.['ech-enabled'] !== undefined
+    ? Boolean(cliArgs['ech-enabled'])
+    : (process.env.SERVERFULL_ECH_ENABLED === undefined || process.env.SERVERFULL_ECH_ENABLED === 'true' || process.env.SERVERFULL_ECH_ENABLED === '1');
+  const echConfig = (cliArgs?.['ech-config'] || process.env.SERVERFULL_ECH_CONFIG || '').trim();
+  const echFrontingDomain = (cliArgs?.['ech-fronting-domain'] || process.env.SERVERFULL_ECH_FRONTING_DOMAIN || 'cloudflare-ech.com').trim();
+  const tursoDatabaseUrl = (cliArgs?.['turso-url'] || process.env.TURSO_DATABASE_URL || process.env.TURSO_URL || '').trim();
+  const tursoAuthToken = (cliArgs?.['turso-token'] || process.env.TURSO_AUTH_TOKEN || '').trim();
+  const rawService = cliArgs?.['database-service'] || cliArgs?.['db-service'] || process.env.DATABASE_SERVICE || process.env.DB_SERVICE;
+  const databaseService = getDatabaseService(
+    {
+      DATABASE_SERVICE: rawService,
+      TURSO_DATABASE_URL: tursoDatabaseUrl,
+      TURSO_AUTH_TOKEN: tursoAuthToken
+    },
+    true
+  );
+
+  const config: ServerfullConfig = {
+    tlsKeyPath: effectiveKeyPath,
+    tlsCertPath: effectiveCertPath,
+    udpPort,
+    dotPort,
+    dotDomain,
+    httpPort,
+    httpsPort,
+    host,
+    dbPath,
+    databaseService,
+    tursoDatabaseUrl,
+    tursoAuthToken,
+    defaultProfileKey,
+    disableUdp,
+    disableDot,
+    disableHttps,
+    echEnabled,
+    echConfig,
+    echFrontingDomain,
+    packageRoot
+  };
+
+  const env: Env = {
+    ...process.env,
+    DB: null as any, // Set by db.ts or turso client
+    DATABASE_SERVICE: databaseService,
+    TURSO_DATABASE_URL: tursoDatabaseUrl,
+    TURSO_AUTH_TOKEN: tursoAuthToken,
+    ASSETS: null as any, // Set by http.ts
+    JWT_SECRET: getOrInitPersistentJwtSecret(),
+    FAIL_OPEN_UPSTREAM: process.env.FAIL_OPEN_UPSTREAM || DEFAULT_FAIL_OPEN_UPSTREAM,
+    DOH_H2_HEDGE_MS: process.env.DOH_H2_HEDGE_MS !== undefined && process.env.DOH_H2_HEDGE_MS !== ''
+      ? Number(process.env.DOH_H2_HEDGE_MS)
+      : 100,
+    CF_ZONE_ID: process.env.CF_ZONE_ID || '',
+    CF_PURGE_TOKEN: process.env.CF_PURGE_TOKEN || '',
+    DOMAIN_ROLLUP_MIN_COUNT: Number(process.env.DOMAIN_ROLLUP_MIN_COUNT) || 1,
+    SUBSTITUTE_DOMAIN: process.env.SUBSTITUTE_DOMAIN || DEFAULT_SUBSTITUTE_DOMAIN,
+    PRESET_UPSTREAMS: process.env.PRESET_UPSTREAMS || JSON.stringify(DEFAULT_PRESET_UPSTREAMS),
+    PRESET_EXTERNAL_FILTERS: process.env.PRESET_EXTERNAL_FILTERS || JSON.stringify(DEFAULT_PRESET_EXTERNAL_FILTERS),
+    DEFAULT_PROFILE_FILTER_URLS: process.env.DEFAULT_PROFILE_FILTER_URLS || '',
+    SYSTEM_FILTER_URLS: process.env.SYSTEM_FILTER_URLS || '',
+    MAX_ACCESS_POINTS_PER_PROFILE: process.env.MAX_ACCESS_POINTS_PER_PROFILE || 100,
+    MAX_PROFILES_PER_USER: process.env.MAX_PROFILES_PER_USER || 10,
+    DEFAULT_SESSION_EXPIRATION_MINUTES: process.env.DEFAULT_SESSION_EXPIRATION_MINUTES || 1440,
+    OPTIONAL_SESSION_EXPIRATION_DAYS: process.env.OPTIONAL_SESSION_EXPIRATION_DAYS || 7,
+    ACCESS_TOKEN_EXPIRATION_MINUTES: Number(process.env.ACCESS_TOKEN_EXPIRATION_MINUTES) || 10,
+    SESSION_GEO_DISTANCE_KM: process.env.SESSION_GEO_DISTANCE_KM || 50,
+    PREAUTH_TTL_SECONDS: process.env.PREAUTH_TTL_SECONDS || 300,
+    FILTER_MEM_TTL: process.env.FILTER_MEM_TTL || process.env.BLOOM_MEM_TTL || '0',
+    FILTER_MEM_BYTES: Number(process.env.FILTER_MEM_BYTES || process.env.BLOOM_MEM_BYTES) || 268435456,
+    CONFIG_MEM_TTL: process.env.CONFIG_MEM_TTL || '0',
+    CONFIG_CACHE_LIMIT: Number(process.env.CONFIG_CACHE_LIMIT) || 5000,
+    DNS_CACHE_LIMIT: Number(process.env.DNS_CACHE_LIMIT) || 50000,
+    BLOCK_LOG_MARK_LIMIT: Number(process.env.BLOCK_LOG_MARK_LIMIT) || 50000,
+    STATIC_REDIRECT_CACHE_TTL: Number(process.env.STATIC_REDIRECT_CACHE_TTL) || 31536000,
+    PROFILE_KEY_CACHE_LIMIT: Number(process.env.PROFILE_KEY_CACHE_LIMIT) || 10000,
+    MEMORY_CACHE_LIMIT: Number(process.env.MEMORY_CACHE_LIMIT) || 20000,
+    ICON_CACHE_TTL_SEC: process.env.ICON_CACHE_TTL_SEC,
+    ICON_FETCH_CONCURRENCY: process.env.ICON_FETCH_CONCURRENCY,
+    ICON_FETCH_DELAY_MS: process.env.ICON_FETCH_DELAY_MS,
+    ICON_FETCH_TIMEOUT_MS: process.env.ICON_FETCH_TIMEOUT_MS,
+    RULE_PARSE_CACHE_LIMIT: Number(process.env.RULE_PARSE_CACHE_LIMIT) || 5000,
+    SYNC_TIMEOUT_MS: process.env.SYNC_TIMEOUT_MS || 30000,
+    INACTIVITY_THRESHOLD_DAYS: process.env.INACTIVITY_THRESHOLD_DAYS !== undefined && process.env.INACTIVITY_THRESHOLD_DAYS !== ''
+      ? Number(process.env.INACTIVITY_THRESHOLD_DAYS)
+      : 30,
+    INACTIVITY_USER_DAYS: process.env.INACTIVITY_USER_DAYS !== undefined && process.env.INACTIVITY_USER_DAYS !== ''
+      ? Number(process.env.INACTIVITY_USER_DAYS)
+      : 90,
+    THROTTLE_ACTIVE_SEC: process.env.THROTTLE_ACTIVE_SEC || 3600,
+    ACTIVE_DNS_CACHE_TTL: Number(process.env.ACTIVE_DNS_CACHE_TTL) || 60,
+    SYNC_PROFILE_INTERVAL_SEC: process.env.SYNC_PROFILE_INTERVAL_SEC || 86400,
+    SYNC_SYSTEM_INTERVAL_SEC: process.env.SYNC_SYSTEM_INTERVAL_SEC || 21600,
+    MAX_PROFILE_CUSTOM_DOMAINS: process.env.MAX_PROFILE_CUSTOM_DOMAINS,
+    MAX_LIST_DOMAINS: Number(process.env.MAX_LIST_DOMAINS) || 2000000,
+    MAX_LIST_BYTES: Number(process.env.MAX_LIST_BYTES) || 104857600, // 100 MB
+    MAX_LOG_RETENTION_DAYS: process.env.MAX_LOG_RETENTION_DAYS || 30,
+    ADMIN_USER_MAX_LOG_RETENTION_DAYS: process.env.ADMIN_USER_MAX_LOG_RETENTION_DAYS !== undefined && process.env.ADMIN_USER_MAX_LOG_RETENTION_DAYS !== ''
+      ? Number(process.env.ADMIN_USER_MAX_LOG_RETENTION_DAYS)
+      : (process.env.MAX_LOG_RETENTION_DAYS || 30),
+    DEFAULT_LOG_RETENTION_DAYS: process.env.DEFAULT_LOG_RETENTION_DAYS || 7,
+    NORMAL_USER_MAX_LOG_RETENTION_DAYS: process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS !== undefined && process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS !== ''
+      ? Number(process.env.NORMAL_USER_MAX_LOG_RETENTION_DAYS)
+      : 1,
+    NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS: process.env.NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS || 1,
+    MAX_LOGS_PER_PROFILE: process.env.MAX_LOGS_PER_PROFILE || 500000,
+    // Local disk has no write quota, so cleanup runs often and in large batches (D1/Workers keep 3600s / 1000 / 20000).
+    CLEANUP_INTERVAL_SEC: process.env.CLEANUP_INTERVAL_SEC || 600,
+    LOG_CLEANUP_CHUNK_SIZE: process.env.LOG_CLEANUP_CHUNK_SIZE !== undefined && process.env.LOG_CLEANUP_CHUNK_SIZE !== ''
+      ? Number(process.env.LOG_CLEANUP_CHUNK_SIZE)
+      : 2500,
+    LOG_CLEANUP_YIELD_SLEEP_MS: process.env.LOG_CLEANUP_YIELD_SLEEP_MS !== undefined && process.env.LOG_CLEANUP_YIELD_SLEEP_MS !== ''
+      ? Number(process.env.LOG_CLEANUP_YIELD_SLEEP_MS)
+      : 10,
+    CACHE_HIT_FLUSH_CHUNK_SIZE: process.env.CACHE_HIT_FLUSH_CHUNK_SIZE !== undefined && process.env.CACHE_HIT_FLUSH_CHUNK_SIZE !== ''
+      ? Number(process.env.CACHE_HIT_FLUSH_CHUNK_SIZE)
+      : 200,
+    LOG_QUEUE_MAX_ROWS: process.env.LOG_QUEUE_MAX_ROWS !== undefined && process.env.LOG_QUEUE_MAX_ROWS !== ''
+      ? Number(process.env.LOG_QUEUE_MAX_ROWS)
+      : 10000,
+    LOG_CLEANUP_BATCH_LIMIT: process.env.LOG_CLEANUP_BATCH_LIMIT !== undefined && process.env.LOG_CLEANUP_BATCH_LIMIT !== ''
+      ? Number(process.env.LOG_CLEANUP_BATCH_LIMIT)
+      : 0, // 0 = unmetered chunked loop with yield (dọn sạch 100% rác)
+    LOG_CLEANUP_DAILY_BUDGET: process.env.LOG_CLEANUP_DAILY_BUDGET !== undefined && process.env.LOG_CLEANUP_DAILY_BUDGET !== ''
+      ? process.env.LOG_CLEANUP_DAILY_BUDGET
+      : 0, // 0 = no daily deletion limit
+    TRUSTED_PROXIES: process.env.TRUSTED_PROXIES || '',
+    SERVERFULL_DEFAULT_PROFILE_KEY: defaultProfileKey,
+    SERVERFULL_DB_PATH: dbPath,
+    SERVERFULL_DOT_DOMAIN: dotDomain,
+    DOT_DOMAIN: dotDomain,
+    SERVERFULL_HTTPS_PORT: httpsPort,
+    SERVERFULL_DOT_PORT: dotPort,
+    SERVERFULL_HTTP_PORT: httpPort,
+    SERVERFULL_ECH_ENABLED: echEnabled ? 'true' : 'false',
+    SERVERFULL_ECH_CONFIG: echConfig,
+    SERVERFULL_ECH_FRONTING_DOMAIN: echFrontingDomain,
+    APP_NAME: process.env.APP_NAME || 'DNS Shield',
+    APP_LOGO_URL: process.env.APP_LOGO_URL || '',
+    APP_FAVICON_URL: process.env.APP_FAVICON_URL || '/favicon.png',
+    GITHUB_CORNER_ENABLED: process.env.GITHUB_CORNER_ENABLED !== undefined ? process.env.GITHUB_CORNER_ENABLED : 'true',
+    GITHUB_CORNER_URL: process.env.GITHUB_CORNER_URL || process.env.GITHUB_URL || 'https://github.com/bibicadotnet/ObexDNS',
+    WINDOWS_TOOLS_URL: process.env.WINDOWS_TOOLS_URL || 'https://github.com/bibicadotnet/ObexDNS/releases/download/windows-tools-setup/windows-tools-setup.zip'
+  };
+
+  return { config, env };
+}

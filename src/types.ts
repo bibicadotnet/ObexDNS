@@ -1,0 +1,345 @@
+import { D1Database, ExecutionContext as CFExecutionContext } from "@cloudflare/workers-types";
+
+export interface Env {
+  DB: D1Database;
+  ASSETS: any;
+  JWT_SECRET?: string;
+  MAX_ACCESS_POINTS_PER_PROFILE?: string | number;
+  MAX_PROFILES_PER_USER?: string | number;
+  DEFAULT_SESSION_EXPIRATION_MINUTES?: string | number;
+  OPTIONAL_SESSION_EXPIRATION_DAYS?: string | number;
+  ACCESS_TOKEN_EXPIRATION_MINUTES?: string | number;
+  SESSION_GEO_DISTANCE_KM?: string | number;
+  PREAUTH_TTL_SECONDS?: string | number;
+  FILTER_MEM_TTL?: string | number;
+  FILTER_MEM_BYTES?: string | number;
+  MAX_PROFILE_CUSTOM_DOMAINS?: string | number;
+  CONFIG_MEM_TTL?: string | number;
+  CONFIG_CACHE_LIMIT?: string | number;
+  DNS_CACHE_LIMIT?: string | number;
+  BLOCK_LOG_MARK_LIMIT?: string | number;
+  STATIC_REDIRECT_CACHE_TTL?: string | number;
+  PROFILE_KEY_CACHE_LIMIT?: string | number;
+  MEMORY_CACHE_LIMIT?: string | number;
+  ICON_CACHE_TTL_SEC?: string | number;
+  ICON_FETCH_CONCURRENCY?: string | number;
+  ICON_FETCH_DELAY_MS?: string | number;
+  ICON_FETCH_TIMEOUT_MS?: string | number;
+  RULE_PARSE_CACHE_LIMIT?: string | number;
+  SYNC_TIMEOUT_MS?: string | number;
+  INACTIVITY_THRESHOLD_DAYS?: string | number;
+  INACTIVITY_USER_DAYS?: string | number;
+  PRESET_UPSTREAMS?: string;
+  PRESET_EXTERNAL_FILTERS?: string;
+  PRESET_ECH_FRONTING_DOMAINS?: string;
+  DEFAULT_PROFILE_FILTER_URLS?: string;
+  SYSTEM_FILTER_URLS?: string;
+  THROTTLE_ACTIVE_SEC?: string | number;
+  SYNC_PROFILE_INTERVAL_SEC?: string | number;
+  SYNC_SYSTEM_INTERVAL_SEC?: string | number;
+  SYNC_IDLE_INTERVAL_SEC?: string | number;
+  SYNC_BATCH_SIZE?: string | number;
+  SYNC_FORCE_COOLDOWN_SEC?: string | number;
+  SYNC_YIELD_BATCH_SIZE?: string | number;
+  SYNC_YIELD_SLEEP_MS?: string | number;
+  FILTER_YIELD_CHUNK_ITEMS?: string | number;
+  FILTER_YIELD_SLEEP_MS?: string | number;
+  MAX_REGEX_RULES?: string | number;
+  MAX_CUSTOM_LISTS_PER_PROFILE?: string | number;
+  LIST_FETCH_MAX_RETRIES?: string | number;
+  LIST_FETCH_RETRY_DELAY_MS?: string | number;
+  LIST_FETCH_MAX_REDIRECTS?: string | number;
+  CLEANUP_INTERVAL_SEC?: string | number;
+  CF_IP_SYNC_INTERVAL_SEC?: string | number;
+  ACTIVE_DNS_CACHE_TTL?: string | number;
+  LOGIN_MAX_ATTEMPTS?: string | number;
+  LOGIN_LOCK_WINDOW_SEC?: string | number;
+  SIGNUP_MAX_PER_WINDOW?: string | number;
+  SIGNUP_WINDOW_SEC?: string | number;
+  FORGOT_PASSWORD_MAX_ATTEMPTS?: string | number;
+  FORGOT_PASSWORD_WINDOW_SEC?: string | number;
+  REFRESH_MAX_FAILURES?: string | number;
+  REFRESH_WINDOW_SEC?: string | number;
+  PIN_MAX_ATTEMPTS?: string | number;
+  PIN_LOCK_WINDOW_SEC?: string | number;
+  WEBAUTHN_TIMEOUT_MS?: string | number;
+  TURNSTILE_SECRET_KEY?: string;
+  MAX_LIST_DOMAINS?: string | number;
+  MAX_LIST_BYTES?: string | number;
+  MAX_LOG_RETENTION_DAYS?: string | number;
+  DEFAULT_LOG_RETENTION_DAYS?: string | number;
+  ADMIN_USER_MAX_LOG_RETENTION_DAYS?: string | number;
+  MAX_LOGS_PER_PROFILE?: string | number;
+  SQLITE_CACHE_SIZE_KB?: string | number;
+  SQLITE_MMAP_SIZE_BYTES?: string | number;
+  SQLITE_WAL_SIZE_LIMIT_BYTES?: string | number;
+  WAL_CHECKPOINT_WORKER?: string;
+  WAL_CHECKPOINT_INTERVAL_MS?: string | number;
+  SQLITE_RECLAIM_CHUNK_PAGES?: string | number;
+  SQLITE_RECLAIM_MIN_FREE_PAGES?: string | number;
+  SQLITE_RECLAIM_STOP_BELOW_PAGES?: string | number;
+  SQLITE_RECLAIM_MAX_MS?: string | number;
+  NORMAL_USER_MAX_LOG_RETENTION_DAYS?: string | number;
+  NORMAL_USER_DEFAULT_LOG_RETENTION_DAYS?: string | number;
+  FAIL_OPEN_UPSTREAM?: string;
+  DOH_H2_HEDGE_MS?: string | number;
+  CF_ZONE_ID?: string;
+  CF_PURGE_TOKEN?: string;
+  SESSION_LAST_ACTIVE_UPDATE_INTERVAL?: string | number;
+  AUTH_CACHE_TTL_SEC?: string | number;
+  LOG_CLEANUP_CHUNK_SIZE?: string | number;
+  LOG_CLEANUP_YIELD_SLEEP_MS?: string | number;
+  CACHE_HIT_FLUSH_CHUNK_SIZE?: string | number;
+  LOG_QUEUE_MAX_ROWS?: string | number;
+  LOG_CLEANUP_BATCH_LIMIT?: string | number;
+  LOG_CLEANUP_DAILY_BUDGET?: string | number;
+  LOG_ORPHAN_KEY_MIN_AGE_SEC?: string | number;
+  LOG_ORPHAN_KEY_BATCH_LIMIT?: string | number;
+  DOMAIN_ROLLUP_MIN_COUNT?: string | number;
+  REFRESH_COOLDOWN_SEC?: string | number;
+  SERVERFULL_DOT_DOMAIN?: string;
+  SERVERFULL_DB_PATH?: string;
+  DOT_DOMAIN?: string;
+  SERVERFULL_ECH_ENABLED?: string | boolean;
+  SERVERFULL_ECH_CONFIG?: string;
+  SERVERFULL_ECH_FRONTING_DOMAIN?: string;
+  SERVERFULL_HTTPS_PORT?: string | number;
+  SERVERFULL_DOT_PORT?: string | number;
+  TRUSTED_PROXIES?: string;
+  MAX_BODY_SIZE_BYTES?: string | number;
+  TURSO_DATABASE_URL?: string;
+  TURSO_URL?: string;
+  TURSO_AUTH_TOKEN?: string;
+  // UI & Branding Customization
+  APP_NAME?: string;
+  APP_LOGO_URL?: string;
+  APP_FAVICON_URL?: string;
+  GITHUB_CORNER_ENABLED?: string | boolean;
+  GITHUB_CORNER_URL?: string;
+  WINDOWS_TOOLS_URL?: string;
+  /** Comma-separated hostnames whose earlier Windows installs are removed before a new install (default: user/dns/doh.bibica.net). */
+  WINDOWS_CLEANUP_HOSTS?: string;
+  DATABASE_SERVICE?: 'D1' | 'Turso' | 'File' | string;
+  [key: string]: any;
+}
+
+export interface User {
+  id: string;
+  username: string;
+  role: 'admin' | 'user';
+  hashed_password?: string;
+  totp_enabled?: number;       // 0 | 1
+  totp_skip_password?: number; // 0 | 1 — when 1, login skips password check
+  passkeys_count?: number;
+  created_at?: number;
+  last_active_at?: number;
+  last_resolve_at?: number;
+  timezone?: string | null;
+  locale?: string | null;
+  password_version?: number;
+  pin_hash?: string | null;
+  isPaused?: boolean;
+  sessionId?: string;
+  session_lock_timeout?: number;
+}
+
+export interface UserActivityLog {
+  id: number;
+  user_id: string;
+  action: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  timestamp: number;
+  extra: string | null;
+}
+
+export interface ProfileSettings {
+  upstream: string[];
+  ecs: {
+    enabled: boolean;
+    use_client_ip: boolean;
+    ipv4_cidr?: string;
+    ipv6_cidr?: string;
+  };
+  log_retention_days: number;
+  skip_log_on_pass?: boolean;
+  default_policy: 'ALLOW' | 'BLOCK';
+  block_mode?: 'NULL_IP' | 'NXDOMAIN' | 'NODATA' | 'CUSTOM_IP';
+  custom_block_ipv4?: string;
+  custom_block_ipv6?: string;
+  best_effort_ech?: {
+    enabled: boolean;
+    /** @deprecated Ignored: the outer SNI is server-managed (SERVERFULL_ECH_FRONTING_DOMAIN). Kept for stored legacy settings. */
+    fronting_domain?: string;
+  };
+  is_default?: boolean;
+  default_ap_id?: string;
+}
+
+export interface Profile {
+  id: string;
+  profile_key?: string;
+  owner_id: string;
+  name: string;
+  settings: string;
+  created_at: number;
+  updated_at: number;
+  list_updated_at?: number;
+  is_default?: boolean;
+}
+
+export interface Rule {
+  id: number;
+  profile_id: string;
+  type: 'ALLOW' | 'BLOCK' | 'REDIRECT';
+  pattern: string;
+  v_a?: string;
+  v_aaaa?: string;
+  v_txt?: string;
+  v_cname?: string;
+  created_at?: number;
+  include_subdomains?: boolean | number;
+  enabled?: boolean | number;
+}
+
+export interface List {
+  id: number;
+  profile_id: string;
+  url: string;
+  enabled: boolean;
+  last_synced_at?: number;
+  sync_error?: string | null;
+  etag?: string | null;
+  last_modified?: string | null;
+  /** Display title parsed from the list's `! Title:` header (custom lists) */
+  title?: string | null;
+  /** Description parsed from the list's `! Description:` header; '' = scanned but none, null/undefined = not scanned yet */
+  description?: string | null;
+}
+
+export interface SystemList {
+  id: number;
+  url: string;
+  name?: string | null;
+  /** Description parsed from the list header; '' = scanned but none, null/undefined = not scanned yet */
+  description?: string | null;
+  etag?: string | null;
+  last_modified?: string | null;
+  last_synced_at?: number | null;
+  sync_error?: string | null;
+  rule_count?: number;
+}
+
+export interface DNSQuery {
+  name: string;
+  type: string;
+  raw: Uint8Array;
+}
+
+export interface ResolutionResult {
+  answer: Uint8Array;
+  ttl: number;
+  action: 'PASS' | 'BLOCK' | 'REDIRECT' | 'FAIL';
+  reason?: string;
+  latency?: number;
+  timings?: Record<string, number>;
+  diagnostics?: {
+    upstream_url: string;
+    method: string;
+    status: number;
+    status_text?: string;
+    error_detail?: string;
+    response_body?: string;
+    cf_ray?: string;
+  };
+}
+
+export interface ResolutionLog {
+  id?: number;
+  profile_id: string;
+  access_point_id?: string;
+  timestamp: number;
+  client_ip: string;
+  geo_country: string;
+  domain: string;
+  record_type: string;
+  action: string;
+  reason?: string;
+  answer?: string;
+  dest_geoip?: string;
+  dest_country_code?: string | null;
+  dest_country?: string | null;
+  dest_isp?: string | null;
+  latency?: number;
+  ecs?: string;
+  upstream?: string;
+  encrypt_version?: number; // 0: unencrypted, 1: pure P-256 legacy, 2: P256-MLKEM768 hourly KEM
+  kem_key_id?: string | null;
+  kem_ct?: string | null;
+  encrypted_payload?: string | null;
+}
+
+export interface KemKeyRecord {
+  id: string;
+  profile_id: string;
+  kem_ct: string;
+  created_at: number;
+  expires_at: number;
+}
+
+export interface HourlyRollup {
+  profile_id: string;
+  metric_type: 'action' | 'domain' | 'client' | 'dest' | string;
+  hour_timestamp: number;
+  key: string;
+  sub_key?: string;
+  access_point_id?: string;
+  count: number;
+}
+
+export interface LogHourlyRollup {
+  profile_id: string;
+  hour_timestamp: number;
+  action: 'PASS' | 'BLOCK' | 'REDIRECT' | 'FAIL' | string;
+  count: number;
+}
+
+export interface ExecutionContext extends CFExecutionContext {}
+
+export interface Context {
+  profileId: string;
+  accessPointId?: string;
+  accessPointName?: string;
+  startTime: number;
+  env: Env;
+  ctx: ExecutionContext;
+  /** When true, no query log is written (used for unknown-profile-key fallback traffic). */
+  noLog?: boolean;
+  /** Generation tracker to invalidate in-flight resolutions when profile config is mutated. */
+  profileGeneration?: number;
+}
+
+export interface AccessPoint {
+  id: string;
+  profile_id: string;
+  name: string;
+  token: string;
+  created_at: number;
+  updated_at: number;
+  is_default?: boolean;
+}
+
+export interface Passkey {
+  id: string;
+  user_id: string;
+  name: string;
+  credential_id: string;
+  public_key: string;
+  algorithm: number;
+  sign_count: number;
+  transports?: string | null;
+  aaguid?: string | null;
+  created_at: number;
+  last_used_at?: number | null;
+}
+

@@ -1,0 +1,497 @@
+/* BlueprintJS Core CSS */
+@import "@blueprintjs/core/lib/css/blueprint.css";
+
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-primary: #0969da;
+    --color-primary-hover: #0854ad;
+    --color-bg: #f8fafc;
+    --color-surface: #ffffff;
+    --color-border: #d0d7de;
+    --color-text: #111827;
+    --color-text-secondary: #374151;
+    --color-text-muted: #6b7280;
+    --bg-color: #f8fafc;
+    --text-color: #111827;
+    --map-bg: #e5e7eb;
+    --map-hover: #3b82f6;
+    --map-color-0: #e5e7eb;
+    --map-color-1: #eff6ff;
+    --map-color-2: #dbeafe;
+    --map-color-3: #bfdbfe;
+    --map-color-4: #93c5fd;
+    --map-color-5: #60a5fa;
+    --map-color-6: #3b82f6;
+    --map-color-7: #2563eb;
+    --map-color-8: #1d4ed8;
+    --map-color-9: #1e40af;
+    --map-color-10: #1e3a8a;
+    --map-stroke: #ffffff;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Keep iOS from inflating text after rotation */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
+@keyframes rowGlow {
+  0% {
+    background-color: rgba(59, 130, 246, 0.25);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.animate-row-glow {
+  animation: rowGlow 2.5s ease-out;
+}
+
+/* Ensure Blueprint portals appear above modals, overlays, and lock screen */
+.bp6-portal {
+  z-index: 20000 !important;
+}
+
+/* Blueprint Tooltip light theme override */
+.bp6-tooltip:not([class*="bp6-intent-"]),
+.analytics-sync-tooltip {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1) !important;
+}
+.bp6-tooltip:not([class*="bp6-intent-"]) .bp6-popover-content,
+.analytics-sync-tooltip .bp6-popover-content {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.bp6-tooltip:not([class*="bp6-intent-"]) .bp6-popover-content .bp6-heading,
+.analytics-sync-tooltip .bp6-popover-content .bp6-heading {
+  color: #111827 !important;
+}
+.bp6-tooltip:not([class*="bp6-intent-"]) .bp6-popover-arrow-fill,
+.analytics-sync-tooltip .bp6-popover-arrow-fill {
+  fill: #ffffff !important;
+}
+.bp6-tooltip:not([class*="bp6-intent-"]) .bp6-popover-arrow-border,
+.analytics-sync-tooltip .bp6-popover-arrow-border {
+  fill: #e5e7eb !important;
+  fill-opacity: 1 !important;
+}
+
+/* RefreshButton cooldown ring */
+@keyframes refresh-ring-drain {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: var(--ring-c); }
+}
+
+/* Shared type scale */
+.page-title {
+  margin: 0;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+.page-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--color-text-secondary);
+}
+.section-title {
+  margin: 0;
+  padding: 0;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+}
+.subsection-title {
+  margin: 0;
+  padding: 0;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+}
+@media (min-width: 768px) {
+  .page-title {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+}
+
+/* Blueprint Section headers */
+.bp6-section-header-title,
+.bp6-section .bp6-section-header h6 {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Global card styling */
+.bp6-card {
+  border-radius: 12px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+  border: 1px solid var(--color-border) !important;
+}
+.bp6-card.bp6-interactive:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* NextDNS-style unified button styling */
+.bp6-button {
+  border-radius: 8px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.bp6-button.bp6-intent-primary {
+  background: #0969da !important;
+  background-image: none !important;
+  color: #ffffff !important;
+  border: 1px solid #0969da !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+.bp6-button.bp6-intent-primary:hover {
+  background: #0854ad !important;
+  border-color: #0854ad !important;
+}
+
+.bp6-button:not([class*="bp6-intent-"]):not(.bp6-minimal) {
+  background: #ffffff !important;
+  background-image: none !important;
+  color: #24292f !important;
+  border: 1px solid #d0d7de !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+.bp6-button:not([class*="bp6-intent-"]):not(.bp6-minimal):hover {
+  background: #f6f8fa !important;
+  border-color: #d0d7de !important;
+  color: #0969da !important;
+}
+
+.bp6-button.bp6-intent-success:not(.bp6-minimal) {
+  background: #1a7f37 !important;
+  background-image: none !important;
+  color: #ffffff !important;
+  border: 1px solid #1a7f37 !important;
+}
+.bp6-button.bp6-intent-success:not(.bp6-minimal):hover {
+  background: #116329 !important;
+  border-color: #116329 !important;
+  color: #ffffff !important;
+}
+
+.bp6-button.bp6-intent-danger:not(.bp6-minimal) {
+  background: #cf222e !important;
+  background-image: none !important;
+  color: #ffffff !important;
+  border: 1px solid #cf222e !important;
+}
+.bp6-button.bp6-intent-danger:not(.bp6-minimal):hover {
+  background: #a40e26 !important;
+  border-color: #a40e26 !important;
+  color: #ffffff !important;
+}
+
+/* Minimal intent buttons (Transparent background, colored text/icon, subtle tinted hover) */
+.bp6-button.bp6-minimal.bp6-intent-danger {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #cf222e !important;
+}
+.bp6-button.bp6-minimal.bp6-intent-danger .bp6-icon,
+.bp6-button.bp6-minimal.bp6-intent-danger svg {
+  color: #cf222e !important;
+  fill: currentColor !important;
+}
+.bp6-button.bp6-minimal.bp6-intent-danger:hover {
+  background: #ffebe9 !important; /* Soft danger red tint */
+  border-color: #ffc1be !important;
+  color: #a40e26 !important;
+}
+.bp6-button.bp6-minimal.bp6-intent-danger:hover .bp6-icon,
+.bp6-button.bp6-minimal.bp6-intent-danger:hover svg {
+  color: #a40e26 !important;
+  fill: currentColor !important;
+}
+
+.bp6-button.bp6-minimal.bp6-intent-primary {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #0969da !important;
+}
+.bp6-button.bp6-minimal.bp6-intent-primary .bp6-icon,
+.bp6-button.bp6-minimal.bp6-intent-primary svg {
+  color: #0969da !important;
+  fill: currentColor !important;
+}
+.bp6-button.bp6-minimal.bp6-intent-primary:hover {
+  background: #ddf4ff !important; /* Soft blue tint */
+  border-color: #b6e3ff !important;
+  color: #0858b9 !important;
+}
+.bp6-button.bp6-minimal.bp6-intent-primary:hover .bp6-icon,
+.bp6-button.bp6-minimal.bp6-intent-primary:hover svg {
+  color: #0858b9 !important;
+  fill: currentColor !important;
+}
+
+.bp6-button.bp6-minimal:not([class*="bp6-intent-"]) {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #374151 !important;
+}
+.bp6-button.bp6-minimal:not([class*="bp6-intent-"]):hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: #111827 !important;
+}
+
+.bp6-input {
+  border-radius: 8px !important;
+  border: 1px solid #d0d7de !important;
+  box-shadow: none !important;
+  color: #111827 !important;
+}
+.bp6-input:focus {
+  border-color: #0969da !important;
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15) !important;
+}
+
+/* Clean dialog styling */
+.bp6-dialog {
+  border-radius: 16px !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* NextDNS-style unified Toast System (Light Theme Native) */
+.bp6-toast-container {
+  z-index: 25000 !important;
+}
+
+.bp6-toast {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid #d0d7de !important;
+  border-left-width: 4px !important;
+  border-radius: 10px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  padding: 8px 14px 8px 12px !important;
+  min-height: 38px !important;
+  min-width: 0 !important;
+  width: fit-content !important;
+  width: -moz-fit-content !important;
+  max-width: min(520px, 92vw) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  overflow: visible !important;
+}
+
+.bp6-toast-message {
+  color: #111827 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  flex: 0 1 auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+}
+
+/* Ensure ALL toast icons are visible, properly sized, and NEVER pure white */
+.bp6-toast .bp6-icon {
+  margin: 0 !important;
+  flex-shrink: 0 !important;
+  font-size: 16px !important;
+}
+
+.bp6-toast .bp6-icon svg {
+  fill: currentColor !important;
+}
+
+/* Intent Colors */
+/* Primary (Blue) */
+.bp6-toast.bp6-intent-primary {
+  border-left-color: #0969da !important;
+}
+.bp6-toast.bp6-intent-primary .bp6-icon {
+  color: #0969da !important;
+}
+
+/* Success (Green) */
+.bp6-toast.bp6-intent-success {
+  border-left-color: #1a7f37 !important;
+}
+.bp6-toast.bp6-intent-success .bp6-icon {
+  color: #1a7f37 !important;
+}
+
+/* Danger / Error (Red) */
+.bp6-toast.bp6-intent-danger {
+  border-left-color: #cf222e !important;
+}
+.bp6-toast.bp6-intent-danger .bp6-icon {
+  color: #cf222e !important;
+}
+
+/* Warning (Amber) */
+.bp6-toast.bp6-intent-warning {
+  border-left-color: #d97706 !important;
+}
+.bp6-toast.bp6-intent-warning .bp6-icon {
+  color: #d97706 !important;
+}
+
+/* Neutral / Default */
+.bp6-toast:not([class*="bp6-intent-"]) {
+  border-left-color: #6b7280 !important;
+}
+.bp6-toast:not([class*="bp6-intent-"]) .bp6-icon {
+  color: #6b7280 !important;
+}
+
+/* In toasts: hide the redundant dismiss button group on the right */
+.bp6-toast .bp6-button-group {
+  display: none !important;
+}
+
+/* NextDNS-style segmented control for minimal button groups */
+.bp6-button-group.bp6-minimal {
+  background: #f3f4f6 !important;
+  border-radius: 8px !important;
+  padding: 2px !important;
+  border: 1px solid #d0d7de !important;
+  gap: 2px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+.bp6-button-group.bp6-minimal .bp6-button {
+  color: #6b7280 !important;
+  background: transparent !important;
+  border-radius: 6px !important;
+  border: 1px solid transparent !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+  padding: 4px 10px !important;
+  transition: all 0.15s ease !important;
+}
+.bp6-button-group.bp6-minimal .bp6-button .bp6-icon,
+.bp6-button-group.bp6-minimal .bp6-button svg {
+  color: #6b7280 !important;
+  fill: currentColor !important;
+}
+.bp6-button-group.bp6-minimal .bp6-button:hover {
+  background: rgba(255, 255, 255, 0.6) !important;
+  color: #111827 !important;
+}
+.bp6-button-group.bp6-minimal .bp6-button:hover .bp6-icon,
+.bp6-button-group.bp6-minimal .bp6-button:hover svg {
+  color: #111827 !important;
+}
+.bp6-button-group.bp6-minimal .bp6-button.bp6-active {
+  background: #ffffff !important;
+  color: #111827 !important;
+  font-weight: 600 !important;
+  border-color: rgba(208, 215, 222, 0.8) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+.bp6-button-group.bp6-minimal .bp6-button.bp6-active .bp6-icon,
+.bp6-button-group.bp6-minimal .bp6-button.bp6-active svg {
+  color: #111827 !important;
+}
+
+/* Apple direct download icon button (matches doh.bibica.net) */
+a.apple-download-btn {
+  color: #6b7280 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  transition: all 0.15s ease-in-out !important;
+  text-decoration: none !important;
+}
+a.apple-download-btn:hover {
+  color: #0969da !important;
+  background: #ffffff !important;
+  border-color: #d0d7de !important;
+}
+a.apple-download-btn svg {
+  color: inherit !important;
+  fill: currentColor !important;
+}
+
+/* Smooth transitions globally */
+* {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Clean, modern interactive table row styling across the app (Query Logs, External Lists, etc.) */
+.bp6-html-table.bp6-interactive tbody tr {
+  transition: background-color 0.12s ease-in-out !important;
+}
+
+/* Very subtle alternating background for striped tables */
+.bp6-html-table.bp6-html-table-striped tbody tr:nth-child(odd) td,
+.bp6-html-table.bp6-html-table-striped tbody tr:nth-child(odd) {
+  background-color: #f9fafb !important;
+}
+
+.bp6-html-table.bp6-html-table-striped tbody tr:nth-child(even) td,
+.bp6-html-table.bp6-html-table-striped tbody tr:nth-child(even) {
+  background-color: #ffffff !important;
+}
+
+/* Distinct, clear, eye-friendly light-blue hover highlight for interactive tables */
+.bp6-html-table.bp6-interactive tbody tr:not(.table-group-header):hover td,
+.bp6-html-table.bp6-interactive tbody tr:not(.table-group-header):hover,
+.bp6-html-table.bp6-html-table-striped.bp6-interactive tbody tr:not(.table-group-header):hover td,
+.bp6-html-table.bp6-html-table-striped.bp6-interactive tbody tr:not(.table-group-header):hover {
+  background-color: #ebf5ff !important; /* Soft sky/blue hover highlight */
+}
+
+/* Ensure table group headers are never highlighted on hover */
+.bp6-html-table.bp6-interactive tbody tr.table-group-header td,
+.bp6-html-table.bp6-interactive tbody tr.table-group-header:hover td,
+.bp6-html-table.bp6-interactive tbody tr.table-group-header:hover {
+  background-color: transparent !important;
+}
+
+/*
+ * iOS Safari (iPhone and iPad) zooms the whole page when an input with a
+ * font-size below 16px gets focus, and does not zoom back out afterwards,
+ * which makes the login card look larger than the screen. On touch devices
+ * the login / sign-up inputs therefore use 16px.
+ * Excluded: checkboxes/radios, and the single-digit OTP boxes (maxlength=1),
+ * which are already text-xl.
+ */
+@media (pointer: coarse) {
+  .auth-root input:not([type="checkbox"]):not([type="radio"]):not([maxlength="1"]),
+  .auth-root select,
+  .auth-root textarea {
+    font-size: 16px;
+  }
+}

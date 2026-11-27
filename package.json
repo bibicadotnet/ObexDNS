@@ -1,0 +1,106 @@
+{
+  "name": "dns-worker",
+  "version": "1.5.5-beta",
+  "private": false,
+  "description": "Privacy-first DNS & DoH Resolver with modern Web Dashboard, built for Cloudflare Workers & Node.js",
+  "main": "./dist/serverfull.mjs",
+  "bin": {
+    "dns-worker": "./dist/serverfull.mjs"
+  },
+  "files": [
+    "dist/",
+    "static/",
+    "migrations/",
+    ".env.serverfull",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "predev": "npm run db:generate-migrations",
+    "dev": "npm run db:migrate:dev && concurrently \"npm run ui:dev\" \"wrangler dev\"",
+    "start": "npm run build && wrangler dev",
+    "start:serverfull": "npm run build:serverfull && node --enable-source-maps dist/serverfull.mjs",
+    "serverfull": "npm run build:serverfull && node --enable-source-maps dist/serverfull.mjs",
+    "build:serverfull": "npm run db:generate-migrations && npm run ui:build && node scripts/precompress.mjs static && npx esbuild src/serverfull/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/serverfull.mjs --banner:js=\"#!/usr/bin/env node\" --external:node:sqlite --minify --sourcemap --tree-shaking=true --legal-comments=none && npx esbuild src/serverfull/walWorker.mjs --bundle --platform=node --target=node24 --format=esm --outfile=dist/walWorker.mjs --external:node:sqlite --minify --legal-comments=none",
+    "prepublishOnly": "npm run build:serverfull",
+    "service-create:linux": "tsx scripts/create-linux-service.ts",
+    "docker:build": "tsx scripts/docker.ts build",
+    "docker:build:alpha": "tsx scripts/docker.ts build --alpha",
+    "docker:build:multiarch": "tsx scripts/docker.ts multiarch",
+    "docker:push": "tsx scripts/docker.ts push",
+    "docker:push:alpha": "tsx scripts/docker.ts push --alpha",
+    "docker:run": "tsx scripts/docker.ts run",
+    "docs:dev": "npm --prefix docs run dev",
+    "docs:build": "npm --prefix docs run build",
+    "docs:convert-tw": "npm --prefix docs run convert-tw",
+    "deploy": "npm run build && npm run db:migrate:prod && wrangler deploy",
+    "deploy:skipdb": "npm run build && wrangler deploy",
+    "build": "npm run ui:build",
+    "build:pages": "npm run db:generate-migrations && npm run ui:build && npx esbuild src/index.ts --bundle --outfile=static/_worker.js --platform=neutral --format=esm --minify --external:cloudflare:* --external:node:*",
+    "db:generate-migrations": "tsx scripts/generate-embedded-migrations.ts",
+    "prebuild": "npm run db:generate-migrations",
+    "prepare": "npm run db:generate-migrations && npm run ui:install",
+    "postinstall": "npm run db:generate-migrations",
+    "db:setup": "wrangler d1 create dns_worker_db",
+    "db:migrate:dev": "tsx scripts/migrate-dev.ts",
+    "db:migrate:prod": "tsx scripts/migrate-prod.ts",
+    "db:status": "wrangler d1 execute dns_worker_db --local --command='SELECT name FROM sqlite_master WHERE type=\"table\"'",
+    "pretest": "npm run db:generate-migrations",
+    "test": "tsx test/test_fingerprint_set.ts && tsx test/test_filter_yield.ts && tsx test/test_filter_load_invalidate.ts && tsx test/test_byte_capped_map.ts && tsx test/test_legacy_compat.ts && tsx test/test_bloom_precision.ts && tsx test/test_bloom_params_migration.ts && tsx test/test_limit_warning_survives_304.ts && tsx test/test_list_limit_warnings.ts && tsx test/test_sync_optimizations.ts && tsx test/test_sync_pacing.ts && tsx test/test_adguard_hybrid_pipeline.ts && tsx test/test_cache_purge.ts && tsx test/test_dns_decoder_boundary.ts && tsx test/test_settings_validation.ts && tsx test/test_ecs.ts && tsx test/test_dns_cache_ttl_and_sweep.ts && tsx test/test_log_retention_unmetered_chunked.ts && tsx test/test_user_fixes_verification.ts && tsx test/test_cache_hit_rollup.ts && tsx test/test_block_redirect_log_dedupe.ts && tsx test/test_block_mark_release.ts && tsx test/test_log_queue_cap.ts && tsx test/test_e2ee_retry_keeps_payload.ts && tsx test/test_e2ee_fail_closed.ts && tsx test/test_analytics_range_accuracy.ts && tsx test/test_analytics_edges_exact.ts && tsx test/test_hit_retention_and_alignment.ts && tsx test/test_log_range_validation.ts && tsx test/test_custom_range_input.ts && tsx test/test_fail_filter_index.ts && tsx test/test_icon_candidates.ts && tsx test/test_refresh_cooldown.ts && tsx test/test_wal_checkpoint_worker.ts",
+    "test:dns-cache": "tsx test/test_dns_cache_ttl_and_sweep.ts",
+    "test:retention": "tsx test/test_log_retention_unmetered_chunked.ts",
+    "test:compat": "tsx test/test_legacy_compat.ts",
+    "test:precision": "tsx test/test_bloom_precision.ts",
+    "test:fingerprint": "tsx test/test_fingerprint_set.ts",
+    "test:filter-yield": "tsx test/test_filter_yield.ts",
+    "test:filter-load": "tsx test/test_filter_load_invalidate.ts",
+    "test:cache": "tsx test/test_byte_capped_map.ts",
+    "test:ecs": "tsx test/test_ecs.ts",
+    "test:turso": "tsx test/test_turso.ts",
+    "test:turnstile": "tsx test/test_turnstile.ts",
+    "test:serverfull": "tsx test/test_serverfull.ts",
+    "test:reset": "tsx test/test_serverfull_reset.ts",
+    "lint": "oxlint",
+    "ui:dev": "cd web && npm run dev",
+    "ui:build": "cd web && npm run build",
+    "ui:install": "cd web && npm install",
+    "tag-promote": "npm version patch",
+    "tag-push": "git push && git push --tags"
+  },
+  "keywords": [
+    "dns",
+    "cloudflare-workers",
+    "doh",
+    "ad-blocking",
+    "privacy"
+  ],
+  "author": "Hugo Koo",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Obein/DNS-Worker.git"
+  },
+  "homepage": "https://github.com/Obein/DNS-Worker#readme",
+  "bugs": {
+    "url": "https://github.com/Obein/DNS-Worker/issues"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261121.1",
+    "@types/node": "^26.6.6",
+    "concurrently": "^10.0.7",
+    "oxlint": "^1.94.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.166.0"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "undici": "^7.30.1"
+  },
+  "dependencies": {
+    "@noble/post-quantum": "^0.7.1"
+  }
+}
