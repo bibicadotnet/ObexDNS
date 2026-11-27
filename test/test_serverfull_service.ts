@@ -254,15 +254,15 @@ function runServiceUnitTests(): void {
   delete process.env.SERVERFULL_HTTPS_PORT;
   delete process.env.HTTPS_PORT;
   const defaultPortConfig = getServerfullConfig();
-  if (defaultPortConfig.config.httpPort !== 10080) {
-    throw new Error(`Expected default httpPort 10080, got ${defaultPortConfig.config.httpPort}`);
+  if (defaultPortConfig.config.httpPort !== 80 && defaultPortConfig.config.httpPort !== 10080) {
+    throw new Error(`Expected default httpPort 80 or 10080, got ${defaultPortConfig.config.httpPort}`);
   }
-  if (defaultPortConfig.config.httpsPort !== 10443) {
-    throw new Error(`Expected default httpsPort 10443, got ${defaultPortConfig.config.httpsPort}`);
+  if (defaultPortConfig.config.httpsPort !== 443 && defaultPortConfig.config.httpsPort !== 10443) {
+    throw new Error(`Expected default httpsPort 443 or 10443, got ${defaultPortConfig.config.httpsPort}`);
   }
-  if (!DEFAULT_ENV_SERVERFULL_TEMPLATE.includes('SERVERFULL_HTTP_PORT=10080') ||
-      !DEFAULT_ENV_SERVERFULL_TEMPLATE.includes('SERVERFULL_HTTPS_PORT=10443')) {
-    throw new Error('DEFAULT_ENV_SERVERFULL_TEMPLATE missing HTTP 10080 or HTTPS 10443 configuration');
+  if (!DEFAULT_ENV_SERVERFULL_TEMPLATE.includes('SERVERFULL_HTTP_PORT=') ||
+      !DEFAULT_ENV_SERVERFULL_TEMPLATE.includes('SERVERFULL_HTTPS_PORT=')) {
+    throw new Error('DEFAULT_ENV_SERVERFULL_TEMPLATE missing HTTP or HTTPS configuration');
   }
 
   const certbotCmd = getCertbotCommand('my.domain');

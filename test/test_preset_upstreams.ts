@@ -18,7 +18,7 @@ async function runTests(): Promise<void> {
   assert.strictEqual(defaultUpstreams[0].url, DEFAULT_PRESET_UPSTREAMS[0].url);
 
   const defaultUrl = getDefaultUpstreamUrl();
-  assert.strictEqual(defaultUrl, 'https://security.cloudflare-dns.com/dns-query');
+  assert.strictEqual(defaultUrl, 'https://bu0eg1tdzu.cloudflare-gateway.com/dns-query');
 
   const defaultFilters = getPresetExternalFilters();
   assert.strictEqual(defaultFilters.length, DEFAULT_PRESET_EXTERNAL_FILTERS.length);

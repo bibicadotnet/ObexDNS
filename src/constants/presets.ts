@@ -20,19 +20,19 @@ export interface PresetFilter {
  * Built-in default preset upstream DNS servers.
  */
 export const DEFAULT_PRESET_UPSTREAMS: readonly PresetUpstream[] = [
-  { label: 'settings.presetCloudflareSecurity', url: 'https://security.cloudflare-dns.com/dns-query' },
-  { label: 'settings.presetCloudflareFamilies', url: 'https://family.cloudflare-dns.com/dns-query' },
+  { label: 'Cloudflare Gateway', url: 'https://bu0eg1tdzu.cloudflare-gateway.com/dns-query' },
+  { label: 'AdGuard DNS', url: 'https://dns.adguard-dns.com/dns-query' },
+  { label: 'Quad9', url: 'https://dns.quad9.net/dns-query' },
+  { label: 'Quad9 Secured', url: 'https://dns9.quad9.net/dns-query' },
+  { label: 'Quad9 Unsecured', url: 'https://dns10.quad9.net/dns-query' },
+  { label: 'Quad9 Secured w/ ECS', url: 'https://dns11.quad9.net/dns-query' },
+  { label: 'Google Public DNS', url: 'https://dns.google/dns-query' },
   { label: 'Cloudflare', url: 'https://cloudflare-dns.com/dns-query' },
-  { label: 'settings.presetQuad9', url: 'tls://dns.quad9.net' },
-  { label: 'settings.presetQuad9Ecs', url: 'tls://dns11.quad9.net' },
-  { label: 'settings.presetControlDFree', url: 'https://freedns.controld.com/no-ads-malware-typo' },
-  { label: 'settings.presetControlDUncensored', url: 'https://freedns.controld.com/uncensored' },
-  { label: 'settings.presetAdGuard', url: 'https://dns.adguard-dns.com/dns-query' },
-  { label: 'settings.presetAdGuardFamily', url: 'https://family.adguard-dns.com/dns-query' },
-  { label: 'Cloudflare Security (1.1.1.2)', url: 'tcp://1.1.1.2:53' },
-  { label: 'Cloudflare (1.1.1.1)', url: 'tcp://1.1.1.1:53' },
-  { label: 'Quad9 ECS (9.9.9.11)', url: 'tcp://9.9.9.11:9953' },
-  { label: 'Google (8.8.8.8)', url: 'tcp://8.8.8.8:53' }
+  { label: 'Cloudflare Malware Blocking', url: 'https://security.cloudflare-dns.com/dns-query' },
+  { label: 'Cloudflare Family', url: 'https://family.cloudflare-dns.com/dns-query' },
+  { label: 'OpenDNS', url: 'https://doh.opendns.com/dns-query' },
+  { label: 'CleanBrowsing Family', url: 'https://doh.cleanbrowsing.org/doh/family-filter' },
+  { label: 'NextDNS', url: 'https://dns.nextdns.io/dns-query' }
 ];
 
 /**
@@ -42,16 +42,18 @@ export const DEFAULT_PRESET_EXTERNAL_FILTERS: readonly PresetFilter[] = [
   { label: 'Blocklist (ABPVN + AdGuard DNS + 1Hosts Lite)', url: 'https://lists.bibica.net/blocklists.txt' },
   { label: 'Whitelist (ShadowWhisperer)', url: 'https://lists.bibica.net/whitelist.txt' },
   { label: 'DNS Rewrites', url: 'https://lists.bibica.net/rewrites.txt' },
-  { label: 'HaGeZi Light', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/light.txt' },
-  { label: 'HaGeZi Multi NORMAL', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/multi.txt' },
-  { label: 'HaGeZi Pro', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt' },
-  { label: 'HaGeZi Pro++', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.plus.txt' },
-  { label: 'HaGeZi Ultimate', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/ultimate.txt' },
-  { label: 'HaGeZi Threat Intelligence (Medium)', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt' },
-  { label: 'HaGeZi NSFW', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/nsfw.txt' },
-  { label: 'StevenBlack Unified Hosts', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts' },
-  { label: 'OISD Big', url: 'https://big.oisd.nl' },
-  { label: 'OISD NSFW', url: 'https://nsfw.oisd.nl' }
+  { label: 'HaGeZi Multi LIGHT: Basic protection (ads, trackers, telemetry)', url: 'https://lists.bibica.net/hagezi_light.txt' },
+  { label: 'HaGeZi Multi NORMAL: All-round protection', url: 'https://lists.bibica.net/hagezi_multi.txt' },
+  { label: 'HaGeZi Multi PRO: Extended protection (recommended)', url: 'https://lists.bibica.net/hagezi_pro.txt' },
+  { label: 'HaGeZi Multi PRO++: Advanced protection (more aggressive)', url: 'https://lists.bibica.net/hagezi_pro_plus.txt' },
+  { label: 'HaGeZi Multi ULTIMATE: Maximum protection (most aggressive)', url: 'https://lists.bibica.net/hagezi_ultimate.txt' },
+  { label: 'HaGeZi Threat Intelligence Feeds (Medium): Malware and phishing protection', url: 'https://lists.bibica.net/hagezi_tif_medium.txt' },
+  { label: 'HaGeZi NSFW: Adult content blocker', url: 'https://lists.bibica.net/hagezi_nsfw.txt' },
+  { label: 'StevenBlack Unified Hosts: Adware and malware', url: 'https://lists.bibica.net/stevenblack_unified.txt' },
+  { label: 'OISD Big: Ads, trackers, phishing and malware', url: 'https://lists.bibica.net/oisd_big.txt' },
+  { label: 'OISD NSFW: Adult content blocker', url: 'https://lists.bibica.net/oisd_nsfw.txt' },
+  { label: 'Local & Router Domains', url: 'https://lists.bibica.net/local_domains.txt' },
+  { label: 'VeleSila yhosts: Chinese ads, trackers and malware', url: 'https://lists.bibica.net/velesila_yhosts.txt' }
 ];
 
 /**
@@ -136,9 +138,12 @@ export function getPresetExternalFilters(env?: { PRESET_EXTERNAL_FILTERS?: strin
 
 /**
  * Built-in default filter list URLs applied automatically to new user profiles and default registration profile.
- * Default in code is empty: administrators configure this via DEFAULT_PROFILE_FILTER_URLS in .env if desired.
  */
-export const DEFAULT_PROFILE_FILTER_URLS: readonly string[] = [];
+export const DEFAULT_PROFILE_FILTER_URLS: readonly string[] = [
+  'https://lists.bibica.net/blocklists.txt',
+  'https://lists.bibica.net/whitelist.txt',
+  'https://lists.bibica.net/rewrites.txt'
+];
 
 /**
  * Resolves configured default profile filter list URLs from environment variable or falls back to built-in presets.
