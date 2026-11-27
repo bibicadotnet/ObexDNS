@@ -50,7 +50,7 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 TMP_DIR=$(mktemp -d "/tmp/obexdns_backup_${TIMESTAMP}_XXXXXX")
 PKG_DIR="${TMP_DIR}/pkg"
-SNAP_DB="${TMP_DIR}/dns_worker_snapshot.sqlite"
+SNAP_DB=""
 ARCHIVE_NAME="${TMP_DIR}/obexdns_backup_${TIMESTAMP}.tar.gz"
 
 cleanup() {
@@ -60,37 +60,25 @@ trap cleanup EXIT INT TERM
 
 mkdir -p "$PKG_DIR"
 
-# 2. Hot-backup SQLite database using online .backup API (safe with WAL transactions)
+# 2. Hot-backup SQLite database directly into packaging directory
 if [ -s "$DB_FILE" ]; then
-  echo "[Backup] [1/4] Hot-backing up SQLite database ($DB_FILE)..."
-  sqlite3 "$DB_FILE" ".timeout 5000" ".backup main '${SNAP_DB}'"
+  echo "[Backup] [1/3] Hot-backing up SQLite database ($DB_FILE)..."
+  sqlite3 "$DB_FILE" ".timeout 5000" ".backup main '$PKG_DIR/dns_worker.sqlite'"
 
-  if [ ! -s "$SNAP_DB" ]; then
+  if [ ! -s "$PKG_DIR/dns_worker.sqlite" ]; then
     echo "[Backup] Error: Snapshot database file is empty."
     exit 1
   fi
-
-  # Fast sanity check without scanning all B-trees (avoids CPU spike on large databases)
-  QUICK=$(sqlite3 "$SNAP_DB" "PRAGMA quick_check(1);")
-  if [ "$QUICK" != "ok" ]; then
-    echo "[Backup] Error: Snapshot database quick check failed: $QUICK"
-    exit 1
-  fi
-  echo "[Backup]       -> SQLite snapshot verified (ok)."
+  echo "[Backup]       -> SQLite snapshot created."
 fi
 
 # 3. Stage persistent database and secret into packaging directory
-echo "[Backup] [2/4] Staging persistent core data files..."
-if [ -s "$SNAP_DB" ]; then
-  cp -f "$SNAP_DB" "$PKG_DIR/dns_worker.sqlite"
-fi
-
 if [ -f "$DATA_DIR/.jwt_secret" ]; then
   cp -f "$DATA_DIR/.jwt_secret" "$PKG_DIR/.jwt_secret"
 fi
 
 # 4. Pack staged files into gzip archive (using gzip -1 directly for lowest CPU impact)
-echo "[Backup] [3/4] Creating archive ($ARCHIVE_NAME)..."
+echo "[Backup] [2/3] Creating archive ($ARCHIVE_NAME)..."
 tar -cf - -C "$PKG_DIR" . | gzip -1 > "$ARCHIVE_NAME"
 
 if [ ! -s "$ARCHIVE_NAME" ]; then

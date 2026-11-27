@@ -115,10 +115,32 @@ export async function runManualBackup(): Promise<{ success: boolean; message: st
 }
 
 export async function downloadBackup(): Promise<void> {
-  const link = document.createElement("a");
-  link.href = "/api/admin/backup/download";
-  link.setAttribute("download", "");
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const res = await fetch("/api/admin/backup/download");
+  if (!res.ok) {
+    let err = "Download failed";
+    try {
+      const data = await res.json();
+      err = data.error || err;
+    } catch {}
+    throw new Error(err);
+  }
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const disp = res.headers.get("Content-Disposition");
+  let filename = "";
+  if (disp) {
+    const match = disp.match(/filename="?([^";]+)"?/i);
+    if (match) filename = match[1];
+  }
+  if (!filename) {
+    const now = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+    filename = `obexdns_backup_${now}.tar.gz`;
+  }
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 }
