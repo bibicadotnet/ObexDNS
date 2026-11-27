@@ -68,16 +68,8 @@ export const LogsContent: React.FC<LogsContentProps> = ({
   }, [scrollContainerRef]);
 
   useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    container.addEventListener("scroll", checkScroll, { passive: true });
     checkScroll();
-
-    return () => {
-      container.removeEventListener("scroll", checkScroll);
-    };
-  }, [scrollContainerRef, checkScroll, logs]);
+  }, [checkScroll, logs]);
 
   const scrollToTop = () => {
     scrollContainerRef.current?.scrollTo({

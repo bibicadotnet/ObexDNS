@@ -13,12 +13,12 @@
  */
 import { iconCandidates } from './iconCandidates';
 
-const UPSTREAM_TIMEOUT_MS = 2500;
+const UPSTREAM_TIMEOUT_MS = 1000;
 /** A whole lookup (all providers, both hosts) gives up after this long. */
-const TOTAL_BUDGET_MS = 7000;
+const TOTAL_BUDGET_MS = 2500;
 export const MAX_ICON_BYTES = 256 * 1024;
 export const ICON_TTL_SEC = 30 * 24 * 60 * 60;
-export const ICON_MISS_TTL_SEC = 6 * 60 * 60;
+export const ICON_MISS_TTL_SEC = 2 * 60 * 60;
 
 const SAFE_ICON_TYPES = new Set([
   'image/avif',
@@ -49,9 +49,9 @@ interface IconSource {
 }
 
 const SOURCES: IconSource[] = [
-  { url: (h) => `https://favicon.im/zh/${h}?larger=true&throw-error-on-404=true` },
   { url: (h) => `https://icons.duckduckgo.com/ip3/${h}.ico` },
   { url: (h) => `https://icons.bitwarden.net/${h}/icon.png`, rejectImage: BITWARDEN_DEFAULT_GLOBE },
+  { url: (h) => `https://favicon.im/zh/${h}?larger=true&throw-error-on-404=true` },
 ];
 
 const LABEL = '[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?';

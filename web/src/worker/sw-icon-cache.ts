@@ -24,6 +24,8 @@ export const ONE_DAY = 24 * 60 * 60 * 1000;
 export const ICON_FRESH_THRESHOLD = Math.floor(ICON_ENTRIES_CACHE_DAYS / 2) * ONE_DAY;
 /** Expiry threshold: icons older than this are removed by the cleanup sweep. */
 export const ICON_EXPIRY_THRESHOLD = ICON_ENTRIES_CACHE_DAYS * ONE_DAY;
+/** Negative cache threshold for missing icons (404/placeholder): 2 hours. */
+export const ICON_MISS_FRESH_THRESHOLD = 2 * 60 * 60 * 1000;
 
 // An elegant, lightweight SVG placeholder showing a generic globe icon
 export const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`;
@@ -35,7 +37,8 @@ export function getPlaceholderResponse(): Response {
   return new Response(PLACEHOLDER_SVG, {
     headers: {
       "Content-Type": "image/svg+xml",
-      "Cache-Control": "public, max-age=86400"
+      "Cache-Control": "public, max-age=7200",
+      "X-Icon-Miss": "1"
     }
   });
 }
@@ -106,21 +109,24 @@ export async function handleIconFetch(event: FetchEvent): Promise<Response> {
 
   if (cachedResponse) {
     const age = await getCacheAge(cache, event.request);
+    const isMiss = cachedResponse.headers.get("X-Icon-Miss") === "1";
+    const freshThreshold = isMiss ? ICON_MISS_FRESH_THRESHOLD : ICON_FRESH_THRESHOLD;
 
     // Fresh cache: return immediately, no network request.
-    if (age < ICON_FRESH_THRESHOLD) {
+    if (age < freshThreshold) {
       return cachedResponse;
     }
 
     // Stale cache (between fresh threshold and expiry): serve immediately,
-    // trigger a background revalidation — do NOT cache 404 placeholders.
+    // trigger a background revalidation.
     if (age < ICON_EXPIRY_THRESHOLD) {
       fetchIcon(event.request.url)
         .then((networkResponse) => {
           if (networkResponse && (networkResponse.ok || networkResponse.status === 0)) {
             putInCache(cache, event.request, networkResponse);
+          } else {
+            putInCache(cache, event.request, getPlaceholderResponse());
           }
-          // 404 → let the stale cached entry remain until it expires naturally
         })
         .catch(() => {
           /* Ignore background update errors */
@@ -136,38 +142,62 @@ export async function handleIconFetch(event: FetchEvent): Promise<Response> {
       await putInCache(cache, event.request, networkResponse.clone());
       return networkResponse;
     }
-    // 404 or other error → return in-memory placeholder, do NOT persist to cache.
-    // This prevents accumulating timestamp+body entries for domains with no icon.
-    return cachedResponse ?? getPlaceholderResponse();
+    // 404 or other error → return in-memory placeholder, and persist placeholder briefly to cache.
+    const placeholder = getPlaceholderResponse();
+    await putInCache(cache, event.request, placeholder.clone());
+    return placeholder;
   } catch {
     return cachedResponse ?? getPlaceholderResponse();
   }
 }
 
 /**
- * Prefetches and caches a list of domains.
+ * Prefetches and caches a list of domains in throttled batches.
  */
 export function handleIconPrefetch(domains: string[] = []): void {
   caches.open(CACHE_NAME).then((cache) => {
-    domains.forEach((domain) => {
-      const url = `${DUCKDUCKGO_ICON_PREFIX}${domain.replace(/^\*\./, "")}.ico`;
-      const request = new Request(url);
+    const uniqueDomains = Array.from(new Set(domains));
+    const batchSize = 6;
+    let index = 0;
 
-      cache.match(request).then((res) => {
-        if (!res) {
-          fetchIcon(url)
-            .then((networkResponse) => {
-              // Only cache successfully retrieved icons; skip 404s and errors.
-              if (networkResponse && (networkResponse.ok || networkResponse.status === 0)) {
-                putInCache(cache, request, networkResponse);
-              }
-            })
-            .catch(() => {
-              /* Prefetch failures are silently ignored */
-            });
+    const processNextBatch = () => {
+      if (index >= uniqueDomains.length) return;
+      const batch = uniqueDomains.slice(index, index + batchSize);
+      index += batchSize;
+
+      Promise.all(
+        batch.map(async (domain) => {
+          const url = `${DUCKDUCKGO_ICON_PREFIX}${domain.replace(/^\*\./, "")}.ico`;
+          const request = new Request(url);
+
+          const res = await cache.match(request);
+          if (res) {
+            const age = await getCacheAge(cache, request);
+            const isMiss = res.headers.get("X-Icon-Miss") === "1";
+            if (age < (isMiss ? ICON_MISS_FRESH_THRESHOLD : ICON_FRESH_THRESHOLD)) {
+              return; // Already fresh in cache
+            }
+          }
+
+          try {
+            const networkResponse = await fetchIcon(url);
+            if (networkResponse && (networkResponse.ok || networkResponse.status === 0)) {
+              await putInCache(cache, request, networkResponse);
+            } else {
+              await putInCache(cache, request, getPlaceholderResponse());
+            }
+          } catch {
+            /* Prefetch failures are silently ignored */
+          }
+        })
+      ).finally(() => {
+        if (index < uniqueDomains.length) {
+          setTimeout(processNextBatch, 50);
         }
       });
-    });
+    };
+
+    processNextBatch();
   });
 }
 
