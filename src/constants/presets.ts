@@ -62,7 +62,7 @@ export const DEFAULT_SUBSTITUTE_DOMAIN = 'www.okx.com';
 /**
  * Built-in default fail-open upstream address.
  */
-export const DEFAULT_FAIL_OPEN_UPSTREAM = 'https://freedns.controld.com/no-ads-malware-typo';
+export const DEFAULT_FAIL_OPEN_UPSTREAM = 'https://bu0eg1tdzu.cloudflare-gateway.com/dns-query';
 
 /**
  * Resolves configured preset upstreams from environment variables or falls back to built-in presets.

@@ -57,7 +57,7 @@ async function runTests() {
   assert.strictEqual(sqliteQueryCount, 0, 'Unauthenticated lookup must NOT query SQLite or hijack user profiles');
   const fallbackSettings = JSON.parse(fallbackProf.settings);
   assert.strictEqual(fallbackSettings.log_retention_days, 0, 'Fallback profile must have zero log retention');
-  assert.ok(fallbackSettings.upstream[0].includes('controld'), 'Fallback profile must use FAIL_OPEN_UPSTREAM');
+  assert.ok(fallbackSettings.upstream[0].includes('cloudflare-gateway'), 'Fallback profile must use FAIL_OPEN_UPSTREAM');
 
   // Configured default key lookup must resolve via key and populate L1 cache
   setDefaultProfileMemoryCache(null);

@@ -52,7 +52,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const defaultWindowsCmd = `irm "${origin}/setup.ps1" | iex`;
   const defaultAppleUrl = `${origin}/apple`;
   const defaultDohUrl = `${origin}/dns-query`;
-  const defaultDotHost = currentHostname;
+  const defaultDotHost = currentHostname.startsWith("dot.") ? currentHostname : `dot.${currentHostname}`;
 
   const authCardRef = useRef<HTMLDivElement>(null);
 

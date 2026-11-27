@@ -277,7 +277,7 @@ export default {
 
       // Windows Setup PowerShell Script Route
       if (url.pathname === '/setup.ps1') {
-        // key is optional: without it the script installs the default profile (DoH /dns-query + DoT on the bare domain).
+        // key is optional: without it the script installs the default profile (DoH /dns-query + DoT on dot.<domain>).
         const key = url.searchParams.get('key') || undefined;
         if (key && !ACCESS_KEY_REGEX.test(key)) {
           return new Response('# Invalid key parameter', { status: 400 });

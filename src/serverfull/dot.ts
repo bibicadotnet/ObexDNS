@@ -229,8 +229,10 @@ export class DotDnsServer {
       let profile = sniKey ? await resolveProfileByKey(sniKey, env, ctx) : null;
       let noLog = false;
       if (!profile) {
-        noLog = true;
         profile = await resolveDefaultProfile(env, ctx);
+        if (!profile || profile.id === 'default') {
+          noLog = true;
+        }
       }
       if (!profile) {
         // Drop connection if fallback is impossible

@@ -5,7 +5,7 @@
 
 export interface WindowsSetupOptions {
   origin: string;
-  /** Profile / access point key. Omitted = default profile (DoH at /dns-query, DoT at the bare domain). */
+  /** Profile / access point key. Omitted = default profile (DoH at /dns-query, DoT at dot.<domain>). */
   key?: string;
   dotDomain?: string;
   packageUrl?: string;
@@ -38,11 +38,12 @@ export function generateWindowsSetupScript(options: WindowsSetupOptions): string
   const defaultToolsUrl = 'https://github.com/bibicadotnet/ObexDNS/releases/download/windows-tools-setup/windows-tools-setup.zip';
   const packageUrl = options.packageUrl && options.packageUrl.trim() ? options.packageUrl.trim() : defaultToolsUrl;
 
-  // No key: use the server's default profile (DoH canonical /dns-query, DoT on the bare domain).
+  // No key: use the server's default profile (DoH canonical /dns-query, DoT on dot.<domain>).
   const key = (options.key || '').trim();
   const dohUpstream = key ? `${cleanOrigin}/${key}` : `${cleanOrigin}/dns-query`;
   const cleanDotDomain = (options.dotDomain || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
-  const dotUpstreamLine = cleanDotDomain ? `  - tls://${key ? `${key}.` : ''}${cleanDotDomain}` : '';
+  const dotPrefix = key ? `${key}.` : (cleanDotDomain.startsWith('dot.') ? '' : 'dot.');
+  const dotUpstreamLine = cleanDotDomain ? `  - tls://${dotPrefix}${cleanDotDomain}` : '';
 
   const reElevateUrl = key ? `${cleanOrigin}/setup.ps1?key=${encodeURIComponent(key)}` : `${cleanOrigin}/setup.ps1`;
 
@@ -81,22 +82,57 @@ Clear-Host
         }
     }
 
+    function Kill-Lockers(\$path) {
+        # Close any editor / viewer / tail processes locking files in target directory (excluding installer process)
+        Get-CimInstance Win32_Process -EA SilentlyContinue | ? {
+            \$_.CommandLine -and \$_.ProcessId -ne \$PID -and (
+                \$_.CommandLine -like "*\$path*" -or
+                \$_.CommandLine -like '*dnsproxy.log*'
+            )
+        } | % { Stop-Process -Id \$_.ProcessId -Force -EA SilentlyContinue }
+    }
+
     function Unload-WinDivert {
-        Get-CimInstance Win32_SystemDriver -Filter "Name LIKE 'WinDivert%'" | % { sc.exe stop \$_.Name; sc.exe delete \$_.Name } | Out-Null
-        Start-Sleep 2
+        Get-CimInstance Win32_SystemDriver -Filter "Name LIKE 'WinDivert%'" -EA SilentlyContinue | % {
+            sc.exe stop \$_.Name | Out-Null
+            sc.exe delete \$_.Name | Out-Null
+        }
+        net stop WinDivert /y *>\$null
+        Start-Sleep -m 1500
+    }
+
+    function Purge-Directory(\$p) {
+        if (!(Test-Path \$p)) { return }
+        Kill-Lockers \$p
+        # Clear attributes that block deletion
+        cmd.exe /c "attrib -r -s -h ""\$p\\*"" /s /d" *>\$null
+        # Attempt to clear or remove log file specifically if still open/held
+        Remove-Item "\$p\\dnsproxy\\dnsproxy.log" -Force -EA SilentlyContinue
+        if (Test-Path "\$p\\dnsproxy\\dnsproxy.log") {
+            Clear-Content "\$p\\dnsproxy\\dnsproxy.log" -Force -EA SilentlyContinue
+        }
+        # Aggressive cmd rd removal
+        cmd.exe /c "rd /s /q ""\$p""" *>\$null
+        if (Test-Path \$p) {
+            Get-ChildItem \$p -Recurse -Force -EA SilentlyContinue | Sort-Object -Property FullName -Descending | Remove-Item -Force -Recurse -EA SilentlyContinue
+            Remove-Item \$p -Force -Recurse -EA SilentlyContinue
+        }
     }
 
     function Remove-Install {
         if (Test-Path \$dir) { Restore-Dns }
-        Stop-Service \$svc -Force
-        Stop-Process -Name dnsproxy, winws, goodbyedpi, net, net1 -Force
-        Get-CimInstance Win32_Process -Filter "Name='wscript.exe'" | ? CommandLine -like '*${hostSlug}-startup.vbs*' | % { Stop-Process -Id \$_.ProcessId -Force }
+        Stop-Service \$svc -Force -EA SilentlyContinue
+        \$svc | % { sc.exe stop \$_; sc.exe delete \$_ } | Out-Null
+        Stop-Process -Name dnsproxy, winws, nssm, goodbyedpi, net, net1 -Force -EA SilentlyContinue
+        Get-CimInstance Win32_Process -Filter "Name='wscript.exe'" -EA SilentlyContinue | ? CommandLine -like '*${hostSlug}-startup.vbs*' | % { Stop-Process -Id \$_.ProcessId -Force -EA SilentlyContinue }
         Remove-Item "\$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\${hostSlug}.lnk" -Force -ErrorAction SilentlyContinue
         Unregister-ScheduledTask ${hostSlug}-startup -Confirm:\$false -ErrorAction SilentlyContinue
-        \$svc | % { sc.exe delete \$_ } | Out-Null
-        Wait-Process -Name dnsproxy, winws -Timeout 3
+        Wait-Process -Name dnsproxy, winws, nssm -Timeout 3 -EA SilentlyContinue
         Unload-WinDivert
-        for (\$i = 0; \$i -lt 2 -and (Test-Path \$dir); \$i++) { Remove-Item \$dir -Recurse -Force; Start-Sleep 2 }
+        for (\$i = 0; \$i -lt 3 -and (Test-Path \$dir); \$i++) {
+            Purge-Directory \$dir
+            if (Test-Path \$dir) { Start-Sleep 1 }
+        }
     }
 }
 . \$lib
@@ -129,14 +165,23 @@ foreach (\$o in \$others) {
         Say "Found existing installation at \$o, uninstalling..." Yellow
         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\$o\\uninstall.ps1"
     }
+    if (Test-Path \$o) {
+        Purge-Directory \$o
+    }
 }
 \$left = @(\$others | ? { Test-Path \$_ })
-if (\$left) { Fail "Cannot remove existing installation: \$(\$left -join ', '). Run its uninstall.bat (or delete it) manually, restart your computer if WinDivert is locked, then run the installer again." }
+if (\$left) {
+    Say "Note: Some files in \$(\$left -join ', ') are locked (e.g. open log or driver) and will be removed on reboot. Services have been removed. Continuing installation..." Yellow
+}
 
 # ---- Cleanup previous install ----
-if (Test-Path \$dir) { Say 'Found existing installation, restoring DNS and cleaning up...' }
-Remove-Install
-if (Test-Path \$dir) { Fail 'Cannot remove existing installation. WinDivert driver may be locked - restart your computer and run the installer again.' }
+if (Test-Path \$dir) {
+    Say 'Found existing installation, restoring DNS and cleaning up...'
+    Remove-Install
+    if (Test-Path \$dir) {
+        Say "Existing directory \$dir has locked files (e.g. open log). Overwriting files and continuing..." Yellow
+    }
+}
 
 # ---- Backup DNS ----
 Say 'Backing up current DNS settings...'

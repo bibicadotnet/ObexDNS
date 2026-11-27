@@ -192,16 +192,26 @@ export async function handleDoHRequest(
 ): Promise<Response> {
   // RFC 8484 §5.2: Minimum HTTP version restriction for DoH
   // "The DNS-over-HTTPS protocol MUST be implemented using HTTP/2 or later. Clients and servers MUST NOT negotiate HTTP/1.1 for DoH."
-  const httpProto = (request.cf?.httpProtocol as string | undefined) || request.headers.get('X-Http-Version');
-  if (httpProto && (httpProto === 'HTTP/1.0' || httpProto === 'HTTP/1.1' || httpProto === '1.0' || httpProto === '1.1')) {
-    return new Response(
-      'This server implements RFC 8484 - DNS Queries over HTTP, and requires HTTP/2 or later in accordance with section 5.2 of the RFC.\n',
-      {
-        status: 505,
-        statusText: 'HTTP Version Not Supported',
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-      }
-    );
+  // Reverse proxies (Bunny, Caddy, Nginx) terminate TLS at edge and proxy to the container via HTTP/1.1 or plain HTTP.
+  // We only enforce HTTP/2 minimum on direct, unproxied HTTPS connections.
+  const isProxiedOrPlainHttp = Boolean(
+    request.headers.get('x-forwarded-for') ||
+    request.headers.get('x-forwarded-proto') ||
+    request.headers.get('x-real-ip') ||
+    request.url.startsWith('http://')
+  );
+  if (!isProxiedOrPlainHttp) {
+    const httpProto = (request.cf?.httpProtocol as string | undefined) || request.headers.get('X-Http-Version');
+    if (httpProto && (httpProto === 'HTTP/1.0' || httpProto === 'HTTP/1.1' || httpProto === '1.0' || httpProto === '1.1')) {
+      return new Response(
+        'This server implements RFC 8484 - DNS Queries over HTTP, and requires HTTP/2 or later in accordance with section 5.2 of the RFC.\n',
+        {
+          status: 505,
+          statusText: 'HTTP Version Not Supported',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        }
+      );
+    }
   }
 
   const cache = (caches as any).default;
@@ -214,8 +224,10 @@ export async function handleDoHRequest(
     let profile = profileKey ? await resolveProfileByKey(profileKey, env, ctx) : null;
     let noLog = false;
     if (!profile) {
-      noLog = true;
       profile = await resolveDefaultProfile(env, ctx);
+      if (!profile || profile.id === 'default') {
+        noLog = true;
+      }
     }
     if (!profile) {
       return new Response('Invalid Profile Key', { status: 404 });

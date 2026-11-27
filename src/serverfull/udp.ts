@@ -106,6 +106,8 @@ export class UdpDnsServer {
         return;
       }
 
+      const noLog = profile.id === 'default';
+
       const context: Context = {
         profileId: profile.id,
         accessPointId: profile.access_point_id,
@@ -113,8 +115,7 @@ export class UdpDnsServer {
         startTime: Date.now(),
         env,
         ctx,
-        // Classic UDP has no profile key: always the default profile, which is never logged
-        noLog: true
+        noLog
       };
 
       const host = rinfo.address.includes(':') ? `[${rinfo.address}]` : rinfo.address;
