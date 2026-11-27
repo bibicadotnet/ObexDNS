@@ -130,7 +130,7 @@ async function uploadFile(localPath, remoteName) {
   }
 
   const fileData = fs.readFileSync(localPath);
-  const payloadHash = sha256(fileData);
+  const payloadHash = 'UNSIGNED-PAYLOAD';
   const remoteKey = cfg.prefix ? `${cfg.prefix}/${remoteName}` : remoteName;
   const targetUrl = buildS3Url(cfg.endpoint, cfg.bucket, remoteKey);
 
@@ -343,7 +343,7 @@ async function runUnifiedBackup(localPath, timestamp, keepDays) {
   }
 
   const fileData = fs.readFileSync(localPath);
-  const payloadHash = sha256(fileData);
+  const payloadHash = 'UNSIGNED-PAYLOAD';
   const sizeMb = (fileData.length / 1024 / 1024).toFixed(2);
 
   // 1. Upload timestamped backup
