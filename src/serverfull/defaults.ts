@@ -185,32 +185,6 @@ DATABASE_SERVICE=File
 # Thư mục con trong bucket để chứa các bản sao lưu (mặc định: "obexdns").
 # BACKUP_S3_PREFIX=obexdns
 
-# Chunk size in KiB when taking SQLite snapshot and compressing the archive (default: 512 = 512 KiB).
-# Data is processed in small slices instead of all at once to avoid locking the CPU.
-# Dung lượng mỗi lát cắt (KiB) khi sao chép database và nén file backup (mặc định: 512 = 512 KiB).
-# Dữ liệu được chia nhỏ thành từng phần thay vì xử lý ồ ạt một lần để không chiếm dụng hết CPU.
-# BACKUP_YIELD_CHUNK_KB=512
-
-# Pause duration in milliseconds after each chunk during snapshot and compression (default: 10).
-# Pausing briefly yields CPU time to keep the server responsive and prevent long CPU spikes that could disrupt DNS resolution. Set to 0 to disable pausing.
-# Thời gian nghỉ (mili giây) sau mỗi lát cắt khi sao chép và nén file backup (mặc định: 10; 0 = không nghỉ).
-# Khoảng nghỉ ngắn này nhường lại chu kỳ CPU cho luồng DNS, giúp giảm tải đột biến và giữ cho việc phân giải DNS không bị gián đoạn.
-# BACKUP_YIELD_SLEEP_MS=10
-
-# Compression level for zstd when creating .tar.zst backup archives (default: 1, range: 1-9).
-# Level 1 is fastest and uses the lowest CPU. Because the SQLite database contains binary filter lists that cannot be compressed much further, higher levels (3-9) consume significantly more CPU while saving very little disk space. Keep at 1 on 1-CPU VPS.
-# Mức độ nén zstd khi tạo file backup .tar.zst (mặc định: 1, dải từ 1 đến 9).
-# Mức 1 nén nhanh nhất và tốn ít CPU nhất. Do database chứa danh sách chặn dạng nhị phân khó nén, việc tăng lên mức cao hơn (3-9) chỉ làm tốn thêm CPU mà dung lượng file giảm không đáng kể. Trên VPS 1 CPU nên giữ nguyên mức 1.
-# BACKUP_ZSTD_LEVEL=1
-
-# Also keep a local copy of backup archives on the server disk (default: false).
-# Đồng thời lưu một bản sao lưu cục bộ trên ổ cứng máy chủ (mặc định: false).
-# BACKUP_KEEP_LOCAL=false
-
-# Directory path for local backup archives when BACKUP_KEEP_LOCAL is enabled (default: /data/backups).
-# Đường dẫn thư mục lưu các bản backup cục bộ khi bật BACKUP_KEEP_LOCAL (mặc định: /data/backups).
-# BACKUP_LOCAL_DEST=/data/backups
-
 # SQLite in-memory page cache size in KiB (default: 32000 = 32 MiB; lower values reduce RAM usage).
 # Kích thước bộ nhớ đệm trang SQLite tính bằng KiB (mặc định: 32000 = 32 MiB; giảm xuống nếu RAM hạn chế).
 # SQLITE_CACHE_SIZE_KB=32000
