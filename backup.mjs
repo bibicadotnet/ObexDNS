@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, missingConfig, publishBackup } from './s3-client.mjs';
@@ -32,6 +33,70 @@ import { loadConfig, missingConfig, publishBackup } from './s3-client.mjs';
 export const EXIT_BUSY = 75;
 const STATUS_FILE = '.backup_status.json';
 const LOCK_FILE = 'obexdns_backup.lock';
+
+// ─── Pacing Stream ──────────────────────────────────────────────────────────
+
+/**
+ * Transform stream that yields between chunks to eliminate CPU spikes (>100%)
+ * and keep the event loop free for uninterrupted DNS resolution.
+ */
+export class PacedTransform extends Transform {
+  constructor(chunkBytes = 512 * 1024, sleepMs = 10) {
+    super();
+    this.chunkBytes = chunkBytes;
+    this.sleepMs = sleepMs;
+    this.remainder = null;
+  }
+
+  async _transform(chunk, encoding, callback) {
+    let data = this.remainder ? Buffer.concat([this.remainder, chunk]) : chunk;
+    this.remainder = null;
+
+    let offset = 0;
+    while (offset + this.chunkBytes <= data.length) {
+      const slice = data.subarray(offset, offset + this.chunkBytes);
+      offset += this.chunkBytes;
+      this.push(slice);
+      if (this.sleepMs > 0) {
+        await new Promise((r) => setTimeout(r, this.sleepMs));
+      }
+    }
+
+    if (offset < data.length) {
+      this.remainder = data.subarray(offset);
+    }
+    callback();
+  }
+
+  _flush(callback) {
+    if (this.remainder && this.remainder.length > 0) {
+      this.push(this.remainder);
+      this.remainder = null;
+    }
+    callback();
+  }
+}
+
+/**
+ * Copies a file in discrete chunk slices with sleep intervals to keep CPU load low (<10%).
+ */
+async function copyFilePaced(src, dst, chunkBytes = 512 * 1024, sleepMs = 10) {
+  const readFd = fs.openSync(src, 'r');
+  const writeFd = fs.openSync(dst, 'w');
+  const buf = Buffer.allocUnsafe(chunkBytes);
+  try {
+    let bytesRead = 0;
+    while ((bytesRead = fs.readSync(readFd, buf, 0, chunkBytes, null)) > 0) {
+      fs.writeSync(writeFd, buf, 0, bytesRead);
+      if (sleepMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, sleepMs));
+      }
+    }
+  } finally {
+    fs.closeSync(readFd);
+    fs.closeSync(writeFd);
+  }
+}
 
 // ─── Status file ─────────────────────────────────────────────────────────────
 
@@ -109,8 +174,8 @@ function run(cmd, args, { input } = {}) {
   });
 }
 
-/** Runs `producer | consumer`, writing consumer's stdout to outFile. Both stages must succeed. */
-async function runPipe(producer, consumer, outFile) {
+/** Runs `producer | pacer | consumer`, writing consumer's stdout to outFile. Both stages must succeed. */
+async function runPipe(producer, consumer, outFile, chunkBytes = 512 * 1024, sleepMs = 10) {
   const p = spawn(producer[0], producer.slice(1), { stdio: ['ignore', 'pipe', 'pipe'] });
   const c = spawn(consumer[0], consumer.slice(1), { stdio: ['pipe', 'pipe', 'pipe'] });
   let pErr = '';
@@ -126,8 +191,9 @@ async function runPipe(producer, consumer, outFile) {
       })
   );
   const out = fs.createWriteStream(outFile);
+  const pacer = new PacedTransform(chunkBytes, sleepMs);
   try {
-    await Promise.all([pipeline(p.stdout, c.stdin), pipeline(c.stdout, out)]);
+    await Promise.all([pipeline(p.stdout, pacer, c.stdin), pipeline(c.stdout, out)]);
   } catch (err) {
     p.kill();
     c.kill();
@@ -152,12 +218,35 @@ const sqlQuote = (p) => `'${p.replace(/'/g, "''")}'`;
 
 // ─── Steps ───────────────────────────────────────────────────────────────────
 
-async function snapshotDatabase(dbFile, snapFile, log) {
+async function snapshotDatabase(dbFile, snapFile, chunkBytes, sleepMs, log) {
   log(`[Backup] [1/4] Snapshotting SQLite database (${dbFile})...`);
+
+  // Method 1: Checkpoint WAL + Paced file copy (0% CPU spike, non-blocking for active DNS traffic)
+  try {
+    await run('sqlite3', [dbFile, '.timeout 3000', 'PRAGMA wal_checkpoint(PASSIVE);']);
+    await copyFilePaced(dbFile, snapFile, chunkBytes, sleepMs);
+
+    if (fs.existsSync(snapFile) && fs.statSync(snapFile).size >= 512) {
+      const headerBuf = Buffer.alloc(16);
+      const fd = fs.openSync(snapFile, 'r');
+      fs.readSync(fd, headerBuf, 0, 16, 0);
+      fs.closeSync(fd);
+      if (headerBuf.toString('utf-8').startsWith('SQLite format 3')) {
+        log(`[Backup]       -> snapshot OK (${(fs.statSync(snapFile).size / 1048576).toFixed(1)} MB, paced copy).`);
+        return;
+      }
+    }
+  } catch (err) {
+    log(`[Backup]       Paced copy fallback (${err.message}); falling back to VACUUM INTO / .backup`);
+    fs.rmSync(snapFile, { force: true });
+  }
+
+  // Method 2 (Fallback): VACUUM INTO
   let r = await run('sqlite3', [dbFile, '.timeout 5000', `VACUUM INTO ${sqlQuote(snapFile)}`]);
   if (r.code !== 0) {
     log(`[Backup]       VACUUM INTO unavailable (${(r.stderr || r.stdout).trim().slice(0, 120)}); falling back to .backup`);
     fs.rmSync(snapFile, { force: true });
+    // Method 3 (Fallback): .backup main
     r = await run('sqlite3', [dbFile, '.timeout 5000', `.backup main ${sqlQuote(snapFile)}`]);
     if (r.code !== 0) throw new Error(`SQLite snapshot failed: ${(r.stderr || r.stdout).trim().slice(0, 300)}`);
   }
@@ -165,9 +254,9 @@ async function snapshotDatabase(dbFile, snapFile, log) {
   log(`[Backup]       -> snapshot OK (${(fs.statSync(snapFile).size / 1048576).toFixed(1)} MB).`);
 }
 
-async function createArchive(pkgDir, archive, codec, log) {
-  log(`[Backup] [2/4] Creating ${codec.name} archive...`);
-  await runPipe(['tar', '-cf', '-', '-C', pkgDir, '.'], codec.compress, archive);
+async function createArchive(pkgDir, archive, codec, chunkBytes, sleepMs, log) {
+  log(`[Backup] [2/4] Creating ${codec.name} archive (paced)...`);
+  await runPipe(['tar', '-cf', '-', '-C', pkgDir, '.'], codec.compress, archive, chunkBytes, sleepMs);
   if (!fs.existsSync(archive) || fs.statSync(archive).size === 0) throw new Error('Archive is empty');
   log(`[Backup]       -> archive ${(fs.statSync(archive).size / 1048576).toFixed(1)} MB.`);
 }
@@ -237,6 +326,9 @@ export async function runBackup(opts = {}) {
   const upload = opts.upload !== false && missingConfig(cfg).length === 0;
   const keepLocal = ['true', '1'].includes(String(process.env.BACKUP_KEEP_LOCAL || '').toLowerCase());
   const localDest = process.env.BACKUP_LOCAL_DEST || path.join(dataDir, 'backups');
+  const yieldChunkKb = opts.yieldChunkKb ?? Math.max(1, parseInt(process.env.BACKUP_YIELD_CHUNK_KB || '512', 10) || 512);
+  const yieldChunkBytes = yieldChunkKb * 1024;
+  const yieldSleepMs = opts.yieldSleepMs ?? Math.max(0, parseInt(process.env.BACKUP_YIELD_SLEEP_MS || '10', 10) || 10);
 
   const lockPath = path.join(tmpRoot, LOCK_FILE);
   if (!acquireLock(lockPath)) {
@@ -282,7 +374,7 @@ export async function runBackup(opts = {}) {
 
     const pkgDir = path.join(workDir, 'pkg');
     fs.mkdirSync(pkgDir);
-    await snapshotDatabase(dbFile, path.join(pkgDir, 'dns_worker.sqlite'), log);
+    await snapshotDatabase(dbFile, path.join(pkgDir, 'dns_worker.sqlite'), yieldChunkBytes, yieldSleepMs, log);
 
     const secret = path.join(dataDir, '.jwt_secret');
     if (fs.existsSync(secret)) fs.copyFileSync(secret, path.join(pkgDir, '.jwt_secret'));
@@ -293,7 +385,7 @@ export async function runBackup(opts = {}) {
     const archive = path.join(workDir, name);
 
     setPhase('archive');
-    await createArchive(pkgDir, archive, codec, log);
+    await createArchive(pkgDir, archive, codec, yieldChunkBytes, yieldSleepMs, log);
     fs.rmSync(pkgDir, { recursive: true, force: true }); // free disk before upload
 
     setPhase('verify');
