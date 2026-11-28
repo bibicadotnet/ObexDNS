@@ -186,6 +186,12 @@ export async function handleScheduled(
       console.error("[Cron] Cloudflare IP range sync failed:", e);
     }
 
+    // ── CONNECTION GUARD (country lists + allowlist sync, idle entry cleanup) ─
+    if (env.ENABLE_ALLOW_COUNTRIES === 'true' || env.ENABLE_RATE_LIMIT === 'true') {
+      const { guardTick } = await import('./serverfull/guard');
+      await guardTick(env);
+    }
+
     // ── SYSTEM SHARED LISTS SYNC (Configurable Interval with ETag/304) ───────
     try {
       const SYSTEM_SYNC_INTERVAL_SEC = Number(env.SYNC_SYSTEM_INTERVAL_SEC) || 21600; // 6 hours default

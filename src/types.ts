@@ -51,6 +51,26 @@ export interface Env {
   LIST_FETCH_MAX_REDIRECTS?: string | number;
   CLEANUP_INTERVAL_SEC?: string | number;
   CF_IP_SYNC_INTERVAL_SEC?: string | number;
+  // Connection guard (Serverfull): country allow-list + per-IP rate limit
+  ENABLE_ALLOW_COUNTRIES?: string;
+  ALLOW_COUNTRIES?: string;
+  ENABLE_RATE_LIMIT?: string;
+  RATE_LIMIT_TCP?: string | number;
+  BURST_TCP?: string | number;
+  RATE_LIMIT_REQ?: string | number;
+  BURST_REQ?: string | number;
+  PENALTY_TIME?: string | number;
+  ALLOWLIST_IPS?: string;
+  ALLOWLIST_URLS?: string;
+  GUARD_GEO_SOURCES?: string;
+  GUARD_SYNC_INTERVAL_HOURS?: string | number;
+  GUARD_SYNC_RETRY_MINUTES?: string | number;
+  GUARD_FETCH_TIMEOUT_MS?: string | number;
+  GUARD_MIN_RANGES?: string | number;
+  GUARD_MIN_RANGES_RATIO?: string | number;
+  GUARD_MAX_ENTRIES?: string | number;
+  GUARD_IDLE_TTL_SEC?: string | number;
+  GUARD_DRY_RUN?: string;
   ACTIVE_DNS_CACHE_TTL?: string | number;
   LOGIN_MAX_ATTEMPTS?: string | number;
   LOGIN_LOCK_WINDOW_SEC?: string | number;

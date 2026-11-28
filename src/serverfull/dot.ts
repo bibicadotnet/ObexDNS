@@ -16,6 +16,7 @@ import { DEFAULT_FAIL_OPEN_UPSTREAM } from '../constants/presets';
 import { ACCESS_KEY_REGEX } from '../utils/validator';
 import { formatDiagnostic, formatPortError } from './format';
 import { inspectTlsCertificate, getCertbotCommand, enableCertAutoReload } from './cert';
+import { attachGuard, checkRequestHit } from './guard';
 
 export interface DotServerOptions {
   port: number;
@@ -98,6 +99,7 @@ export class DotDnsServer {
         this.server = tls.createServer(tlsOptions, (socket: tls.TLSSocket) => {
           this.handleConnection(socket);
         });
+        attachGuard(this.server);
         enableCertAutoReload(this.server, tlsCertPath, tlsKeyPath, 'DoT');
 
         const startupErrorHandler = (err: any) => {
@@ -198,6 +200,11 @@ export class DotDnsServer {
 
         const msgPayload = buffer.subarray(2, 2 + msgLen);
         buffer = buffer.subarray(2 + msgLen);
+
+        if (!checkRequestHit(socket.remoteAddress)) {
+          socket.destroy();
+          return;
+        }
 
         await this.processQuery(socket, msgPayload, remoteIp, candidateKey);
       }

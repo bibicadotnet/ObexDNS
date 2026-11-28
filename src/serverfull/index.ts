@@ -23,6 +23,7 @@ import { checkNodeVersion, parseCli } from './cli';
 import { systemListsManager } from '../lib/filtering/systemListsManager';
 import { SystemListModel } from '../models/systemList';
 import { syncAllSystemLists, migrateFilterFormatIfLegacy } from '../utils/sync';
+import { initGuard } from './guard';
 
 export * from './cli';
 
@@ -152,6 +153,9 @@ async function bootstrap(): Promise<void> {
     localSqliteDb = db;
     env.DB = db;
   }
+
+  // Connection guard (country allow-list + rate limit). Must run before any server is created. No-op when both switches are off.
+  await initGuard(env);
 
   // Cảnh báo cấu hình mâu thuẫn nếu MAX_LIST_DOMAINS * ~30 byte > MAX_LIST_BYTES
   const maxListDomains = Number(process.env.MAX_LIST_DOMAINS) || 2000000;

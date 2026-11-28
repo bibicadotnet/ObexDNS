@@ -9,6 +9,7 @@ import worker from '../../index';
 import { Env, ExecutionContext } from '../../types';
 import { extractClientIp } from './clientIp';
 import { envNumber } from '../../utils/envNumber';
+import { checkRequestHit } from '../guard';
 
 /** RFC 8484: a DoH POST body is one DNS message, at most 65535 bytes. */
 const MAX_DOH_BODY_BYTES = 65535;
@@ -77,6 +78,13 @@ export function createHttpRequestHandler(
   httpsRedirect?: { enabled: boolean; httpsPort: number }
 ): (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> {
   return async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
+    // Per-IP request rate limit (no-op unless ENABLE_RATE_LIMIT=true). Runs before any work is done for the request.
+    if (!checkRequestHit(req.socket.remoteAddress)) {
+      const s = (req as any).stream?.session;
+      s ? s.destroy() : req.socket.destroy();
+      return;
+    }
+
     try {
       const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined)?.toLowerCase();
       const proto = forwardedProto || defaultProto;

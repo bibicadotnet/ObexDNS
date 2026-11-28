@@ -12,6 +12,7 @@ import { formatPortError } from './format';
 import { enableCertAutoReload } from './cert';
 import { attachStaticAssetHandler } from './http/assets';
 import { createHttpRequestHandler } from './http/handler';
+import { attachGuard } from './guard';
 
 export * from './http/assets';
 export * from './http/clientIp';
@@ -54,6 +55,7 @@ export class HttpServer {
       const handler = createHttpRequestHandler(env, 'http', host, port, httpsRedirect);
 
       this.server = http.createServer(handler);
+      attachGuard(this.server);
 
       // Optimize HTTP keepalive timeouts and disable Nagle's algorithm for low-latency DoH
       this.server.keepAliveTimeout = 65000;
@@ -137,6 +139,7 @@ export class HttpsServer {
           },
           handler as any
         );
+        attachGuard(this.server);
 
         enableCertAutoReload(this.server, certPath, keyPath, 'HTTPS');
 
