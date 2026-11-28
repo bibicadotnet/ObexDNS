@@ -67,6 +67,39 @@ export function recomputeGeoActive(): void {
   state.geoActive = !!cfg && cfg.enableGeo && cfg.countries.length > 0 && cfg.countries.every((cc) => state.geo.has(cc));
 }
 
+/** 28983 -> "28,983" (fixed locale so logs do not depend on the host). */
+export function fmtCount(n: number): string {
+  return n.toLocaleString('en-US');
+}
+
+/** 86400000 -> "24h", 1800000 -> "30 min". */
+export function fmtDuration(ms: number): string {
+  if (ms >= 3600_000) return `${Number((ms / 3600_000).toFixed(2))}h`;
+  return `${Math.max(1, Math.round(ms / 60_000))} min`;
+}
+
+/** "VN=1,669, SG=8,459" (a country without a list shows "missing"). */
+export function geoBreakdown(sep: string = '='): string {
+  const cfg = state.cfg;
+  if (!cfg) return '';
+  return cfg.countries.map((cc) => {
+    const arr = state.geo.get(cc);
+    return `${cc}${sep}${arr ? fmtCount(arr.length >>> 1) : 'missing'}`;
+  }).join(', ');
+}
+
+/** Sum of the per-country range counts. */
+export function geoTotalRanges(): number {
+  let total = 0;
+  for (const arr of state.geo.values()) total += arr.length >>> 1;
+  return total;
+}
+
+/** "104 ranges (env=1, urls=103)": the total is after merging, so it can be below env + urls. */
+export function allowlistSummary(): string {
+  return `${fmtCount(state.allow.length >>> 1)} ranges (env=${fmtCount(state.envAllow.length >>> 1)}, urls=${fmtCount(state.urlAllow.length >>> 1)})`;
+}
+
 /** elapsed < 0 counts as 0; tokens never exceed the burst. */
 export function refill(tokens: number, last: number, now: number, ratePerSec: number, burst: number): number {
   const elapsed = now - last;

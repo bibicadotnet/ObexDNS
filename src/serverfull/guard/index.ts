@@ -10,7 +10,10 @@
 import type { Env } from '../../types';
 import { SystemSettingsModel } from '../../models/systemSettings';
 import { cidrToRange, inRanges, ipToUint32, isPrivateUint32, mergeRanges } from './ip';
-import { cleanupEntries, getOrCreateEntry, rebuildAllowlist, recomputeGeoActive, refill, resetState, state } from './store';
+import {
+  allowlistSummary, cleanupEntries, fmtCount, geoBreakdown, geoTotalRanges, getOrCreateEntry, rebuildAllowlist,
+  recomputeGeoActive, refill, resetState, state
+} from './store';
 import {
   ALLOWLIST_KEY, ALLOWLIST_UPDATED_KEY, ALLOWLIST_URLS_KEY, geoKey, geoSourcesKey, geoUpdatedKey,
   loadRanges, loadUpdatedAtSec, runSync, sourcesSignature
@@ -120,9 +123,16 @@ export async function initGuard(env: Env): Promise<void> {
     state.nextSyncAt = Math.min(...(updatedAt as number[])) * 1000 + cfg.syncIntervalHours * 3600 * 1000;
   }
 
+  const geoText = !cfg.enableGeo
+    ? 'off'
+    : state.geoActive
+      ? `on (${fmtCount(geoTotalRanges())} ranges across ${cfg.countries.length} countries: ${geoBreakdown()})`
+      : `waiting for lists, fail-open (${geoBreakdown()})`;
+  const rateText = cfg.enableRate
+    ? `on (conn=${fmtCount(cfg.rateTcp)}/s burst ${fmtCount(cfg.burstTcp)}, req=${fmtCount(cfg.rateReq)}/s burst ${fmtCount(cfg.burstReq)}, penalty ${cfg.penaltyTimeSec}s)`
+    : 'off';
   console.log(
-    `[Guard] Active: countryFilter=${cfg.enableGeo ? (state.geoActive ? `on (${cfg.countries.join(',')})` : 'waiting for lists (fail-open)') : 'off'}, ` +
-    `rateLimit=${cfg.enableRate ? 'on' : 'off'}${cfg.dryRun ? ', DRY-RUN (log only)' : ''}`
+    `[Guard] Active: countryFilter=${geoText}, allowlist=${allowlistSummary()}, rateLimit=${rateText}${cfg.dryRun ? ', DRY-RUN (log only)' : ''}`
   );
 
   if (syncGeo && !state.geoActive) {

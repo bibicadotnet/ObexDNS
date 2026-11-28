@@ -562,6 +562,59 @@ async function main(): Promise<void> {
     assert.ok(!inRanges(state.allow, num('45.0.0.5')));
   }
 
+  // ── 20. summary log lines ─────────────────────────────────────────────────
+  {
+    const nowSec = Math.floor(realNow() / 1000);
+    const capture = async (fn: () => Promise<unknown>): Promise<{ logs: string[]; warns: string[] }> => {
+      const logs: string[] = []; const warns: string[] = [];
+      console.log = (...a: any[]) => { logs.push(a.join(' ')); };
+      console.warn = (...a: any[]) => { warns.push(a.join(' ')); };
+      try { await fn(); } finally { quiet(); }
+      return { logs, warns };
+    };
+    // boot from the DB: totals per country + allowlist breakdown + rate settings
+    const db = new FakeD1();
+    prefill(db, 'VN', ranges24(1669), nowSec - 60);
+    prefill(db, 'SG', ranges24(8459, num('90.0.0.0')), nowSec - 60);
+    mockFetch(() => 'fail');
+    SystemSettingsModel.clearMemoryCache(); resetGuardForTests();
+    let out = await capture(() => initGuard(mkEnv(db, {
+      ENABLE_ALLOW_COUNTRIES: 'true', ALLOW_COUNTRIES: 'VN,SG', ENABLE_RATE_LIMIT: 'true', ALLOWLIST_IPS: '203.0.113.1,203.0.113.5'
+    })));
+    const boot = out.logs.find((l) => l.includes('[Guard] Active:'))!;
+    assert.ok(boot.includes('countryFilter=on (10,128 ranges across 2 countries: VN=1,669, SG=8,459)'), boot);
+    assert.ok(boot.includes('allowlist=2 ranges (env=2, urls=0)'), boot);
+    assert.ok(boot.includes('rateLimit=on (conn=500/s burst 5,000, req=2,000/s burst 20,000, penalty 5s)'), boot);
+
+    // boot with a missing country
+    const db2 = new FakeD1();
+    prefill(db2, 'VN', ranges24(1669), nowSec - 60);
+    SystemSettingsModel.clearMemoryCache(); resetGuardForTests();
+    out = await capture(async () => { await initGuard(mkEnv(db2, { ENABLE_ALLOW_COUNTRIES: 'true', ALLOW_COUNTRIES: 'VN,SG' })); await waitSyncIdle(); });
+    const boot2 = out.logs.find((l) => l.includes('[Guard] Active:'))!;
+    assert.ok(boot2.includes('waiting for lists, fail-open (VN=1,669, SG=missing)'), boot2);
+
+    // sync complete (all ok)
+    const db3 = new FakeD1();
+    prefill(db3, 'VN', ranges24(300), nowSec - 60);
+    prefill(db3, 'SG', ranges24(300, num('90.0.0.0')), nowSec - 60);
+    const env3 = await fresh(db3, { ENABLE_ALLOW_COUNTRIES: 'true', ALLOW_COUNTRIES: 'VN,SG', ALLOWLIST_URLS: 'https://a.example/l.txt' });
+    mockFetch((u) => u.includes('a.example') ? { body: '45.0.0.1\n45.0.0.2\n' } : { body: toText(ranges24(350, num('60.0.0.0'))) });
+    out = await capture(() => runSync(env3));
+    const done = out.logs.find((l) => l.includes('Sync complete'))!;
+    assert.ok(done.includes('700 geo ranges active (VN: 350, SG: 350), allowlist: 1 ranges (env=0, urls=1). Next sync in 24h.'), done);
+
+    // sync with errors: warn line names the item and the reason, shows what stays in use
+    mockFetch((u) => u.includes('a.example') ? 'fail' : { body: toText(ranges24(20, num('60.0.0.0'))) });
+    out = await capture(() => runSync(env3));
+    assert.ok(!out.logs.some((l) => l.includes('Sync complete')));
+    const bad = out.warns.find((l) => l.includes('Sync finished with errors'))!;
+    assert.ok(bad.includes('VN kept previous list (rejected: 20 ranges < min 100)'), bad);
+    assert.ok(bad.includes('SG kept previous list'), bad);
+    assert.ok(bad.includes('allowlist kept previous list (rejected: download produced no ranges)'), bad);
+    assert.ok(bad.includes('Retry in 30 min.') && bad.includes('700 geo ranges active (VN: 350, SG: 350)'), bad);
+  }
+
   resetGuardForTests();
   loud();
   console.log('test_guard: all assertions passed');

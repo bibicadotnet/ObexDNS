@@ -7,7 +7,9 @@
 import type { Env } from '../../types';
 import { SystemSettingsModel } from '../../models/systemSettings';
 import { decodeRanges, encodeRanges, mergeRanges, parseRangeLines, rangeCount } from './ip';
-import { rebuildAllowlist, recomputeGeoActive, state } from './store';
+import {
+  allowlistSummary, fmtCount, fmtDuration, geoBreakdown, geoTotalRanges, rebuildAllowlist, recomputeGeoActive, state
+} from './store';
 
 let isSyncing = false;
 
@@ -60,8 +62,8 @@ async function fetchAndMerge(urls: string[], timeoutMs: number): Promise<{ merge
   return { merged: mergeRanges(pairs), failed };
 }
 
-/** Syncs one country. Returns true when accepted (or nothing needed changing), false on error / rejection. */
-async function syncCountry(cc: string, settings: SystemSettingsModel): Promise<boolean> {
+/** Syncs one country. Returns null when accepted, otherwise a short reason why the previous list was kept. */
+async function syncCountry(cc: string, settings: SystemSettingsModel): Promise<string | null> {
   const cfg = state.cfg!;
   try {
     const urls = cfg.geoSources.map((t) => buildSourceUrl(t, cc));
@@ -74,7 +76,9 @@ async function syncCountry(cc: string, settings: SystemSettingsModel): Promise<b
     const checkRatio = !!current && !state.sourcesChanged.has(cc);
     if (count < cfg.minRanges || (checkRatio && count < cfg.minRangesRatio * currentCount)) {
       console.warn(`[Guard] Rejected ${cc} list (${count} ranges; min ${cfg.minRanges}${checkRatio ? `, current ${currentCount} x ratio ${cfg.minRangesRatio}` : ''}). Keeping the previous version.`);
-      return false;
+      return count < cfg.minRanges
+        ? `rejected: ${fmtCount(count)} ranges < min ${fmtCount(cfg.minRanges)}`
+        : `rejected: ${fmtCount(count)} ranges < ${cfg.minRangesRatio} x current ${fmtCount(currentCount)}`;
     }
 
     await settings.setMany({
@@ -85,22 +89,24 @@ async function syncCountry(cc: string, settings: SystemSettingsModel): Promise<b
     state.sourcesChanged.delete(cc);
     state.geo.set(cc, merged);
     recomputeGeoActive();
-    console.log(`[Guard] Synced ${cc}: ${count} ranges`);
-    return true;
+    console.log(`[Guard] Synced ${cc}: ${fmtCount(count)} ranges`);
+    return null;
   } catch (err) {
-    console.warn(`[Guard] Sync ${cc} failed, keeping the previous version:`, err instanceof Error ? err.message : err);
-    return false;
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[Guard] Sync ${cc} failed, keeping the previous version:`, msg);
+    return `error: ${msg}`;
   }
 }
 
-async function syncAllowlist(settings: SystemSettingsModel): Promise<boolean> {
+/** Same contract as syncCountry. */
+async function syncAllowlist(settings: SystemSettingsModel): Promise<string | null> {
   const cfg = state.cfg!;
   try {
     const { merged } = await fetchAndMerge(cfg.allowlistUrls, cfg.fetchTimeoutMs);
     const count = rangeCount(merged);
     if (count < 1) {
       console.warn('[Guard] Allowlist download produced no ranges. Keeping the previous version.');
-      return false;
+      return 'rejected: download produced no ranges';
     }
     await settings.setMany({
       [ALLOWLIST_KEY]: encodeRanges(merged),
@@ -109,11 +115,12 @@ async function syncAllowlist(settings: SystemSettingsModel): Promise<boolean> {
     });
     state.urlAllow = merged;
     rebuildAllowlist();
-    console.log(`[Guard] Synced allowlist: ${count} ranges`);
-    return true;
+    console.log(`[Guard] Synced allowlist: ${fmtCount(count)} ranges`);
+    return null;
   } catch (err) {
-    console.warn('[Guard] Allowlist sync failed, keeping the previous version:', err instanceof Error ? err.message : err);
-    return false;
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[Guard] Allowlist sync failed, keeping the previous version:', msg);
+    return `error: ${msg}`;
   }
 }
 
@@ -128,25 +135,37 @@ export async function runSync(env: Env): Promise<void> {
     const cfg = state.cfg;
     if (!cfg) return;
     const settings = new SystemSettingsModel(env.DB);
-    let allOk = true;
+    const failures: string[] = [];
     let items = 0;
 
     if (cfg.enableGeo) {
       for (const cc of cfg.countries) {
         items++;
-        if (!(await syncCountry(cc, settings))) allOk = false;
+        const reason = await syncCountry(cc, settings);
+        if (reason) failures.push(`${cc} kept previous list (${reason})`);
       }
     }
     if (cfg.allowlistUrls.length > 0) {
       items++;
-      if (!(await syncAllowlist(settings))) allOk = false;
+      const reason = await syncAllowlist(settings);
+      if (reason) failures.push(`allowlist kept previous list (${reason})`);
     }
 
     if (items === 0) {
       state.nextSyncAt = Infinity;
+      return;
+    }
+    const delay = failures.length === 0 ? cfg.syncIntervalHours * 3600 * 1000 : cfg.syncRetryMinutes * 60 * 1000;
+    state.nextSyncAt = Date.now() + delay;
+
+    // One closing line with what is actually in use now.
+    const parts: string[] = [];
+    if (cfg.enableGeo) parts.push(`${fmtCount(geoTotalRanges())} geo ranges active (${geoBreakdown(': ')})`);
+    if (cfg.allowlistUrls.length > 0) parts.push(`allowlist: ${allowlistSummary()}`);
+    if (failures.length === 0) {
+      console.log(`[Guard] Sync complete: ${parts.join(', ')}. Next sync in ${fmtDuration(delay)}.`);
     } else {
-      const delay = allOk ? cfg.syncIntervalHours * 3600 * 1000 : cfg.syncRetryMinutes * 60 * 1000;
-      state.nextSyncAt = Date.now() + delay;
+      console.warn(`[Guard] Sync finished with errors: ${failures.join('; ')}. Retry in ${fmtDuration(delay)}. In use: ${parts.join(', ')}.`);
     }
   } catch (err) {
     console.error('[Guard] Sync crashed:', err);
