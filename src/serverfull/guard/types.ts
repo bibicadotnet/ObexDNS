@@ -52,7 +52,7 @@ export interface GuardConfig {
 export const DEFAULT_GEO_SOURCES: readonly string[] = [
   'https://raw.githubusercontent.com/ipverse/rir-ip/refs/heads/master/country/{cc}/ipv4-aggregated.txt',
   'https://www.ipdeny.com/ipblocks/data/countries/{cc}.zone',
-  'https://raw.githubusercontent.com/ebrasha/cidr-ip-ranges-by-country/refs/heads/master/CIDR/{CC}-ipv4-Hackers.Zone.txt',
+  'https://raw.githubusercontent.com/ipverse/geo-ip-blocks/master/country/{cc}/{cc}-ipv4.txt',
   'https://raw.githubusercontent.com/bibicadotnet/IPinfo-VietNam/main/country/{cc}.txt'
 ];
 
