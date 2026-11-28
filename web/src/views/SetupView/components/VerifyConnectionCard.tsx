@@ -40,7 +40,7 @@ export const VerifyConnectionCard: React.FC<VerifyConnectionCardProps> = ({
   const edgeServerCardNode = (
     <div
       className={clsx(
-        "bg-white p-4 rounded-lg border border-gray-100 shadow-sm flex items-start gap-3 h-full transition-all",
+        "bg-white p-4 rounded-lg border border-gray-100 shadow-sm flex items-start gap-3 select-none h-full transition-all",
         !isServerfull
       )}
     >
