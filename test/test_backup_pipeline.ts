@@ -5,11 +5,13 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { Readable, Writable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 // @ts-ignore - plain ESM script shipped next to the Dockerfile
 import * as s3 from "../s3-client.mjs";
 // @ts-ignore
-import { runBackup, readStatus } from "../backup.mjs";
+import { runBackup, readStatus, PacedTransform, removeWorkDirs } from "../backup.mjs";
 import { handleBackupRequest } from "../src/api/account/adminBackup";
 
 const EMPTY = s3.EMPTY_SHA256;
@@ -102,6 +104,53 @@ async function runTests() {
     const presigned = s3.presignUrl(cfg, "https://examplebucket.s3.amazonaws.com/test.txt", { expiresSec: 86400, now });
     assert.strictEqual(/X-Amz-Signature=([0-9a-f]+)/.exec(presigned)![1], "aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404");
     console.log("✔ SigV4 header + presigned signatures match AWS reference vectors");
+  }
+
+  // 1b. PacedTransform must never alter the bytes it forwards (odd sizes, tiny and huge chunks)
+  {
+    const input = crypto.randomBytes(5 * 1024 * 1024 + 4321);
+    const parts: Buffer[] = [];
+    for (let off = 0; off < input.length; ) {
+      const n = [1, 7, 4096, 700_000, 1_500_000][parts.length % 5];
+      parts.push(input.subarray(off, off + n));
+      off += n;
+    }
+    const got: Buffer[] = [];
+    await pipeline(Readable.from(parts), new PacedTransform(256 * 1024, 0), new Writable({ write(c, _e, cb) { got.push(c); cb(); } }));
+    assert.ok(Buffer.concat(got).equals(input), "paced stream output is byte-identical to input");
+    console.log("✔ PacedTransform forwards bytes unchanged");
+  }
+
+  // 1c. Config: 0 is a real value, and files are read (cron does not inherit the container environment)
+  {
+    const zero = s3.loadConfig({ BACKUP_YIELD_SLEEP_MS: "0", BACKUP_YIELD_CHUNK_KB: "128", BACKUP_ZSTD_LEVEL: "99", BACKUP_KEEP_LOCAL: "TRUE" });
+    assert.strictEqual(zero.yieldSleepMs, 0, "BACKUP_YIELD_SLEEP_MS=0 disables pausing");
+    assert.strictEqual(zero.yieldChunkKb, 128);
+    assert.strictEqual(zero.zstdLevel, 9, "zstd level is clamped");
+    assert.strictEqual(zero.keepLocal, true);
+    const def = s3.loadConfig({});
+    assert.deepStrictEqual([def.yieldSleepMs, def.yieldChunkKb, def.zstdLevel, def.keepLocal], [10, 512, 1, false]);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "obex-cfg-"));
+    fs.mkdirSync(path.join(dir, "config"));
+    fs.writeFileSync(path.join(dir, "runtime.env"), "BACKUP_S3_BUCKET=from-runtime\nBACKUP_YIELD_SLEEP_MS=25\nBACKUP_S3_PREFIX=rt\n");
+    fs.writeFileSync(path.join(dir, "config", ".env"), "BACKUP_S3_PREFIX=from-config\n");
+    const saved = { d: process.env.OBEXDNS_DATA_DIR, r: process.env.OBEXDNS_RUNTIME_ENV, b: process.env.BACKUP_S3_BUCKET };
+    process.env.OBEXDNS_DATA_DIR = dir; process.env.OBEXDNS_RUNTIME_ENV = path.join(dir, "runtime.env"); delete process.env.BACKUP_S3_BUCKET;
+    try {
+      const c = s3.loadConfig();
+      assert.strictEqual(c.bucket, "from-runtime", "runtime env file is used when nothing else sets it");
+      assert.strictEqual(c.yieldSleepMs, 25);
+      assert.strictEqual(c.prefix, "from-config", "config/.env overrides the runtime file");
+      process.env.BACKUP_S3_BUCKET = "from-process";
+      assert.strictEqual(s3.loadConfig().bucket, "from-process", "process env wins");
+    } finally {
+      for (const [k, v] of [["OBEXDNS_DATA_DIR", saved.d], ["OBEXDNS_RUNTIME_ENV", saved.r], ["BACKUP_S3_BUCKET", saved.b]] as const) {
+        if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    console.log("✔ config: 0 is honoured, clamping, runtime/config/process precedence");
   }
 
   // 2. S3 client against the mock
@@ -222,12 +271,64 @@ async function runTests() {
       assert.strictEqual(String(count.stdout).trim(), "3");
       console.log("✔ job: snapshot -> archive -> verify -> upload -> latest; restore reads back the data; concurrent run is rejected");
 
+      // Leftovers of a run killed with SIGKILL are removed by the next run; look-alikes are not touched
+      {
+        const orphanA = path.join(jobTmp, "obexdns_backup_AbC123");
+        const orphanB = path.join(jobTmp, "obexdns_backup_zzzzzz");
+        fs.mkdirSync(path.join(orphanA, "pkg"), { recursive: true });
+        fs.writeFileSync(path.join(orphanA, "pkg", "dns_worker.sqlite"), crypto.randomBytes(1024));
+        fs.mkdirSync(orphanB);
+        const keepDir = path.join(jobTmp, "something_else");
+        const keepFile = path.join(jobTmp, "obexdns_backup_notes.txt");
+        fs.mkdirSync(keepDir);
+        fs.writeFileSync(keepFile, "x");
+        const r2 = await runBackup({ dataDir, dbFile, tmpDir: jobTmp, cfg, log: () => {} });
+        assert.ok(r2.ok, String(r2.error));
+        assert.ok(!fs.existsSync(orphanA) && !fs.existsSync(orphanB), "leftover work dirs are removed");
+        assert.ok(fs.existsSync(keepDir) && fs.existsSync(keepFile), "unrelated entries are left alone");
+        assert.strictEqual(removeWorkDirs(jobTmp), 0);
+        fs.rmSync(keepDir, { recursive: true });
+        fs.rmSync(keepFile);
+        assert.deepStrictEqual(fs.readdirSync(jobTmp), [], "nothing left behind after a normal run");
+        console.log("✔ leftover work directories from killed runs are cleaned up (look-alikes untouched)");
+      }
+
+      // Consistency under concurrent writes: a snapshot taken while the app commits and checkpoints must be a
+      // valid database. (Copying the live file instead produces "row N missing from index" corruption.)
+      {
+        const liveDb = path.join(tmp, "busy.sqlite");
+        const mkBusy = spawnSync("sqlite3", [liveDb, "PRAGMA journal_mode=WAL; CREATE TABLE t(id INTEGER PRIMARY KEY, k TEXT, v TEXT); CREATE INDEX ik ON t(k); " +
+          "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<60000) INSERT INTO t(k,v) SELECT hex(randomblob(8)), hex(randomblob(200)) FROM c;"]);
+        assert.strictEqual(mkBusy.status, 0, String(mkBusy.stderr));
+        const writer = spawn("sh", ["-c", `while :; do sqlite3 "${liveDb}" "UPDATE t SET k=hex(randomblob(8)), v=hex(randomblob(200)) WHERE id % 40 = abs(random()) % 40; PRAGMA wal_checkpoint(PASSIVE);" >/dev/null 2>&1; done`], { detached: true, stdio: "ignore" });
+        try {
+          await new Promise((r) => setTimeout(r, 500));
+          for (let i = 0; i < 4; i++) {
+            const res = await runBackup({ dataDir, dbFile: liveDb, tmpDir: jobTmp, cfg, log: () => {} });
+            assert.ok(res.ok, `backup under write load #${i} failed: ${res.error}`);
+            const e = res.file.endsWith(".tar.zst") ? "tar.zst" : "tar.gz";
+            const a2 = path.join(tmp, `busy_${i}.${e}`);
+            assert.ok(await s3.downloadFile(cfg, res.file, a2, quiet));
+            const d2 = path.join(tmp, `busy_x_${i}`);
+            fs.mkdirSync(d2);
+            const u2 = e === "tar.zst" ? spawnSync("sh", ["-c", `zstd -dc "${a2}" | tar -x -C "${d2}"`]) : spawnSync("tar", ["-xzf", a2, "-C", d2]);
+            assert.strictEqual(u2.status, 0, String(u2.stderr));
+            const chk = spawnSync("sqlite3", [path.join(d2, "dns_worker.sqlite"), "PRAGMA integrity_check;"]);
+            assert.strictEqual(String(chk.stdout).trim(), "ok", `backup #${i} taken under write load is corrupt: ${chk.stdout}`);
+          }
+        } finally {
+          try { process.kill(-writer.pid!, "SIGKILL"); } catch { /* already gone */ }
+        }
+        console.log("✔ 4 backups taken while the database is being written + checkpointed all pass integrity_check");
+      }
+
       // Failure must not touch latest and must be reported
       const before = mock.objects.get(`obexdns/latest.${ext}`)!.body;
+      const successBefore = readStatus(dataDir).lastSuccess.file;
       const bad = await runBackup({ dataDir, dbFile: path.join(dataDir, "missing.sqlite"), tmpDir: jobTmp, cfg, log: () => {} });
       assert.strictEqual(bad.ok, false);
       assert.strictEqual(readStatus(dataDir).state, "failed");
-      assert.strictEqual(readStatus(dataDir).lastSuccess.file, ok.file, "last success survives a failed run");
+      assert.strictEqual(readStatus(dataDir).lastSuccess.file, successBefore, "last success survives a failed run");
       assert.ok(mock.objects.get(`obexdns/latest.${ext}`)!.body.equals(before));
       console.log("✔ failed run: reported in status, latest untouched, last success preserved");
 

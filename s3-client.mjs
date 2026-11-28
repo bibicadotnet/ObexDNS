@@ -70,9 +70,23 @@ function parseEnvFile(filePath) {
  */
 export function loadConfig(source) {
   const dataDir = process.env.OBEXDNS_DATA_DIR || '/data';
-  const files = source ? {} : { ...parseEnvFile(path.join(dataDir, '.env')), ...parseEnvFile(path.join(dataDir, 'config', '.env')) };
+  // Lowest to highest precedence: runtime env file (written by entrypoint for cron jobs, which do not
+  // inherit the container environment) < /data/.env < /data/config/.env. Process env always wins.
+  const runtimeEnvFile = process.env.OBEXDNS_RUNTIME_ENV || '/etc/obexdns/backup.env';
+  const files = source
+    ? {}
+    : {
+        ...parseEnvFile(runtimeEnvFile),
+        ...parseEnvFile(path.join(dataDir, '.env')),
+        ...parseEnvFile(path.join(dataDir, 'config', '.env'))
+      };
   const env = source || process.env;
   const get = (key, fallback = '') => env[key] || files[key] || fallback;
+  /** Integer setting clamped to [min, max]; 0 is a valid value (never replaced by the default). */
+  const int = (key, fallback, min, max) => {
+    const n = parseInt(get(key), 10);
+    return Number.isFinite(n) ? Math.min(Math.max(n, min), max) : fallback;
+  };
 
   const keepDaysRaw = parseInt(get('BACKUP_KEEP_DAYS', '30'), 10);
   return {
@@ -83,7 +97,14 @@ export function loadConfig(source) {
     secretAccessKey: get('BACKUP_S3_SECRET_ACCESS_KEY', get('BACKUP_S3_SECRET_KEY')),
     prefix: get('BACKUP_S3_PREFIX', 'obexdns').replace(/^\/+|\/+$/g, ''),
     cron: get('BACKUP_CRON', get('BACKUP_CRON_EXPR', '0 2 * * *')),
-    keepDays: Number.isFinite(keepDaysRaw) && keepDaysRaw > 0 ? keepDaysRaw : 30
+    keepDays: Number.isFinite(keepDaysRaw) && keepDaysRaw > 0 ? keepDaysRaw : 30,
+    // Job tuning (used by backup.mjs)
+    dbPath: get('SERVERFULL_DB_PATH'),
+    zstdLevel: int('BACKUP_ZSTD_LEVEL', 1, 1, 9),
+    keepLocal: ['true', '1'].includes(get('BACKUP_KEEP_LOCAL').toLowerCase()),
+    localDest: get('BACKUP_LOCAL_DEST'),
+    yieldChunkKb: int('BACKUP_YIELD_CHUNK_KB', 512, 1, 65536),
+    yieldSleepMs: int('BACKUP_YIELD_SLEEP_MS', 10, 0, 1000)
   };
 }
 

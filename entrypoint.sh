@@ -354,6 +354,21 @@ if [ -n "$BACKUP_BUCKET" ]; then
     BACKUP_CRON_EXPR="0 2 * * *"
   fi
 
+  # Cron jobs do not inherit the container environment, so a scheduled backup would not see settings
+  # given via docker-compose `environment:`. Save the resolved values (process env + config files) to a
+  # root-only file on the container filesystem (rewritten at every start, never stored in the /data volume).
+  mkdir -p /etc/obexdns
+  ( umask 077; : > /etc/obexdns/backup.env )
+  for _bk in BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET BACKUP_S3_REGION BACKUP_S3_ACCESS_KEY_ID BACKUP_S3_ACCESS_KEY \
+             BACKUP_S3_SECRET_ACCESS_KEY BACKUP_S3_SECRET_KEY BACKUP_S3_PREFIX BACKUP_KEEP_DAYS BACKUP_KEEP_LOCAL \
+             BACKUP_LOCAL_DEST BACKUP_ZSTD_LEVEL BACKUP_YIELD_CHUNK_KB BACKUP_YIELD_SLEEP_MS SERVERFULL_DB_PATH; do
+    _bv=$(get_env_val "$_bk" "")
+    if [ -n "$_bv" ]; then
+      printf '%s=%s\n' "$_bk" "$_bv" >> /etc/obexdns/backup.env
+    fi
+  done
+  chmod 600 /etc/obexdns/backup.env
+
   cat <<EOF > /etc/cron.d/backup
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
@@ -363,7 +378,7 @@ EOF
   chmod 0644 /etc/cron.d/backup
   echo "[Backup] Scheduled automated S3 backup cron ($BACKUP_CRON_EXPR UTC)."
 else
-  rm -f /etc/cron.d/backup
+  rm -f /etc/cron.d/backup /etc/obexdns/backup.env
 fi
 
 # 8. Start Debian cron daemon in the background if any scheduled jobs exist

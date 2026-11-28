@@ -185,15 +185,15 @@ DATABASE_SERVICE=File
 # Thư mục con trong bucket để chứa các bản sao lưu (mặc định: "obexdns").
 # BACKUP_S3_PREFIX=obexdns
 
-# Chunk size in KiB when taking SQLite snapshot and compressing the archive (default: 512 = 512 KiB).
-# Data is processed in small slices instead of all at once to avoid locking the CPU.
-# Dung lượng mỗi lát cắt (KiB) khi sao chép database và nén file backup (mặc định: 512 = 512 KiB).
-# Dữ liệu được chia nhỏ thành từng phần thay vì xử lý ồ ạt một lần để không chiếm dụng hết CPU.
+# Chunk size in KiB when compressing the backup archive (default: 512 = 512 KiB).
+# Data is processed in small slices instead of all at once to avoid locking the CPU. The database snapshot itself is always taken by SQLite (VACUUM INTO) so it is guaranteed consistent; it is never copied file-by-file and is not paced.
+# Dung lượng mỗi lát cắt (KiB) khi nén file backup (mặc định: 512 = 512 KiB).
+# Dữ liệu được chia nhỏ thành từng phần thay vì xử lý ồ ạt một lần để không chiếm dụng hết CPU. Bản snapshot database luôn do chính SQLite tạo (VACUUM INTO) để đảm bảo nhất quán; không bao giờ copy file thô và không bị chia nhỏ.
 # BACKUP_YIELD_CHUNK_KB=512
 
-# Pause duration in milliseconds after each chunk during snapshot and compression (default: 10).
+# Pause duration in milliseconds after each chunk during compression (default: 10).
 # Pausing briefly yields CPU time to keep the server responsive and prevent long CPU spikes that could disrupt DNS resolution. Set to 0 to disable pausing.
-# Thời gian nghỉ (mili giây) sau mỗi lát cắt khi sao chép và nén file backup (mặc định: 10; 0 = không nghỉ).
+# Thời gian nghỉ (mili giây) sau mỗi lát cắt khi nén file backup (mặc định: 10; 0 = không nghỉ).
 # Khoảng nghỉ ngắn này nhường lại chu kỳ CPU cho luồng DNS, giúp giảm tải đột biến và giữ cho việc phân giải DNS không bị gián đoạn.
 # BACKUP_YIELD_SLEEP_MS=10
 

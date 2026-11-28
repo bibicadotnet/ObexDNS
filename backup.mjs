@@ -3,17 +3,18 @@
  * @file backup.mjs
  * @description ObexDNS backup job (replaces backup.sh).
  *
- * Pipeline: lock -> consistent snapshot (VACUUM INTO) -> quick_check -> tar | zstd -> verify archive
- *           -> optional local copy -> upload to S3/R2 + refresh latest alias + prune.
+ * Pipeline: lock -> consistent snapshot (VACUUM INTO) -> integrity_check -> tar | zstd (paced)
+ *           -> verify archive -> optional local copy -> upload to S3/R2 + refresh latest alias + prune.
  *
  * Why it is built this way:
- * - The snapshot is a single read transaction, so it cannot restart when the app commits (unlike the
- *   sqlite3 `.backup` loop). `.backup` stays as a fallback for SQLite builds without VACUUM INTO.
- * - zstd -3 -T1 replaces gzip -1: far less CPU for the same size (the DB holds incompressible bloom
- *   filter blobs). The whole process is niced to 19 so children inherit it and DNS keeps its CPU.
- * - Every pipeline stage is checked (no shell pipes, so a failing tar can no longer produce a
- *   "valid" truncated archive), and the finished archive is tested before it is allowed to overwrite
- *   `latest`.
+ * - Correctness first: the snapshot is produced by SQLite in ONE read transaction (VACUUM INTO), so it is
+ *   transactionally consistent even while the app commits and checkpoints. `.backup` is only a fallback for
+ *   SQLite builds without VACUUM INTO. The live DB file is never copied byte-by-byte (that yields torn,
+ *   corrupt copies under concurrent writes). The snapshot must pass integrity_check before it is packed.
+ * - Every pipeline stage is checked (no shell pipes), the finished archive is tested, and the upload size is
+ *   verified, before `latest` is allowed to point at a new backup.
+ * - CPU: compression is paced (BACKUP_YIELD_CHUNK_KB / BACKUP_YIELD_SLEEP_MS) so it is spread out instead of
+ *   one burst; zstd level defaults to 1; the process is niced to 19 and children inherit it.
  * - Progress/results go to <dataDir>/.backup_status.json so the admin UI can poll them; the job itself
  *   runs detached from the HTTP request.
  *
@@ -74,27 +75,6 @@ export class PacedTransform extends Transform {
       this.remainder = null;
     }
     callback();
-  }
-}
-
-/**
- * Copies a file in discrete chunk slices with sleep intervals to keep CPU load low (<10%).
- */
-async function copyFilePaced(src, dst, chunkBytes = 512 * 1024, sleepMs = 10) {
-  const readFd = fs.openSync(src, 'r');
-  const writeFd = fs.openSync(dst, 'w');
-  const buf = Buffer.allocUnsafe(chunkBytes);
-  try {
-    let bytesRead = 0;
-    while ((bytesRead = fs.readSync(readFd, buf, 0, chunkBytes, null)) > 0) {
-      fs.writeSync(writeFd, buf, 0, bytesRead);
-      if (sleepMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, sleepMs));
-      }
-    }
-  } finally {
-    fs.closeSync(readFd);
-    fs.closeSync(writeFd);
   }
 }
 
@@ -218,40 +198,28 @@ const sqlQuote = (p) => `'${p.replace(/'/g, "''")}'`;
 
 // ─── Steps ───────────────────────────────────────────────────────────────────
 
-async function snapshotDatabase(dbFile, snapFile, chunkBytes, sleepMs, log) {
+async function snapshotDatabase(dbFile, snapFile, log) {
   log(`[Backup] [1/4] Snapshotting SQLite database (${dbFile})...`);
 
-  // Method 1: Checkpoint WAL + Paced file copy (0% CPU spike, non-blocking for active DNS traffic)
-  try {
-    await run('sqlite3', [dbFile, '.timeout 3000', 'PRAGMA wal_checkpoint(PASSIVE);']);
-    await copyFilePaced(dbFile, snapFile, chunkBytes, sleepMs);
-
-    if (fs.existsSync(snapFile) && fs.statSync(snapFile).size >= 512) {
-      const headerBuf = Buffer.alloc(16);
-      const fd = fs.openSync(snapFile, 'r');
-      fs.readSync(fd, headerBuf, 0, 16, 0);
-      fs.closeSync(fd);
-      if (headerBuf.toString('utf-8').startsWith('SQLite format 3')) {
-        log(`[Backup]       -> snapshot OK (${(fs.statSync(snapFile).size / 1048576).toFixed(1)} MB, paced copy).`);
-        return;
-      }
-    }
-  } catch (err) {
-    log(`[Backup]       Paced copy fallback (${err.message}); falling back to VACUUM INTO / .backup`);
-    fs.rmSync(snapFile, { force: true });
-  }
-
-  // Method 2 (Fallback): VACUUM INTO
+  // Correctness rule: the snapshot is always produced BY SQLite inside one read transaction.
+  // The live file is never copied byte-by-byte: while the app commits/checkpoints, a raw copy mixes pages
+  // from different moments and yields a corrupt database that still looks valid at a glance.
   let r = await run('sqlite3', [dbFile, '.timeout 5000', `VACUUM INTO ${sqlQuote(snapFile)}`]);
   if (r.code !== 0) {
     log(`[Backup]       VACUUM INTO unavailable (${(r.stderr || r.stdout).trim().slice(0, 120)}); falling back to .backup`);
     fs.rmSync(snapFile, { force: true });
-    // Method 3 (Fallback): .backup main
     r = await run('sqlite3', [dbFile, '.timeout 5000', `.backup main ${sqlQuote(snapFile)}`]);
     if (r.code !== 0) throw new Error(`SQLite snapshot failed: ${(r.stderr || r.stdout).trim().slice(0, 300)}`);
   }
   if (!fs.existsSync(snapFile) || fs.statSync(snapFile).size === 0) throw new Error('SQLite snapshot is empty');
-  log(`[Backup]       -> snapshot OK (${(fs.statSync(snapFile).size / 1048576).toFixed(1)} MB).`);
+
+  // integrity_check (not quick_check): it also verifies that every index matches its table. It runs on the
+  // private snapshot, so it never touches the live database.
+  const check = await run('sqlite3', [snapFile, 'PRAGMA integrity_check;']);
+  if (check.code !== 0 || check.stdout.trim() !== 'ok') {
+    throw new Error(`Snapshot failed integrity_check: ${(check.stdout || check.stderr).trim().slice(0, 200)}`);
+  }
+  log(`[Backup]       -> snapshot OK (${(fs.statSync(snapFile).size / 1048576).toFixed(1)} MB, integrity_check ok).`);
 }
 
 async function createArchive(pkgDir, archive, codec, chunkBytes, sleepMs, log) {
@@ -263,15 +231,28 @@ async function createArchive(pkgDir, archive, codec, chunkBytes, sleepMs, log) {
 
 async function verifyArchive(archive, codec, log) {
   log('[Backup] [3/4] Verifying archive...');
-  if (!fs.existsSync(archive) || fs.statSync(archive).size < 100) {
-    throw new Error('Archive is empty or truncated');
-  }
+  const t = await run(codec.test[0], [...codec.test.slice(1), archive]);
+  if (t.code !== 0) throw new Error(`Archive integrity test failed: ${(t.stderr || t.stdout).trim().slice(0, 300)}`);
+
+  // List contents. The decompressor may get SIGPIPE if tar stops at the end marker, so only tar's output matters.
+  const dec = spawn(codec.decompress[0], [...codec.decompress.slice(1), archive], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const tar = spawn('tar', ['-tf', '-'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  dec.stdout.pipe(tar.stdin);
+  tar.stdin.on('error', () => {});
+  let listing = '';
+  tar.stdout.on('data', (d) => (listing += d));
+  const code = await new Promise((resolve, reject) => {
+    tar.on('error', reject);
+    tar.on('close', resolve);
+  });
+  dec.kill();
+  if (code !== 0) throw new Error('Archive is not a readable tar');
+  if (!/(^|\/)dns_worker\.sqlite$/m.test(listing)) throw new Error('Archive does not contain dns_worker.sqlite');
   log('[Backup]       -> archive verified.');
 }
 
-function pickCodec() {
+function pickCodec(level) {
   if (hasBinary('zstd')) {
-    const level = Math.min(Math.max(parseInt(process.env.BACKUP_ZSTD_LEVEL || '1', 10) || 1, 1), 9);
     return {
       name: 'zstd',
       ext: 'tar.zst',
@@ -310,6 +291,30 @@ function timestamp(d = new Date()) {
   return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}_${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`;
 }
 
+/**
+ * Deletes every work directory this job ever created in tmpRoot (obexdns_backup_<random>).
+ * Only call while holding the backup lock: then no other backup is running, so any such directory is
+ * leftover from a run that was killed hard (SIGKILL / OOM) before its own cleanup could run.
+ * Matches directories only, by the exact mkdtemp naming, so the lock file and unrelated files are untouched.
+ */
+export function removeWorkDirs(tmpRoot) {
+  let removed = 0;
+  try {
+    for (const entry of fs.readdirSync(tmpRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !/^obexdns_backup_[A-Za-z0-9]{4,16}$/.test(entry.name)) continue;
+      try {
+        fs.rmSync(path.join(tmpRoot, entry.name), { recursive: true, force: true });
+        removed++;
+      } catch {
+        /* busy or no permission: leave it, try again next run */
+      }
+    }
+  } catch {
+    /* tmpRoot unreadable: nothing to clean */
+  }
+  return removed;
+}
+
 // ─── Main job ────────────────────────────────────────────────────────────────
 
 /**
@@ -319,16 +324,16 @@ function timestamp(d = new Date()) {
 export async function runBackup(opts = {}) {
   const log = opts.log || ((m) => console.log(m));
   const dataDir = opts.dataDir || process.env.OBEXDNS_DATA_DIR || '/data';
-  const dbFile = opts.dbFile || process.env.SERVERFULL_DB_PATH || path.join(dataDir, 'dns_worker.sqlite');
-  const tmpRoot = opts.tmpDir || os.tmpdir();
   const cfg = opts.cfg || loadConfig();
+  const dbFile = opts.dbFile || cfg.dbPath || path.join(dataDir, 'dns_worker.sqlite');
+  const tmpRoot = opts.tmpDir || os.tmpdir();
   const trigger = opts.trigger || 'cron';
   const upload = opts.upload !== false && missingConfig(cfg).length === 0;
-  const keepLocal = ['true', '1'].includes(String(process.env.BACKUP_KEEP_LOCAL || '').toLowerCase());
-  const localDest = process.env.BACKUP_LOCAL_DEST || path.join(dataDir, 'backups');
-  const yieldChunkKb = opts.yieldChunkKb ?? Math.max(1, parseInt(process.env.BACKUP_YIELD_CHUNK_KB || '512', 10) || 512);
+  const keepLocal = Boolean(cfg.keepLocal);
+  const localDest = cfg.localDest || path.join(dataDir, 'backups');
+  const yieldChunkKb = opts.yieldChunkKb ?? cfg.yieldChunkKb;
   const yieldChunkBytes = yieldChunkKb * 1024;
-  const yieldSleepMs = opts.yieldSleepMs ?? Math.max(0, parseInt(process.env.BACKUP_YIELD_SLEEP_MS || '10', 10) || 10);
+  const yieldSleepMs = opts.yieldSleepMs ?? cfg.yieldSleepMs;
 
   const lockPath = path.join(tmpRoot, LOCK_FILE);
   if (!acquireLock(lockPath)) {
@@ -346,8 +351,15 @@ export async function runBackup(opts = {}) {
   };
   writeStatus(dataDir, status);
 
+  const leftovers = removeWorkDirs(tmpRoot);
+  if (leftovers > 0) log(`[Backup] Removed ${leftovers} leftover work director${leftovers === 1 ? 'y' : 'ies'} from an interrupted run.`);
+
   const workDir = fs.mkdtempSync(path.join(tmpRoot, 'obexdns_backup_'));
-  const cleanup = () => fs.rmSync(workDir, { recursive: true, force: true });
+  // Remove our own directory, then any other leftovers (we still hold the lock, so none can belong to a live run).
+  const cleanup = () => {
+    fs.rmSync(workDir, { recursive: true, force: true });
+    removeWorkDirs(tmpRoot);
+  };
   const onSignal = (sig) => {
     writeStatus(dataDir, { ...status, state: 'failed', error: `Interrupted (${sig})`, finishedAt: Date.now() });
     cleanup();
@@ -374,12 +386,12 @@ export async function runBackup(opts = {}) {
 
     const pkgDir = path.join(workDir, 'pkg');
     fs.mkdirSync(pkgDir);
-    await snapshotDatabase(dbFile, path.join(pkgDir, 'dns_worker.sqlite'), yieldChunkBytes, yieldSleepMs, log);
+    await snapshotDatabase(dbFile, path.join(pkgDir, 'dns_worker.sqlite'), log);
 
     const secret = path.join(dataDir, '.jwt_secret');
     if (fs.existsSync(secret)) fs.copyFileSync(secret, path.join(pkgDir, '.jwt_secret'));
 
-    const codec = pickCodec();
+    const codec = pickCodec(cfg.zstdLevel);
     const stamp = timestamp();
     const name = `obexdns_backup_${stamp}.${codec.ext}`;
     const archive = path.join(workDir, name);
