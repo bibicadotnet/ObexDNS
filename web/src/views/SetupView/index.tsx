@@ -23,6 +23,7 @@ import {
   resolveDomainDnsIps,
   isDummyOrPlaceholderDomain,
 } from "../../services";
+import { getFlagEmoji } from "../../utils/getFlagEmoji";
 
 export const SetupView: React.FC<SetupViewProps> = ({ profileId, profileKey, profileName, toasterRef }) => {
   const isMobile = useIsMobile();
@@ -151,10 +152,23 @@ export const SetupView: React.FC<SetupViewProps> = ({ profileId, profileKey, pro
         ? clientData.dotDomain!
         : (hasValidDotDomain ? clientData.dotDomain! : (window.location.hostname || ""));
 
-      // Fetch geographic location of the current domain from the frontend
-      getDomainGeoLocation(domainToResolve)
-        .then((loc) => setEdgeLocation(loc))
-        .catch((e) => console.warn("Failed fetching domain geo location:", e));
+      // Server location: use custom SERVERFULL_LOCATION if configured, otherwise dynamically resolve
+      if (clientData.serverLocation) {
+        const parts = clientData.serverLocation.split(",").map((s) => s.trim());
+        if (parts.length >= 2) {
+          const name = parts[0];
+          const cc = parts[1];
+          const flag = getFlagEmoji(cc);
+          setEdgeLocation(`${name} ${flag}`);
+        } else {
+          setEdgeLocation(clientData.serverLocation);
+        }
+      } else {
+        // Fetch geographic location of the current domain from the frontend
+        getDomainGeoLocation(domainToResolve)
+          .then((loc) => setEdgeLocation(loc))
+          .catch((e) => console.warn("Failed fetching domain geo location:", e));
+      }
 
       // Resolve IPv4 and IPv6 addresses for SUBSTITUTE_DOMAIN (for Windows 11 setup)
       const targetSubstituteDomain = clientData.substituteDomain || "www.okx.com";

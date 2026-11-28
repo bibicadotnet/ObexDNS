@@ -18,6 +18,7 @@ export interface ClientInfo {
   connectedProfileId?: string;
   substituteDomain?: string;
   dotDomain?: string;
+  serverLocation?: string;
   isServerfull?: boolean;
   mode?: "serverfull" | "cloudflare";
 }

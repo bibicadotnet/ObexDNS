@@ -79,6 +79,7 @@ export async function handleSystemRequest(request: Request, env: Env): Promise<R
       connectedProfileId: connectedProfileId || null,
       substituteDomain: env.SUBSTITUTE_DOMAIN || DEFAULT_SUBSTITUTE_DOMAIN,
       dotDomain: env.SERVERFULL_DOT_DOMAIN || env.DOT_DOMAIN || null,
+      serverLocation: env.SERVERFULL_LOCATION || undefined,
       isServerfull,
       mode: isServerfull ? 'serverfull' : 'cloudflare'
     }), { headers: { 'Content-Type': 'application/json' } });
