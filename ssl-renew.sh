@@ -10,11 +10,13 @@ set -e
 
 # Single-instance lock to prevent overlapping runs
 LOCK_FILE="/data/ssl/.renew.lock"
-exec 200>"$LOCK_FILE"
-flock -n 200 || {
-  echo "[SSL-Renew] Another renewal process is currently running. Skipping."
-  exit 0
-}
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$LOCK_FILE"
+  flock -n 9 || {
+    echo "[SSL-Renew] Another renewal process is currently running. Skipping."
+    exit 0
+  }
+fi
 
 # Load saved runtime configuration
 if [ -f "/data/acme/ssl.env" ]; then
