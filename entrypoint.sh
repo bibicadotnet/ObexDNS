@@ -313,6 +313,19 @@ ACME_STAGING="$ACME_STAGING"
 EOF
     chmod 600 "$ACME_DIR/ssl.env"
 
+    # Cron jobs do not inherit the container environment, so renewals would otherwise reuse a stale token
+    # saved by acme.sh. Save the current Cloudflare credentials to a root-only file on the container
+    # filesystem (rewritten at every start, never stored in the /data volume); ssl-renew.sh sources it.
+    mkdir -p /etc/obexdns
+    _sq() { printf '%s' "$1" | sed "s/'/'\\\\''/g"; }
+    (
+      umask 077
+      printf "CF_Token='%s'\n" "$(_sq "$CF_TOKEN")"
+      [ -n "$CF_ACCOUNT_ID" ] && printf "CF_Account_ID='%s'\n" "$(_sq "$CF_ACCOUNT_ID")"
+      true
+    ) > /etc/obexdns/ssl.env
+    chmod 600 /etc/obexdns/ssl.env
+
     # Validate 5-field cron expression
     VALID_CRON=$(printf '%s' "$CRON_EXPR" | awk '
       NF == 5 && $0 ~ /^[0-9*,\/-]+[[:space:]]+[0-9*,\/-]+[[:space:]]+[0-9*,\/-]+[[:space:]]+[0-9*,\/-]+[[:space:]]+[0-9*,\/-]+$/ {
@@ -335,8 +348,8 @@ EOF
     echo "[SSL] Scheduled automated certificate renewal cron ($CRON_EXPR UTC)."
   fi
 else
-  # Auto-SSL disabled: ensure no orphan cron job exists
-  rm -f /etc/cron.d/ssl-renew
+  # Auto-SSL disabled: ensure no orphan cron job or saved credentials exist
+  rm -f /etc/cron.d/ssl-renew /etc/obexdns/ssl.env
 fi
 
 # 7. Setup automated S3 / Cloudflare R2 backup cron if configured
@@ -382,8 +395,15 @@ else
 fi
 
 # 8. Start Debian cron daemon in the background if any scheduled jobs exist
+# Note: the slim runtime image has no procps (pgrep), so scan /proc instead.
+cron_running() {
+  for _p in /proc/[0-9]*; do
+    [ "$(cat "$_p/comm" 2>/dev/null)" = "cron" ] && return 0
+  done
+  return 1
+}
 if [ -f /etc/cron.d/ssl-renew ] || [ -f /etc/cron.d/backup ]; then
-  if ! pgrep -x cron >/dev/null 2>&1; then
+  if ! cron_running; then
     cron
   fi
 fi

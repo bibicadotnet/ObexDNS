@@ -23,6 +23,14 @@ if [ -f "/data/acme/ssl.env" ]; then
   . "/data/acme/ssl.env"
 fi
 
+# Cloudflare credentials snapshotted by entrypoint.sh at container start (cron has no container env).
+# Exported so acme.sh's dns_cf uses the current token and re-saves it if it changed.
+if [ -f "/etc/obexdns/ssl.env" ]; then
+  set -a
+  . "/etc/obexdns/ssl.env"
+  set +a
+fi
+
 DATA_DIR="/data"
 CONFIG_DIR="$DATA_DIR/config"
 SSL_DIR="$DATA_DIR/ssl"
