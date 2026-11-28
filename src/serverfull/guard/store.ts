@@ -25,6 +25,8 @@ export interface GuardState {
   allow: Uint32Array;
   /** Epoch ms. 0 = sync as soon as possible, Infinity = nothing to sync. */
   nextSyncAt: number;
+  /** Countries whose saved list was built from different GUARD_GEO_SOURCES than the current config. */
+  sourcesChanged: Set<string>;
 }
 
 export const state: GuardState = {
@@ -36,7 +38,8 @@ export const state: GuardState = {
   envAllow: new Uint32Array(0),
   urlAllow: new Uint32Array(0),
   allow: new Uint32Array(0),
-  nextSyncAt: 0
+  nextSyncAt: 0,
+  sourcesChanged: new Set()
 };
 
 /** Clears everything (used on init and by tests). */
@@ -50,6 +53,7 @@ export function resetState(): void {
   state.urlAllow = new Uint32Array(0);
   state.allow = new Uint32Array(0);
   state.nextSyncAt = 0;
+  state.sourcesChanged = new Set();
 }
 
 /** Recomputes `allow` after envAllow or urlAllow changed. */

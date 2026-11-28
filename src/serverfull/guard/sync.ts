@@ -20,6 +20,14 @@ export const geoKey = (cc: string): string => `guard:geo:${cc}`;
 export const geoUpdatedKey = (cc: string): string => `guard:geo:${cc}:updated_at`;
 export const ALLOWLIST_KEY = 'guard:allowlist';
 export const ALLOWLIST_UPDATED_KEY = 'guard:allowlist:updated_at';
+/** The source lists a saved list was built from, so a changed config is noticed at boot. */
+export const geoSourcesKey = (cc: string): string => `guard:geo:${cc}:sources`;
+export const ALLOWLIST_URLS_KEY = 'guard:allowlist:urls';
+
+/** Order- and whitespace-insensitive signature of a source list (stored in the DB next to the data it produced). */
+export function sourcesSignature(list: readonly string[]): string {
+  return list.map((s) => s.trim()).filter(Boolean).sort().join('\n');
+}
 
 /** Replaces {cc} (lower-case) and {CC} (upper-case) in a source template. */
 export function buildSourceUrl(template: string, cc: string): string {
@@ -62,15 +70,19 @@ async function syncCountry(cc: string, settings: SystemSettingsModel): Promise<b
     const current = state.geo.get(cc);
     const currentCount = rangeCount(current);
 
-    if (count < cfg.minRanges || (current && count < cfg.minRangesRatio * currentCount)) {
-      console.warn(`[Guard] Rejected ${cc} list (${count} ranges; min ${cfg.minRanges}${current ? `, current ${currentCount} x ratio ${cfg.minRangesRatio}` : ''}). Keeping the previous version.`);
+    // The ratio compares against the previous list; it is meaningless when the sources themselves were changed.
+    const checkRatio = !!current && !state.sourcesChanged.has(cc);
+    if (count < cfg.minRanges || (checkRatio && count < cfg.minRangesRatio * currentCount)) {
+      console.warn(`[Guard] Rejected ${cc} list (${count} ranges; min ${cfg.minRanges}${checkRatio ? `, current ${currentCount} x ratio ${cfg.minRangesRatio}` : ''}). Keeping the previous version.`);
       return false;
     }
 
     await settings.setMany({
       [geoKey(cc)]: encodeRanges(merged),
-      [geoUpdatedKey(cc)]: String(Math.floor(Date.now() / 1000))
+      [geoUpdatedKey(cc)]: String(Math.floor(Date.now() / 1000)),
+      [geoSourcesKey(cc)]: sourcesSignature(cfg.geoSources)
     });
+    state.sourcesChanged.delete(cc);
     state.geo.set(cc, merged);
     recomputeGeoActive();
     console.log(`[Guard] Synced ${cc}: ${count} ranges`);
@@ -92,7 +104,8 @@ async function syncAllowlist(settings: SystemSettingsModel): Promise<boolean> {
     }
     await settings.setMany({
       [ALLOWLIST_KEY]: encodeRanges(merged),
-      [ALLOWLIST_UPDATED_KEY]: String(Math.floor(Date.now() / 1000))
+      [ALLOWLIST_UPDATED_KEY]: String(Math.floor(Date.now() / 1000)),
+      [ALLOWLIST_URLS_KEY]: sourcesSignature(cfg.allowlistUrls)
     });
     state.urlAllow = merged;
     rebuildAllowlist();

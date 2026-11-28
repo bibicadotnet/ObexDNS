@@ -8,7 +8,9 @@ import {
   cidrToRange, decodeRanges, encodeRanges, inRanges, ipToUint32, isPrivateUint32, mergeRanges, parseRangeLines
 } from '../src/serverfull/guard/ip';
 import { getOrCreateEntry, refill, cleanupEntries, state } from '../src/serverfull/guard/store';
-import { buildSourceUrl, geoKey, geoUpdatedKey, isSyncRunning, runSync } from '../src/serverfull/guard/sync';
+import {
+  ALLOWLIST_KEY, ALLOWLIST_URLS_KEY, buildSourceUrl, geoKey, geoSourcesKey, geoUpdatedKey, isSyncRunning, runSync, sourcesSignature
+} from '../src/serverfull/guard/sync';
 import {
   attachGuard, checkRequestHit, getNextSyncAt, guardTick, initGuard, onConnection, readGuardConfig, resetGuardForTests
 } from '../src/serverfull/guard';
@@ -53,6 +55,7 @@ function toText(pairs: Array<[number, number]>): string {
 function prefill(db: FakeD1, cc: string, pairs: Array<[number, number]>, updatedAtSec: number | null): void {
   db.store.set(geoKey(cc), encodeRanges(mergeRanges(pairs)));
   if (updatedAtSec !== null) db.store.set(geoUpdatedKey(cc), String(updatedAtSec));
+  db.store.set(geoSourcesKey(cc), sourcesSignature(readGuardConfig({}).geoSources)); // built from the current default sources
 }
 const fakeSocket = (ip: string) => {
   const s = { remoteAddress: ip, destroyed: 0, destroy() { s.destroyed++; } };
@@ -491,6 +494,72 @@ async function main(): Promise<void> {
     loud();
     console.log(`  heap for 100000 entries: ~${usedMb.toFixed(1)} MB${gc ? '' : ' (no --expose-gc, approximate)'}`);
     assert.ok(usedMb < 80, `too much memory: ${usedMb} MB`);
+  }
+
+  // ── 19. changed sources are picked up at boot, not after 24 h ─────────────
+  {
+    const nowSec = Math.floor(realNow() / 1000);
+    // a) GUARD_GEO_SOURCES edited: fresh data (updated 1 min ago) is refreshed right away, ratio check does not apply
+    const db = new FakeD1();
+    prefill(db, 'VN', ranges24(1000), nowSec - 60);
+    db.store.set(geoSourcesKey('VN'), sourcesSignature(['https://old.example/{cc}.txt']));
+    const m = mockFetch(() => ({ body: toText(ranges24(400, num('60.0.0.0'))) })); // 400 < 50 % of 1000
+    await fresh(db, { ENABLE_ALLOW_COUNTRIES: 'true', ALLOW_COUNTRIES: 'VN' });
+    assert.strictEqual(m.calls.length, 4, 'background sync started by the changed sources');
+    assert.strictEqual(state.geo.get('VN')!.length / 2, 400, 'new list accepted despite the ratio');
+    assert.strictEqual(db.store.get(geoSourcesKey('VN')), sourcesSignature(readGuardConfig({}).geoSources), 'signature saved with the list');
+    assert.ok(getNextSyncAt() - realNow() > 23 * 3600_000);
+    // next boot: same sources -> nothing to do, and the ratio protection is back
+    const m2 = mockFetch(() => ({ body: toText(ranges24(400, num('60.0.0.0'))) }));
+    await fresh(db, { ENABLE_ALLOW_COUNTRIES: 'true', ALLOW_COUNTRIES: 'VN' });
+    assert.strictEqual(m2.calls.length, 0, 'unchanged sources: no sync');
+    assert.ok(getNextSyncAt() > realNow());
+    assert.strictEqual(state.sourcesChanged.size, 0);
+
+    // b) order / whitespace of the sources does not count as a change
+    const reordered = readGuardConfig({}).geoSources.slice().reverse().map((u) => ` ${u} `).join(',');
+    const m3 = mockFetch(() => ({ body: toText(ranges24(400, num('60.0.0.0'))) }));
+    await fresh(db, { ENABLE_ALLOW_COUNTRIES: 'true', ALLOW_COUNTRIES: 'VN', GUARD_GEO_SOURCES: reordered });
+    assert.strictEqual(m3.calls.length, 0);
+
+    // c) failed sync after a change: old list stays, signature NOT updated, so the next boot tries again
+    const db2 = new FakeD1();
+    prefill(db2, 'VN', ranges24(300), nowSec - 60);
+    db2.store.set(geoSourcesKey('VN'), 'old');
+    const oldSig = 'old';
+    mockFetch(() => 'fail');
+    await fresh(db2, { ENABLE_ALLOW_COUNTRIES: 'true', ALLOW_COUNTRIES: 'VN' });
+    assert.strictEqual(state.geo.get('VN')!.length / 2, 300, 'old list still in use');
+    assert.strictEqual(db2.store.get(geoSourcesKey('VN')), oldSig);
+    assert.ok(state.sourcesChanged.has('VN'));
+    assert.ok(getNextSyncAt() - realNow() <= 30 * 60_000, 'retry soon');
+    assert.ok(state.geoActive, 'connections keep being filtered with the old list meanwhile');
+
+    // d) ALLOWLIST_URLS edited: re-downloaded at boot
+    const db3 = new FakeD1();
+    db3.store.set(ALLOWLIST_KEY, encodeRanges(mergeRanges([[num('45.0.0.0'), num('45.0.0.255')]])));
+    db3.store.set('guard:allowlist:updated_at', String(nowSec - 60));
+    db3.store.set(ALLOWLIST_URLS_KEY, sourcesSignature(['https://old.example/list.txt']));
+    mockFetch(() => ({ body: '46.0.0.1\n' }));
+    await fresh(db3, { ENABLE_RATE_LIMIT: 'true', ALLOWLIST_URLS: 'https://new.example/list.txt' });
+    assert.ok(inRanges(state.allow, num('46.0.0.1')) && !inRanges(state.allow, num('45.0.0.5')), 'list replaced by the new URL');
+    assert.strictEqual(db3.store.get(ALLOWLIST_URLS_KEY), 'https://new.example/list.txt');
+
+    // e) ALLOWLIST_URLS removed: the old downloaded IPs stop being allowed (RAM and DB)
+    const db4 = new FakeD1();
+    db4.store.set(ALLOWLIST_KEY, encodeRanges(mergeRanges([[num('45.0.0.0'), num('45.0.0.255')]])));
+    db4.store.set('guard:allowlist:updated_at', String(nowSec - 60));
+    db4.store.set(ALLOWLIST_URLS_KEY, 'https://old.example/list.txt');
+    const m4 = mockFetch(() => ({ body: '1.1.1.1\n' }));
+    await fresh(db4, { ENABLE_RATE_LIMIT: 'true', ALLOWLIST_URLS: '', ALLOWLIST_IPS: '203.0.113.9' });
+    assert.ok(!inRanges(state.allow, num('45.0.0.5')), 'stale allowlist not loaded');
+    assert.ok(inRanges(state.allow, num('203.0.113.9')), 'ALLOWLIST_IPS still applies');
+    assert.strictEqual(db4.store.get(ALLOWLIST_KEY), '', 'removed from the DB too');
+    assert.strictEqual(m4.calls.length, 0, 'nothing to download');
+    assert.strictEqual(getNextSyncAt(), Infinity);
+    // and it stays removed after another boot
+    await fresh(db4, { ENABLE_RATE_LIMIT: 'true', ALLOWLIST_URLS: '' });
+    assert.ok(!inRanges(state.allow, num('45.0.0.5')));
   }
 
   resetGuardForTests();

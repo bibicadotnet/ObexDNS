@@ -11,7 +11,10 @@ import type { Env } from '../../types';
 import { SystemSettingsModel } from '../../models/systemSettings';
 import { cidrToRange, inRanges, ipToUint32, isPrivateUint32, mergeRanges } from './ip';
 import { cleanupEntries, getOrCreateEntry, rebuildAllowlist, recomputeGeoActive, refill, resetState, state } from './store';
-import { ALLOWLIST_KEY, ALLOWLIST_UPDATED_KEY, geoKey, geoUpdatedKey, loadRanges, loadUpdatedAtSec, runSync } from './sync';
+import {
+  ALLOWLIST_KEY, ALLOWLIST_UPDATED_KEY, ALLOWLIST_URLS_KEY, geoKey, geoSourcesKey, geoUpdatedKey,
+  loadRanges, loadUpdatedAtSec, runSync, sourcesSignature
+} from './sync';
 import { readGuardConfig } from './types';
 
 export { readGuardConfig } from './types';
@@ -72,19 +75,30 @@ export async function initGuard(env: Env): Promise<void> {
   const syncGeo = cfg.enableGeo && cfg.countries.length > 0;
   const syncAllow = cfg.allowlistUrls.length > 0;
   const updatedAt: Array<number | null> = [];
+  let allowSourcesChanged = false;
 
   try {
     const settings = new SystemSettingsModel(env.DB);
 
-    const allow = await loadRanges(settings, ALLOWLIST_KEY);
-    if (allow) state.urlAllow = allow;
-    if (syncAllow) updatedAt.push(await loadUpdatedAtSec(settings, ALLOWLIST_UPDATED_KEY));
+    if (syncAllow) {
+      const allow = await loadRanges(settings, ALLOWLIST_KEY);
+      if (allow) state.urlAllow = allow;
+      updatedAt.push(await loadUpdatedAtSec(settings, ALLOWLIST_UPDATED_KEY));
+      // ALLOWLIST_URLS was added / edited / removed since the saved list was built -> refresh now, not in 24 h.
+      allowSourcesChanged = (await settings.get(ALLOWLIST_URLS_KEY)) !== sourcesSignature(cfg.allowlistUrls);
+    } else if (await settings.get(ALLOWLIST_KEY)) {
+      // No ALLOWLIST_URLS any more: forget what the old URLs produced instead of keeping those IPs allowed forever.
+      await settings.setMany({ [ALLOWLIST_KEY]: '', [ALLOWLIST_UPDATED_KEY]: '', [ALLOWLIST_URLS_KEY]: '' });
+      console.log('[Guard] ALLOWLIST_URLS is empty: removed the previously downloaded allowlist.');
+    }
 
     if (syncGeo) {
+      const currentSig = sourcesSignature(cfg.geoSources);
       for (const cc of cfg.countries) {
         const arr = await loadRanges(settings, geoKey(cc));
         if (arr && arr.length > 0) state.geo.set(cc, arr);
         updatedAt.push(await loadUpdatedAtSec(settings, geoUpdatedKey(cc)));
+        if ((await settings.get(geoSourcesKey(cc))) !== currentSig) state.sourcesChanged.add(cc);
       }
     }
   } catch (err) {
@@ -95,10 +109,12 @@ export async function initGuard(env: Env): Promise<void> {
   rebuildAllowlist();
   recomputeGeoActive();
 
-  // nextSyncAt = min(updated_at in DB, seconds) * 1000 + interval. Any missing updated_at -> 0 (sync now).
+  const sourcesChanged = allowSourcesChanged || state.sourcesChanged.size > 0;
+
+  // nextSyncAt = min(updated_at in DB, seconds) * 1000 + interval. Any missing updated_at, or changed sources -> 0 (sync now).
   if (!syncGeo && !syncAllow) {
     state.nextSyncAt = Infinity;
-  } else if (updatedAt.some((v) => v === null)) {
+  } else if (sourcesChanged || updatedAt.some((v) => v === null)) {
     state.nextSyncAt = 0;
   } else {
     state.nextSyncAt = Math.min(...(updatedAt as number[])) * 1000 + cfg.syncIntervalHours * 3600 * 1000;
@@ -111,6 +127,15 @@ export async function initGuard(env: Env): Promise<void> {
 
   if (syncGeo && !state.geoActive) {
     console.warn('[Guard] Country lists are missing or incomplete: the country filter lets everything through until the first sync completes.');
+  }
+  if (sourcesChanged) {
+    const what = [
+      ...(allowSourcesChanged ? ['ALLOWLIST_URLS'] : []),
+      ...(state.sourcesChanged.size > 0 ? [`GUARD_GEO_SOURCES (${[...state.sourcesChanged].join(',')})`] : [])
+    ].join(' and ');
+    console.warn(`[Guard] ${what} changed since the saved lists were built. Refreshing now; the saved lists stay in use until the download completes.`);
+  }
+  if ((syncGeo && !state.geoActive) || sourcesChanged) {
     runSync(env).catch((err) => console.error('[Guard] Background sync error:', err));
   }
 }
