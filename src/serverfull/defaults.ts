@@ -765,6 +765,14 @@ PRESET_ECH_FRONTING_DOMAINS='["cloudflare-ech.com","crypto.cloudflare.com","one.
 # Số giây không hoạt động để xoá entry của IP, nếu IP không còn bị phạt (mặc định: 300).
 # GUARD_IDLE_TTL_SEC=300
 
+# CPU pacing of the guard's background work (parsing, merging and saving downloaded lists, sweeping idle IPs). Each slice of work runs for at most this many milliseconds, then the server sleeps so DNS / HTTP queries keep flowing; the longest stall a query can see is about one slice (default: 2, minimum: 0.5). Time based on purpose: a fixed item count costs very different time on different CPUs.
+# Điều tiết CPU cho việc chạy nền của guard (phân tích, gộp và lưu danh sách vừa tải, quét IP không hoạt động). Mỗi lát công việc chạy tối đa chừng này mili-giây rồi server nghỉ để truy vấn DNS / HTTP được phục vụ; truy vấn bị đứng lâu nhất khoảng một lát (mặc định: 2, tối thiểu 0.5). Tính theo thời gian chủ ý: cùng số mục nhưng tốn thời gian rất khác nhau tuỳ CPU.
+# GUARD_YIELD_SLICE_MS=2
+
+# Pause in milliseconds between two slices of that work (default: 10, minimum: 0). A longer pause lowers the CPU share taken (slice / (slice + pause)) but makes a sync take longer; it only affects the background sync, never connection checks.
+# Thời gian nghỉ giữa hai lát (mili-giây, mặc định: 10, tối thiểu 0). Nghỉ lâu hơn thì phần CPU bị chiếm giảm (lát / (lát + nghỉ)) nhưng sync lâu hơn; chỉ ảnh hưởng việc sync chạy nền, không ảnh hưởng việc kiểm tra kết nối.
+# GUARD_YIELD_SLEEP_MS=10
+
 # true: only log "would block <ip> <reason>"; nothing is closed and no penalty is set. Use it to tune limits safely (default: false).
 # true: chỉ ghi log "would block <ip> <lý do>"; không đóng kết nối và không phạt. Dùng để chỉnh ngưỡng an toàn (mặc định: false).
 # GUARD_DRY_RUN=false

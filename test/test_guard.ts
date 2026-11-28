@@ -5,8 +5,10 @@
  */
 import assert from 'node:assert';
 import {
-  cidrToRange, decodeRanges, encodeRanges, inRanges, ipToUint32, isPrivateUint32, mergeRanges, parseRangeLines
+  cidrToRange, decodeRanges, encodeRanges, encodeRangesPaced, inRanges, ipToUint32, isPrivateUint32, mergeRangeArrays,
+  mergeRangeArraysPaced, mergeRanges, mergeRangesPaced, parseRangeLines, parseRangeLinesPaced
 } from '../src/serverfull/guard/ip';
+import { createPacer } from '../src/serverfull/guard/pace';
 import { getOrCreateEntry, refill, cleanupEntries, state } from '../src/serverfull/guard/store';
 import {
   ALLOWLIST_KEY, ALLOWLIST_URLS_KEY, buildSourceUrl, geoKey, geoSourcesKey, geoUpdatedKey, isSyncRunning, runSync, sourcesSignature
@@ -41,7 +43,7 @@ class FakeD1 {
   async batch(stmts: any[]) { for (const s of stmts) await s.run(); return []; }
 }
 
-const BASE_ENV = { ALLOWLIST_IPS: '', ALLOWLIST_URLS: '' };
+const BASE_ENV = { ALLOWLIST_IPS: '', ALLOWLIST_URLS: '', GUARD_YIELD_SLEEP_MS: '1' };
 function mkEnv(db: FakeD1, extra: Record<string, string> = {}): any {
   return { DB: db, ...BASE_ENV, ...extra };
 }
@@ -286,7 +288,7 @@ async function main(): Promise<void> {
     clock = null;
   }
 
-  // ── 10. eviction never pushes out a penalised entry ───────────────────────
+  // ── 10. eviction: batch, never pushes out a penalised entry ───────────────
   {
     const db = new FakeD1();
     await fresh(db, { ENABLE_RATE_LIMIT: 'true', GUARD_MAX_ENTRIES: '1000' });
@@ -296,24 +298,31 @@ async function main(): Promise<void> {
     assert.strictEqual(state.map.size, 1000);
     for (let i = 0; i < 16; i++) state.map.get(1_000_000 + i)!.penaltyUntil = now + 60_000;
     getOrCreateEntry(5_000_000, now);
-    assert.strictEqual(state.map.size, 1000, 'hard cap holds');
+    assert.ok(state.map.size <= 1000, 'hard cap holds');
+    assert.strictEqual(state.map.size, 1000 - 10 + 1, 'one batch (1 % of the cap = 10) dropped, then the new entry added');
     for (let i = 0; i < 16; i++) assert.ok(state.map.has(1_000_000 + i), `penalised ${i} kept`);
-    assert.ok(!state.map.has(1_000_016), 'first non-penalised entry evicted');
-    assert.ok(state.map.has(5_000_000));
+    for (let i = 16; i < 26; i++) assert.ok(!state.map.has(1_000_000 + i), `oldest non-penalised ${i} evicted`);
+    assert.ok(state.map.has(1_000_026) && state.map.has(5_000_000));
 
-    // every entry penalised: the first key is still dropped so the cap holds
+    // the cap holds under a sustained flood of new IPs, penalised entries survive it
+    for (let i = 0; i < 5000; i++) { getOrCreateEntry(7_000_000 + i, now); assert.ok(state.map.size <= 1000); }
+    for (let i = 0; i < 16; i++) assert.ok(state.map.has(1_000_000 + i), `penalised ${i} survived the flood`);
+
+    // every entry penalised: one entry is still dropped so the cap holds
+    for (const e of state.map.values()) e.penaltyUntil = now + 60_000;
+    while (state.map.size < 1000) getOrCreateEntry(9_000_000 + state.map.size, now);
     for (const e of state.map.values()) e.penaltyUntil = now + 60_000;
     const keysBefore = new Set(state.map.keys());
     getOrCreateEntry(6_000_000, now);
     assert.strictEqual(state.map.size, 1000);
     assert.ok(state.map.has(6_000_000));
     const gone = [...keysBefore].filter((k) => !state.map.has(k));
-    assert.strictEqual(gone.length, 1, 'exactly one entry dropped after 16 rotations');
+    assert.strictEqual(gone.length, 1, 'exactly one penalised entry dropped when nothing else can go');
 
     // idle cleanup keeps penalised entries
     clock = now + 301_000;
     for (const [k, e] of state.map) if (k !== 6_000_000) e.penaltyUntil = k % 2 ? now + 400_000 : 0;
-    const removed = cleanupEntries(clock);
+    const removed = await cleanupEntries(clock);
     assert.ok(removed > 0);
     for (const [k, e] of state.map) assert.ok(e.penaltyUntil > clock || k === 6_000_000 || e.lastSeen >= clock - 300_000);
     clock = null;
@@ -351,14 +360,17 @@ async function main(): Promise<void> {
     assert.strictEqual(state.geo.get('VN'), oldArr, 'below GUARD_MIN_RANGES_RATIO');
     assert.strictEqual(db.store.get(geoKey('VN')), oldDb);
 
-    // !res.ok and comments / junk lines are ignored
-    mockFetch((u) => u.includes('ipdeny') ? { status: 500, body: 'x' } : { body: '# c\n\njunk\n' + toText(ranges24(600, num('70.0.0.0'))) });
+    // 404 = "no data from this source" (not a failure); comments / junk lines are ignored
+    mockFetch((u) => u.includes('ipdeny') ? { status: 404, body: 'x' } : { body: '# c\n\njunk\n' + toText(ranges24(600, num('70.0.0.0'))) });
     await runSync(env);
     const accepted = state.geo.get('VN')!;
     assert.notStrictEqual(accepted, oldArr, 'accepted: 600 >= 100 and >= 50 % of 1000');
     assert.strictEqual(accepted.length / 2, 600, 'duplicates from the 3 good sources merged');
     const delta2 = getNextSyncAt() - realNow();
     assert.ok(delta2 > 23.9 * 3600_000 && delta2 <= 24 * 3600_000, 'next sync in 24 h');
+
+    // a 404 source does not make the sync "incomplete": next sync in 24 h
+    assert.ok(getNextSyncAt() - realNow() > 23.9 * 3600_000, '404 is not a failure');
 
     // d) updated_at is written in SECONDS
     const written = Number(db.store.get(geoUpdatedKey('VN')));
@@ -490,7 +502,7 @@ async function main(): Promise<void> {
     const usedMb = (process.memoryUsage().heapUsed - before) / 1024 / 1024;
     assert.strictEqual(state.map.size, 100_000);
     getOrCreateEntry(0x7f000000, t0);
-    assert.strictEqual(state.map.size, 100_000, 'hard cap');
+    assert.ok(state.map.size <= 100_000 && state.map.size >= 99_000, 'hard cap (one batch of 1 % evicted)');
     loud();
     console.log(`  heap for 100000 entries: ~${usedMb.toFixed(1)} MB${gc ? '' : ' (no --expose-gc, approximate)'}`);
     assert.ok(usedMb < 80, `too much memory: ${usedMb} MB`);
@@ -613,6 +625,167 @@ async function main(): Promise<void> {
     assert.ok(bad.includes('SG kept previous list'), bad);
     assert.ok(bad.includes('allowlist kept previous list (rejected: download produced no ranges)'), bad);
     assert.ok(bad.includes('Retry in 30 min.') && bad.includes('700 geo ranges active (VN: 350, SG: 350)'), bad);
+  }
+
+  // ── 21. partial sync (some sources fail transiently) never shrinks the list ──
+  {
+    const nowSec = Math.floor(realNow() / 1000);
+    const all = ranges24(1000);
+    const db = new FakeD1();
+    prefill(db, 'VN', all, nowSec - 100);
+    const env = await fresh(db, { ENABLE_ALLOW_COUNTRIES: 'true', ALLOW_COUNTRIES: 'VN' });
+    assert.strictEqual(state.geo.get('VN')!.length / 2, 1000);
+    const sigBefore = db.store.get(geoSourcesKey('VN'));
+
+    // 3 of 4 sources down, the survivor has 600 ranges: 600 >= 50 % would have been accepted and shrunk the list
+    mockFetch((u) => u.includes('ipverse/rir-ip') ? { body: toText(all.slice(0, 600)) } : 'fail');
+    const logs: string[] = []; const warns: string[] = [];
+    console.log = (...a: any[]) => { logs.push(a.join(' ')); };
+    console.warn = (...a: any[]) => { warns.push(a.join(' ')); };
+    await runSync(env);
+    quiet();
+    assert.strictEqual(state.geo.get('VN')!.length / 2, 1000, 'known ranges kept');
+    const d = getNextSyncAt() - realNow();
+    assert.ok(d > 29 * 60_000 && d <= 30 * 60_000, `retry in 30 min, got ${d}`);
+    assert.ok(warns.some((w) => w.includes('Sync finished with errors') && w.includes('VN incomplete (3/4 sources failed')), warns.join('|'));
+    assert.ok(!logs.some((l) => l.includes('Sync complete')));
+    assert.strictEqual(db.store.get(geoSourcesKey('VN')), sigBefore);
+
+    // partial but with NEW ranges from the surviving source: they are added to what is known
+    const extra = ranges24(50, num('99.0.0.0'));
+    mockFetch((u) => u.includes('ipverse/rir-ip') ? { body: toText(all.slice(0, 600).concat(extra)) } : 'fail');
+    await runSync(env);
+    assert.strictEqual(state.geo.get('VN')!.length / 2, 1050, 'union of the known list and the new ranges');
+    assert.deepStrictEqual(Array.from(decodeRanges(db.store.get(geoKey('VN')))!), Array.from(state.geo.get('VN')!), 'DB matches RAM');
+
+    // every source down: nothing downloaded -> rejected even though the known list would satisfy the minimum
+    const before = state.geo.get('VN')!;
+    const upd = db.store.get(geoUpdatedKey('VN'));
+    mockFetch(() => 'fail');
+    await runSync(env);
+    assert.strictEqual(state.geo.get('VN'), before);
+    assert.strictEqual(db.store.get(geoUpdatedKey('VN')), upd, 'updated_at not rewritten when nothing was downloaded');
+
+    // a full, complete download replaces the list (stale ranges finally leave)
+    mockFetch(() => ({ body: toText(all.slice(0, 700)) }));
+    await runSync(env);
+    assert.strictEqual(state.geo.get('VN')!.length / 2, 700);
+    assert.ok(getNextSyncAt() - realNow() > 23.9 * 3600_000);
+
+    // allowlist: one URL down must not drop the IPs it provided
+    const dbA = new FakeD1();
+    const envA = await fresh(dbA, { ENABLE_RATE_LIMIT: 'true', ALLOWLIST_URLS: 'https://a.example/l.txt,https://b.example/l.txt' });
+    mockFetch(() => ({ body: '45.0.0.1\n46.0.0.1\n' }));
+    await runSync(envA);
+    assert.ok(inRanges(state.allow, num('45.0.0.1')) && inRanges(state.allow, num('46.0.0.1')));
+    mockFetch((u) => u.includes('a.example') ? { body: '45.0.0.1\n' } : 'fail');
+    await runSync(envA);
+    assert.ok(inRanges(state.allow, num('46.0.0.1')), 'IPs from the unreachable URL are kept');
+    assert.ok(getNextSyncAt() - realNow() <= 30 * 60_000, 'retry soon');
+    mockFetch(() => 'fail');
+    const urlBefore = state.urlAllow;
+    await runSync(envA);
+    assert.strictEqual(state.urlAllow, urlBefore, 'all URLs down: nothing changes');
+    // a URL answering 404 is not a failure
+    mockFetch((u) => u.includes('a.example') ? { body: '45.0.0.1\n' } : { status: 404 });
+    await runSync(envA);
+    assert.ok(!inRanges(state.allow, num('46.0.0.1')), 'complete answer replaces the list');
+    assert.ok(getNextSyncAt() - realNow() > 23.9 * 3600_000);
+  }
+
+  // ── 22. CPU pacing ────────────────────────────────────────────────────────
+  {
+    // config defaults / bounds
+    const dflt = readGuardConfig({});
+    assert.strictEqual(dflt.yieldSliceMs, 2);
+    assert.strictEqual(dflt.yieldSleepMs, 10);
+    const bounded = readGuardConfig({ GUARD_YIELD_SLICE_MS: '0.1', GUARD_YIELD_SLEEP_MS: '-5' });
+    assert.strictEqual(bounded.yieldSliceMs, 2, 'below the 0.5 ms minimum -> default');
+    assert.strictEqual(bounded.yieldSleepMs, 10, 'negative sleep -> default');
+
+    // pacer: due() only after the slice budget, rest() sleeps and starts a new slice
+    const pace = createPacer(5, 10);
+    assert.strictEqual(pace.due(), false);
+    const t0 = performance.now(); while (performance.now() - t0 < 6) { /* burn a slice */ }
+    assert.strictEqual(pace.due(), true);
+    const r0 = performance.now(); await pace.rest();
+    assert.ok(performance.now() - r0 >= 8, 'slept about the configured 10 ms (timers may fire a little early)');
+    assert.strictEqual(pace.due(), false, 'new slice after rest');
+    assert.strictEqual(pace.rests, 1);
+
+    // the paced variants return exactly what the plain ones return (shuffled input, overlaps, adjacency, duplicates)
+    let seed = 12345; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+    const pairs: Array<[number, number]> = Array.from({ length: 60_000 }, () => {
+      const start = Math.floor(rnd() * 0x0fffff00) + 0x10000000; const len = [0, 255, 511, 1023][Math.floor(rnd() * 4)];
+      return [start, start + len] as [number, number];
+    });
+    const text = pairs.map(([s0, e0]) => `${dotted(s0)}/${32 - Math.log2(e0 - s0 + 1)}`).concat(['# c', '', 'junk', '2001:db8::/32']).join('\n');
+    const quick = () => createPacer(0.5, 0);
+    assert.deepStrictEqual(await parseRangeLinesPaced(text, quick()), parseRangeLines(text), 'parse');
+    const plainMerged = mergeRanges(pairs);
+    const pacedMerged = await mergeRangesPaced(pairs, quick());
+    assert.deepStrictEqual(Array.from(pacedMerged), Array.from(plainMerged), 'merge');
+    assert.deepStrictEqual(Array.from(await mergeRangesPaced([], quick())), []);
+    assert.deepStrictEqual(Array.from(await mergeRangesPaced(pairs.slice(0, 3), quick())), Array.from(mergeRanges(pairs.slice(0, 3))));
+    const halves = [mergeRanges(pairs.slice(0, 30_000)), mergeRanges(pairs.slice(30_000))];
+    assert.deepStrictEqual(Array.from(await mergeRangeArraysPaced(halves, quick())), Array.from(mergeRangeArrays(halves)), 'union');
+    assert.strictEqual(await encodeRangesPaced(plainMerged, quick()), encodeRanges(plainMerged), 'base64 identical');
+    assert.strictEqual(await encodeRangesPaced(new Uint32Array(0), quick()), '');
+    for (const n of [1, 2, 3, 4, 5, 6001]) { // sizes around the 3-byte base64 alignment
+      const a = mergeRanges(pairs.slice(0, n));
+      assert.strictEqual(await encodeRangesPaced(a, quick()), encodeRanges(a), `encode n=${n}`);
+    }
+
+    // the point of it all: the event loop keeps turning while the work runs.
+    // A heartbeat records the longest time between two ticks (= the longest stall a DNS query would see).
+    const measure = async (work: () => Promise<unknown> | unknown): Promise<number> => {
+      let last = performance.now(); let max = 0; let stop = false;
+      const beat = () => { const n = performance.now(); max = Math.max(max, n - last); last = n; if (!stop) setTimeout(beat, 0); };
+      setTimeout(beat, 0);
+      await new Promise((r) => setTimeout(r, 5)); last = performance.now(); max = 0;
+      await work();
+      stop = true; await new Promise((r) => setTimeout(r, 5));
+      return max;
+    };
+    const big: Array<[number, number]> = Array.from({ length: 400_000 }, () => {
+      const s0 = Math.floor(rnd() * 0xe0000000) + 0x10000000; return [s0, s0 + 255] as [number, number];
+    });
+    const syncStall = await measure(() => mergeRanges(big));
+    const pacedStall = await measure(() => mergeRangesPaced(big, createPacer(2, 1)));
+    assert.ok(syncStall > 40, `sanity: the plain merge of 400k pairs blocks for a long time (${syncStall.toFixed(1)} ms)`);
+    assert.ok(pacedStall < 60 && pacedStall < syncStall / 3, `paced merge must never stall for long (${pacedStall.toFixed(1)} ms, plain ${syncStall.toFixed(1)} ms)`); // loose bound: a GC pause on a busy CI box is not the pacer's fault
+
+    // idle sweep over a full Map, paced
+    const db = new FakeD1();
+    await fresh(db, { ENABLE_RATE_LIMIT: 'true' });
+    for (let i = 0; i < 100_000; i++) getOrCreateEntry(0x2a000000 + i, 1);
+    for (let i = 0; i < 1000; i++) state.map.get(0x2a000000 + i)!.penaltyUntil = 1e12;
+    let removedTotal = 0;
+    const sweepStall = await measure(async () => { removedTotal = await cleanupEntries(10_000_000, createPacer(1, 1)); });
+    assert.strictEqual(removedTotal, 99_000, 'penalised entries survive the sweep');
+    assert.strictEqual(state.map.size, 1000);
+    assert.ok(sweepStall < 60, `paced sweep stall ${sweepStall.toFixed(1)} ms`);
+    // entries touched while the sweep is resting are not removed
+    for (let i = 0; i < 20_000; i++) getOrCreateEntry(0x3a000000 + i, 1);
+    const touched = new Set<number>();
+    const sweeping = cleanupEntries(10_000_000, createPacer(0.5, 2));
+    for (let i = 0; i < 20_000; i += 7) { touched.add(0x3a000000 + i); getOrCreateEntry(0x3a000000 + i, 10_000_000); }
+    await sweeping;
+    for (const k of touched) assert.ok(state.map.has(k), 'an entry refreshed while the sweep rested is kept');
+    assert.ok(state.map.size >= 1000);
+
+    // a whole country sync with big sources rests many times and still produces the right list
+    const dbS = new FakeD1();
+    const envS = await fresh(dbS, { ENABLE_ALLOW_COUNTRIES: 'true', ALLOW_COUNTRIES: 'VN', GUARD_YIELD_SLICE_MS: '0.5', GUARD_YIELD_SLEEP_MS: '0' });
+    const bigText = toText(ranges24(40_000));
+    mockFetch(() => ({ body: bigText }));
+    const syncStall2 = await measure(() => runSync(envS));
+    assert.strictEqual(state.geo.get('VN')!.length / 2, 40_000);
+    assert.deepStrictEqual(Array.from(decodeRanges(dbS.store.get(geoKey('VN')))!), Array.from(state.geo.get('VN')!), 'DB round trip');
+    loud();
+    console.log(`  longest event-loop stall: plain merge ${syncStall.toFixed(0)} ms -> paced ${pacedStall.toFixed(1)} ms; sweep of 100k entries ${sweepStall.toFixed(1)} ms; sync of 4 x 40k lines ${syncStall2.toFixed(1)} ms`);
+    quiet();
+    assert.ok(syncStall2 < 60, `sync of 4 x 40k lines: longest stall ${syncStall2.toFixed(1)} ms`);
   }
 
   resetGuardForTests();

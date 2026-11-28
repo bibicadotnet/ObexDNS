@@ -6,6 +6,7 @@
 
 import type { GuardConfig, GuardEntry } from './types';
 import { mergeRangeArrays } from './ip';
+import { createPacer, type Pacer } from './pace';
 
 export interface GuardState {
   cfg: GuardConfig | null;
@@ -67,9 +68,16 @@ export function recomputeGeoActive(): void {
   state.geoActive = !!cfg && cfg.enableGeo && cfg.countries.length > 0 && cfg.countries.every((cc) => state.geo.has(cc));
 }
 
-/** 28983 -> "28,983" (fixed locale so logs do not depend on the host). */
+/** A fresh pacer for one CPU-bound phase (create it right before the phase starts). */
+export function newPacer(): Pacer {
+  const cfg = state.cfg;
+  return createPacer(cfg ? cfg.yieldSliceMs : 2, cfg ? cfg.yieldSleepMs : 10);
+}
+
+/** 28983 -> "28,983". Plain string work on purpose: the first toLocaleString() call initialises ICU and costs ~10 ms. */
 export function fmtCount(n: number): string {
-  return n.toLocaleString('en-US');
+  const [int, frac] = String(n).split('.');
+  return int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac ? `.${frac}` : '');
 }
 
 /** 86400000 -> "24h", 1800000 -> "30 min". */
@@ -106,24 +114,34 @@ export function refill(tokens: number, last: number, now: number, ratePerSec: nu
   return Math.min(burst, tokens + (elapsed > 0 ? elapsed : 0) / 1000 * ratePerSec);
 }
 
-function evictOne(map: Map<number, GuardEntry>, now: number): void {
-  for (let i = 0; i < 16; i++) {
-    const first = map.keys().next();
-    if (first.done) return;
-    const key = first.value;
-    const entry = map.get(key)!;
-    if (entry.penaltyUntil > now) {
-      // Still being punished: rotate to the back instead of forgetting it.
-      map.delete(key);
-      map.set(key, entry);
-    } else {
-      map.delete(key);
-      return;
-    }
+/**
+ * Frees room in one pass instead of one entry per call: deleting the first key of a Map over and over makes every
+ * following keys().next() walk past more tombstones, which gets slow when new IPs keep arriving at the cap.
+ * Drops about 1 % of the cap from the front (oldest first). Entries still under penalty are rotated to the back
+ * instead of being forgotten. If everything scanned is penalised, the first one is dropped so the hard cap holds.
+ */
+function evictBatch(map: Map<number, GuardEntry>, now: number, maxEntries: number): void {
+  const target = Math.max(1, Math.floor(maxEntries / 100));
+  const scanLimit = target * 4;
+  const drop: number[] = [];
+  const rotate: Array<[number, GuardEntry]> = [];
+  let scanned = 0;
+  for (const [key, entry] of map) {
+    if (drop.length >= target || scanned >= scanLimit) break;
+    scanned++;
+    if (entry.penaltyUntil > now) rotate.push([key, entry]);
+    else drop.push(key);
   }
-  // 16 in a row were penalised: drop the current first key to stay under the hard cap.
-  const first = map.keys().next();
-  if (!first.done) map.delete(first.value);
+  if (drop.length === 0 && rotate.length > 0) {
+    // Everything scanned is penalised: forget the oldest one, keep the rest.
+    map.delete(rotate[0][0]);
+    rotate.shift();
+  }
+  for (const key of drop) map.delete(key);
+  for (const [key, entry] of rotate) {
+    map.delete(key);
+    map.set(key, entry);
+  }
 }
 
 /** Returns the entry for `ip`, creating it (full buckets) and evicting if the Map is at its hard cap. */
@@ -134,7 +152,7 @@ export function getOrCreateEntry(ip: number, now: number): GuardEntry {
     existing.lastSeen = now;
     return existing;
   }
-  if (state.map.size >= cfg.maxEntries) evictOne(state.map, now);
+  if (state.map.size >= cfg.maxEntries) evictBatch(state.map, now, cfg.maxEntries);
   const entry: GuardEntry = {
     tokConn: cfg.burstTcp,
     tConn: now,
@@ -147,17 +165,30 @@ export function getOrCreateEntry(ip: number, now: number): GuardEntry {
   return entry;
 }
 
-/** Removes entries idle for longer than the TTL that are no longer penalised. */
-export function cleanupEntries(now: number): number {
+let cleaning = false;
+
+/**
+ * Removes entries idle for longer than the TTL that are no longer penalised.
+ * Sweeps in CPU slices (rests when `pace` says so) because a full Map has up to 100,000 entries.
+ * Map iterators are live, so entries added or evicted while it rests are handled safely.
+ */
+export async function cleanupEntries(now: number, pace?: Pacer): Promise<number> {
   const cfg = state.cfg;
-  if (!cfg) return 0;
-  const cutoff = now - cfg.idleTtlSec * 1000;
-  let removed = 0;
-  for (const [key, entry] of state.map) {
-    if (entry.lastSeen < cutoff && entry.penaltyUntil < now) {
-      state.map.delete(key);
-      removed++;
+  if (!cfg || cleaning) return 0;
+  cleaning = true;
+  try {
+    const cutoff = now - cfg.idleTtlSec * 1000;
+    let removed = 0;
+    let n = 0;
+    for (const [key, entry] of state.map) {
+      if (entry.lastSeen < cutoff && entry.penaltyUntil < now) {
+        state.map.delete(key);
+        removed++;
+      }
+      if (pace && (++n & 255) === 0 && pace.due()) await pace.rest();
     }
+    return removed;
+  } finally {
+    cleaning = false;
   }
-  return removed;
 }

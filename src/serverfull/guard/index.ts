@@ -11,7 +11,7 @@ import type { Env } from '../../types';
 import { SystemSettingsModel } from '../../models/systemSettings';
 import { cidrToRange, inRanges, ipToUint32, isPrivateUint32, mergeRanges } from './ip';
 import {
-  allowlistSummary, cleanupEntries, fmtCount, geoBreakdown, geoTotalRanges, getOrCreateEntry, rebuildAllowlist,
+  allowlistSummary, cleanupEntries, fmtCount, geoBreakdown, geoTotalRanges, getOrCreateEntry, newPacer, rebuildAllowlist,
   recomputeGeoActive, refill, resetState, state
 } from './store';
 import {
@@ -245,7 +245,7 @@ export async function guardTick(env: Env): Promise<void> {
   if (!state.active || !state.cfg) return;
   try {
     const now = Date.now();
-    cleanupEntries(now);
+    await cleanupEntries(now, newPacer());
     if (now < state.nextSyncAt) return;
     await runSync(env);
   } catch (err) {

@@ -70,6 +70,8 @@ export interface Env {
   GUARD_MIN_RANGES_RATIO?: string | number;
   GUARD_MAX_ENTRIES?: string | number;
   GUARD_IDLE_TTL_SEC?: string | number;
+  GUARD_YIELD_SLICE_MS?: string | number;
+  GUARD_YIELD_SLEEP_MS?: string | number;
   GUARD_DRY_RUN?: string;
   ACTIVE_DNS_CACHE_TTL?: string | number;
   LOGIN_MAX_ATTEMPTS?: string | number;

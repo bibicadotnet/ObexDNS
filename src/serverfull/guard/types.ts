@@ -46,6 +46,10 @@ export interface GuardConfig {
   maxEntries: number;
   /** Seconds. */
   idleTtlSec: number;
+  /** Longest CPU slice (ms) of background work before it sleeps. */
+  yieldSliceMs: number;
+  /** Sleep (ms) between two slices of background work. */
+  yieldSleepMs: number;
   dryRun: boolean;
 }
 
@@ -107,6 +111,8 @@ export function readGuardConfig(env: Partial<Env> | Record<string, unknown>): Gu
     minRangesRatio: envNumber(e.GUARD_MIN_RANGES_RATIO, 0.5, { min: 0, max: 1 }),
     maxEntries: envNumber(e.GUARD_MAX_ENTRIES, 100000, { min: 1000 }),
     idleTtlSec: envNumber(e.GUARD_IDLE_TTL_SEC, 300, { min: 1 }),
+    yieldSliceMs: envNumber(e.GUARD_YIELD_SLICE_MS, 2, { min: 0.5 }),
+    yieldSleepMs: envNumber(e.GUARD_YIELD_SLEEP_MS, 10, { min: 0 }),
     dryRun: e.GUARD_DRY_RUN === 'true'
   };
 }

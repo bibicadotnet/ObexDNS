@@ -6,9 +6,9 @@
 
 import type { Env } from '../../types';
 import { SystemSettingsModel } from '../../models/systemSettings';
-import { decodeRanges, encodeRanges, mergeRanges, parseRangeLines, rangeCount } from './ip';
+import { decodeRanges, encodeRangesPaced, mergeRangeArraysPaced, mergeRangesPaced, parseRangeLinesPaced, rangeCount } from './ip';
 import {
-  allowlistSummary, fmtCount, fmtDuration, geoBreakdown, geoTotalRanges, rebuildAllowlist, recomputeGeoActive, state
+  allowlistSummary, fmtCount, fmtDuration, geoBreakdown, geoTotalRanges, newPacer, rebuildAllowlist, recomputeGeoActive, state
 } from './store';
 
 let isSyncing = false;
@@ -36,91 +36,128 @@ export function buildSourceUrl(template: string, cc: string): string {
   return template.split('{cc}').join(cc.toLowerCase()).split('{CC}').join(cc.toUpperCase());
 }
 
-/** Downloads one list. Throws on network error, timeout or a non-2xx status. */
-async function fetchList(url: string, timeoutMs: number): Promise<Array<[number, number]>> {
+/**
+ * Downloads one list. Throws on network error, timeout or a non-2xx status.
+ * 404 / 410 mean "this source has nothing for this country (or the URL is gone)": returned as `missing`, not as a failure,
+ * otherwise a dead URL would keep every sync "incomplete" forever.
+ */
+async function fetchList(url: string, timeoutMs: number): Promise<{ pairs: Array<[number, number]>; missing: boolean }> {
   const res = await fetch(url, {
     signal: AbortSignal.timeout(timeoutMs),
     headers: { 'User-Agent': 'DNS-Worker/1.0' }
   });
+  if (res.status === 404 || res.status === 410) return { pairs: [], missing: true };
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseRangeLines(await res.text());
+  const text = await res.text();
+  return { pairs: await parseRangeLinesPaced(text, newPacer()), missing: false };
 }
 
-/** Downloads every URL in parallel and returns the merged ranges plus the failed URLs. */
-async function fetchAndMerge(urls: string[], timeoutMs: number): Promise<{ merged: Uint32Array; failed: string[] }> {
+/**
+ * Downloads every URL in parallel. `merged` is what the sources really delivered; `failed` are transient failures
+ * (the list may be incomplete); `missing` are 404 / 410 answers (warned about, not counted as failures).
+ */
+async function fetchAndMerge(urls: string[], timeoutMs: number): Promise<{ merged: Uint32Array; failed: string[]; missing: string[] }> {
   const results = await Promise.allSettled(urls.map((u) => fetchList(u, timeoutMs)));
-  const pairs: Array<[number, number]> = [];
+  const chunks: Array<Array<[number, number]>> = [];
   const failed: string[] = [];
+  const missing: string[] = [];
   results.forEach((r, i) => {
     if (r.status === 'fulfilled') {
-      for (const p of r.value) pairs.push(p);
+      if (r.value.missing) {
+        missing.push(urls[i]);
+        console.warn(`[Guard] ${urls[i]} answered 404/410: no data from this source (check GUARD_GEO_SOURCES / ALLOWLIST_URLS if the URL was removed).`);
+      }
+      chunks.push(r.value.pairs);
     } else {
       failed.push(urls[i]);
       console.warn(`[Guard] Failed to fetch ${urls[i]}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
     }
   });
-  return { merged: mergeRanges(pairs), failed };
+  // concat copies natively; pushing 100k+ pairs one by one would hold the event loop for several ms
+  const pairs = ([] as Array<[number, number]>).concat(...chunks);
+  return { merged: await mergeRangesPaced(pairs, newPacer()), failed, missing };
 }
 
-/** Syncs one country. Returns null when accepted, otherwise a short reason why the previous list was kept. */
-async function syncCountry(cc: string, settings: SystemSettingsModel): Promise<string | null> {
+/** Outcome of one item. `partial` = the new list was applied but some sources failed, so it is retried soon. */
+type ItemResult = { status: 'ok' } | { status: 'partial'; detail: string } | { status: 'rejected'; detail: string };
+
+/** Syncs one country. */
+async function syncCountry(cc: string, settings: SystemSettingsModel): Promise<ItemResult> {
   const cfg = state.cfg!;
   try {
     const urls = cfg.geoSources.map((t) => buildSourceUrl(t, cc));
-    const { merged } = await fetchAndMerge(urls, cfg.fetchTimeoutMs);
-    const count = rangeCount(merged);
+    const fetched = await fetchAndMerge(urls, cfg.fetchTimeoutMs);
     const current = state.geo.get(cc);
+    // A source that failed transiently may be the one carrying part of this country. Never let that shrink the list:
+    // keep everything already known (union) and retry soon.
+    const partial = fetched.failed.length > 0;
+    const merged = partial && current ? await mergeRangeArraysPaced([fetched.merged, current], newPacer()) : fetched.merged;
+    const count = rangeCount(merged);
+    const downloaded = rangeCount(fetched.merged); // what the sources really delivered (a union is not a download)
     const currentCount = rangeCount(current);
 
-    // The ratio compares against the previous list; it is meaningless when the sources themselves were changed.
-    const checkRatio = !!current && !state.sourcesChanged.has(cc);
-    if (count < cfg.minRanges || (checkRatio && count < cfg.minRangesRatio * currentCount)) {
-      console.warn(`[Guard] Rejected ${cc} list (${count} ranges; min ${cfg.minRanges}${checkRatio ? `, current ${currentCount} x ratio ${cfg.minRangesRatio}` : ''}). Keeping the previous version.`);
-      return count < cfg.minRanges
-        ? `rejected: ${fmtCount(count)} ranges < min ${fmtCount(cfg.minRanges)}`
-        : `rejected: ${fmtCount(count)} ranges < ${cfg.minRangesRatio} x current ${fmtCount(currentCount)}`;
+    // The ratio compares against the previous list: meaningless when the sources themselves were changed,
+    // and unnecessary after a partial fetch (the union is never smaller than the current list).
+    const checkRatio = !!current && !partial && !state.sourcesChanged.has(cc);
+    if (downloaded < cfg.minRanges || (checkRatio && count < cfg.minRangesRatio * currentCount)) {
+      console.warn(`[Guard] Rejected ${cc} list (${downloaded} ranges; min ${cfg.minRanges}${checkRatio ? `, current ${currentCount} x ratio ${cfg.minRangesRatio}` : ''}). Keeping the previous version.`);
+      return {
+        status: 'rejected',
+        detail: downloaded < cfg.minRanges
+          ? `rejected: ${fmtCount(downloaded)} ranges < min ${fmtCount(cfg.minRanges)}`
+          : `rejected: ${fmtCount(count)} ranges < ${cfg.minRangesRatio} x current ${fmtCount(currentCount)}`
+      };
     }
 
-    await settings.setMany({
-      [geoKey(cc)]: encodeRanges(merged),
-      [geoUpdatedKey(cc)]: String(Math.floor(Date.now() / 1000)),
-      [geoSourcesKey(cc)]: sourcesSignature(cfg.geoSources)
-    });
-    state.sourcesChanged.delete(cc);
+    const values: Record<string, string> = {
+      [geoKey(cc)]: await encodeRangesPaced(merged, newPacer()),
+      [geoUpdatedKey(cc)]: String(Math.floor(Date.now() / 1000))
+    };
+    // Only a complete download proves the list matches the configured sources.
+    if (!partial) values[geoSourcesKey(cc)] = sourcesSignature(cfg.geoSources);
+    await settings.setMany(values);
+    if (!partial) state.sourcesChanged.delete(cc);
     state.geo.set(cc, merged);
     recomputeGeoActive();
-    console.log(`[Guard] Synced ${cc}: ${fmtCount(count)} ranges`);
-    return null;
+    console.log(`[Guard] Synced ${cc}: ${fmtCount(count)} ranges${partial ? ` (incomplete: ${fetched.failed.length}/${urls.length} sources failed, kept known ranges)` : ''}`);
+    return partial
+      ? { status: 'partial', detail: `${fetched.failed.length}/${urls.length} sources failed` }
+      : { status: 'ok' };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[Guard] Sync ${cc} failed, keeping the previous version:`, msg);
-    return `error: ${msg}`;
+    return { status: 'rejected', detail: `error: ${msg}` };
   }
 }
 
-/** Same contract as syncCountry. */
-async function syncAllowlist(settings: SystemSettingsModel): Promise<string | null> {
+/** Same rules as syncCountry: an unreachable URL must not silently drop the IPs it provided. */
+async function syncAllowlist(settings: SystemSettingsModel): Promise<ItemResult> {
   const cfg = state.cfg!;
   try {
-    const { merged } = await fetchAndMerge(cfg.allowlistUrls, cfg.fetchTimeoutMs);
+    const fetched = await fetchAndMerge(cfg.allowlistUrls, cfg.fetchTimeoutMs);
+    const partial = fetched.failed.length > 0;
+    const merged = partial ? await mergeRangeArraysPaced([fetched.merged, state.urlAllow], newPacer()) : fetched.merged;
     const count = rangeCount(merged);
-    if (count < 1) {
+    if (rangeCount(fetched.merged) < 1) {
       console.warn('[Guard] Allowlist download produced no ranges. Keeping the previous version.');
-      return 'rejected: download produced no ranges';
+      return { status: 'rejected', detail: 'rejected: download produced no ranges' };
     }
-    await settings.setMany({
-      [ALLOWLIST_KEY]: encodeRanges(merged),
-      [ALLOWLIST_UPDATED_KEY]: String(Math.floor(Date.now() / 1000)),
-      [ALLOWLIST_URLS_KEY]: sourcesSignature(cfg.allowlistUrls)
-    });
+    const values: Record<string, string> = {
+      [ALLOWLIST_KEY]: await encodeRangesPaced(merged, newPacer()),
+      [ALLOWLIST_UPDATED_KEY]: String(Math.floor(Date.now() / 1000))
+    };
+    if (!partial) values[ALLOWLIST_URLS_KEY] = sourcesSignature(cfg.allowlistUrls);
+    await settings.setMany(values);
     state.urlAllow = merged;
     rebuildAllowlist();
-    console.log(`[Guard] Synced allowlist: ${fmtCount(count)} ranges`);
-    return null;
+    console.log(`[Guard] Synced allowlist: ${fmtCount(count)} ranges${partial ? ` (incomplete: ${fetched.failed.length}/${cfg.allowlistUrls.length} URLs failed, kept known ranges)` : ''}`);
+    return partial
+      ? { status: 'partial', detail: `${fetched.failed.length}/${cfg.allowlistUrls.length} URLs failed` }
+      : { status: 'ok' };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[Guard] Allowlist sync failed, keeping the previous version:', msg);
-    return `error: ${msg}`;
+    return { status: 'rejected', detail: `error: ${msg}` };
   }
 }
 
@@ -141,14 +178,16 @@ export async function runSync(env: Env): Promise<void> {
     if (cfg.enableGeo) {
       for (const cc of cfg.countries) {
         items++;
-        const reason = await syncCountry(cc, settings);
-        if (reason) failures.push(`${cc} kept previous list (${reason})`);
+        const r = await syncCountry(cc, settings);
+        if (r.status === 'rejected') failures.push(`${cc} kept previous list (${r.detail})`);
+        else if (r.status === 'partial') failures.push(`${cc} incomplete (${r.detail}; known ranges kept)`);
       }
     }
     if (cfg.allowlistUrls.length > 0) {
       items++;
-      const reason = await syncAllowlist(settings);
-      if (reason) failures.push(`allowlist kept previous list (${reason})`);
+      const r = await syncAllowlist(settings);
+      if (r.status === 'rejected') failures.push(`allowlist kept previous list (${r.detail})`);
+      else if (r.status === 'partial') failures.push(`allowlist incomplete (${r.detail}; known ranges kept)`);
     }
 
     if (items === 0) {

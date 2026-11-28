@@ -6,6 +6,7 @@
  */
 
 import { ipv4ToNumeric, parseCidr } from '../../utils/cidr';
+import type { Pacer } from './pace';
 
 /** Converts a remoteAddress string to uint32. Returns null for anything that is not IPv4 (including IPv6). */
 export function ipToUint32(ip: string | undefined | null): number | null {
@@ -34,11 +35,27 @@ export function cidrToRange(entry: string): [number, number] | null {
  */
 export function parseRangeLines(text: string): Array<[number, number]> {
   const out: Array<[number, number]> = [];
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const range = cidrToRange(line.split(/\s+/)[0]);
+  for (const raw of text.split('\n')) { // plain split: far cheaper than a regex, and trim() drops the '\r'
+    const range = parseRangeLine(raw);
     if (range) out.push(range);
+  }
+  return out;
+}
+
+function parseRangeLine(raw: string): [number, number] | null {
+  const line = raw.trim();
+  if (!line || line.startsWith('#')) return null;
+  return cidrToRange(line.split(/\s+/)[0]);
+}
+
+/** Same result as parseRangeLines, but sleeps whenever the pacer's CPU slice is used up. */
+export async function parseRangeLinesPaced(text: string, pace: Pacer): Promise<Array<[number, number]>> {
+  const out: Array<[number, number]> = [];
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const range = parseRangeLine(lines[i]);
+    if (range) out.push(range);
+    if ((i & 63) === 63 && pace.due()) await pace.rest();
   }
   return out;
 }
@@ -62,6 +79,74 @@ export function mergeRanges(pairs: ReadonlyArray<readonly [number, number]>): Ui
   }
   out.push(cs, ce);
   return Uint32Array.from(out);
+}
+
+const byStart = (a: readonly [number, number], b: readonly [number, number]): number => a[0] - b[0] || a[1] - b[1];
+/** Pairs sorted per slice-friendly run (about 1 ms of sorting each). */
+const SORT_RUN = 4096;
+
+async function mergeTwoSorted(
+  a: Array<[number, number]>, b: Array<[number, number]>, pace: Pacer
+): Promise<Array<[number, number]>> {
+  const out: Array<[number, number]> = new Array(a.length + b.length);
+  let i = 0, j = 0, k = 0;
+  while (i < a.length && j < b.length) {
+    out[k++] = byStart(a[i], b[j]) <= 0 ? a[i++] : b[j++];
+    if ((k & 255) === 0 && pace.due()) await pace.rest();
+  }
+  while (i < a.length) out[k++] = a[i++];
+  while (j < b.length) out[k++] = b[j++];
+  return out;
+}
+
+/**
+ * Same result as mergeRanges, but never holds the event loop for a whole sort: sorts fixed-size runs, merges the sorted
+ * runs two by two, then coalesces, resting whenever the pacer's CPU slice is used up.
+ */
+export async function mergeRangesPaced(pairs: ReadonlyArray<readonly [number, number]>, pace: Pacer): Promise<Uint32Array> {
+  if (pairs.length === 0) return new Uint32Array(0);
+  let runs: Array<Array<[number, number]>> = [];
+  for (let i = 0; i < pairs.length; i += SORT_RUN) {
+    runs.push((pairs.slice(i, i + SORT_RUN) as Array<[number, number]>).sort(byStart));
+    if (pace.due()) await pace.rest();
+  }
+  while (runs.length > 1) {
+    const next: Array<Array<[number, number]>> = [];
+    for (let r = 0; r < runs.length; r += 2) {
+      next.push(r + 1 < runs.length ? await mergeTwoSorted(runs[r], runs[r + 1], pace) : runs[r]);
+    }
+    runs = next;
+  }
+  const sorted = runs[0];
+  const out: number[] = [];
+  let cs = sorted[0][0];
+  let ce = sorted[0][1];
+  for (let i = 1; i < sorted.length; i++) {
+    const [s, e] = sorted[i];
+    if (s <= ce + 1) {
+      if (e > ce) ce = e;
+    } else {
+      out.push(cs, ce);
+      cs = s;
+      ce = e;
+    }
+    if ((i & 255) === 255 && pace.due()) await pace.rest();
+  }
+  out.push(cs, ce);
+  return Uint32Array.from(out);
+}
+
+/** Paced counterpart of mergeRangeArrays. */
+export async function mergeRangeArraysPaced(arrays: ReadonlyArray<Uint32Array | null | undefined>, pace: Pacer): Promise<Uint32Array> {
+  const pairs: Array<[number, number]> = [];
+  for (const arr of arrays) {
+    if (!arr) continue;
+    for (let i = 0; i + 1 < arr.length; i += 2) {
+      pairs.push([arr[i], arr[i + 1]]);
+      if ((i & 1023) === 1022 && pace.due()) await pace.rest();
+    }
+  }
+  return mergeRangesPaced(pairs, pace);
 }
 
 /** Merges several already-built range arrays into one. */
@@ -103,6 +188,23 @@ export function encodeRanges(arr: Uint32Array): string {
     bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
   }
   return btoa(bin);
+}
+
+/** Same output as encodeRanges, but rests whenever the pacer's CPU slice is used up. */
+export async function encodeRangesPaced(arr: Uint32Array, pace: Pacer): Promise<string> {
+  const bytes = new Uint8Array(arr.length * 4);
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < arr.length; i++) {
+    view.setUint32(i * 4, arr[i], true);
+    if ((i & 1023) === 1023 && pace.due()) await pace.rest();
+  }
+  // 24576 is a multiple of 3, so independently encoded pieces concatenate to the same base64 text.
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 24576) {
+    out += btoa(String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 24576))));
+    if (pace.due()) await pace.rest();
+  }
+  return out;
 }
 
 /**
